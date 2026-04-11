@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CallsReport</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div>
+          <p class="eyebrow">VibeCode + Bitrix24</p>
+          <h1>Речевая аналитика звонков</h1>
+          <p class="lede">
+            Whisper Large v3 Turbo для транскрибации, AI-анализ по сценарию и сводный отчёт по
+            менеджерам.
+          </p>
+        </div>
+
+        <section class="panel">
+          <h2>Фильтры</h2>
+          <label><span>Менеджер</span><select id="managerId"><option value="">Все менеджеры</option></select></label>
+          <label><span>Дата с</span><input id="dateFrom" type="date" /></label>
+          <label><span>Дата по</span><input id="dateTo" type="date" /></label>
+          <label>
+            <span>Направление</span>
+            <select id="direction">
+              <option value="">Все</option>
+              <option value="incoming">Входящие</option>
+              <option value="outgoing">Исходящие</option>
+            </select>
+          </label>
+          <label class="checkbox"><input id="onlyRecorded" type="checkbox" checked /><span>Только со звуковой записью</span></label>
+          <button id="refreshCalls" class="primary">Обновить список</button>
+        </section>
+
+        <section class="panel">
+          <h2>Сценарий анализа</h2>
+          <textarea id="scriptChecklist" rows="8" placeholder="Опишите этапы скрипта: приветствие, квалификация, презентация, работа с возражениями, следующий шаг."></textarea>
+          <label>
+            <span>Индивидуальные параметры</span>
+            <textarea id="customMetrics" rows="6" placeholder='Например: ["Соблюдение юридической точности", "Эмпатия", "Четкость фиксации следующего шага"]'></textarea>
+          </label>
+          <button id="analyzeBatch" class="accent">Запустить пакетный анализ</button>
+        </section>
+      </aside>
+
+      <main class="content">
+        <section class="hero">
+          <div class="hero-copy">
+            <p class="eyebrow">Dashboard</p>
+            <h2>Сводный отчёт по качеству звонков</h2>
+            <p id="statusText">Загружаю данные...</p>
+          </div>
+          <div class="hero-actions"><button id="refreshSummary">Обновить отчёт</button></div>
+        </section>
+
+        <section id="summaryCards" class="summary-grid"></section>
+
+        <section class="layout">
+          <div class="panel">
+            <div class="section-head">
+              <h2>Список звонков</h2>
+              <span id="callsCount" class="badge">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Звонок</th>
+                    <th>Менеджер</th>
+                    <th>Направление</th>
+                    <th>Длительность</th>
+                    <th>Анализ</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="callsTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel detail-panel">
+            <div class="section-head">
+              <h2>Детали анализа</h2>
+              <span id="analysisState" class="badge neutral">Не выбран</span>
+            </div>
+            <div id="analysisDetail" class="analysis-detail empty">
+              Выберите звонок и запустите анализ, чтобы увидеть резюме, рекомендации и оценку по
+              скрипту.
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
