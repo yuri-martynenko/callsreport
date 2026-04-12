@@ -35,7 +35,6 @@
                 <article class="panel chart-panel">
                   <div class="section-head">
                     <h2>Тональность звонков</h2>
-                    <span class="muted">Показатель: количество звонков</span>
                   </div>
                   <div id="sentimentChart" class="chart-host"></div>
                 </article>
@@ -65,7 +64,7 @@
                 </div>
 
                 <div class="filter-toolbar">
-                  <label class="filter-field filter-field-wide">
+                  <label class="filter-field filter-field-wide filter-manager">
                     <span>Менеджеры</span>
                     <details class="multi-select" id="managerIdsDropdown">
                       <summary><span id="managerIdsLabel">Все менеджеры</span></summary>
@@ -73,39 +72,39 @@
                     </details>
                   </label>
 
-                  <label class="filter-field">
+                  <label class="filter-field filter-date-from">
                     <span>Период с</span>
                     <input id="dateFrom" type="date" />
                   </label>
 
-                  <label class="filter-field">
+                  <label class="filter-field filter-date-to">
                     <span>Период по</span>
                     <input id="dateTo" type="date" />
                   </label>
 
-                  <label class="filter-field">
+                  <label class="filter-field filter-direction">
                     <span>Направления</span>
                     <details class="multi-select" id="directionsDropdown">
                       <summary><span id="directionsLabel">Все направления</span></summary>
                       <div id="directionsOptions" class="multi-select-menu">
                         <label class="multi-select-option">
-                          <input type="checkbox" value="incoming" data-filter-option="direction" />
+                          <input type="checkbox" value="incoming" data-filter-option="direction" data-label="Входящие" />
                           <span>Входящие</span>
                         </label>
                         <label class="multi-select-option">
-                          <input type="checkbox" value="outgoing" data-filter-option="direction" />
+                          <input type="checkbox" value="outgoing" data-filter-option="direction" data-label="Исходящие" />
                           <span>Исходящие</span>
                         </label>
                       </div>
                     </details>
                   </label>
 
-                  <label class="checkbox compact-checkbox">
-                    <input id="onlyRecorded" type="checkbox" />
+                  <label class="checkbox compact-checkbox filter-recorded">
+                    <input id="onlyRecorded" type="checkbox" checked />
                     <span>Только со звуковой записью</span>
                   </label>
 
-                  <button id="resetFilters" class="filter-reset" type="button">Сбросить</button>
+                  <button id="resetFilters" class="filter-reset filter-reset-button" type="button">Сбросить</button>
                 </div>
 
                 <div class="table-wrap">
@@ -208,6 +207,51 @@
               </section>
             </div>
           </section>
+
+          <section id="settingsView" class="view-shell">
+            <div class="view-stack">
+              <section class="panel scenario-editor-panel">
+                <div class="section-head">
+                  <div class="section-head-main">
+                    <h2>Настройки</h2>
+                    <span class="muted">Подготовка параметров автоматической обработки звонков.</span>
+                  </div>
+                </div>
+
+                <div class="scenario-layout">
+                  <section class="settings-block">
+                    <div class="section-head">
+                      <div class="section-head-main">
+                        <h3>Автоматическая расшифровка звонков</h3>
+                        <span class="muted">Выберите, для каких звонков в будущем будет запускаться автоматическая расшифровка.</span>
+                      </div>
+                    </div>
+                    <div class="settings-options" id="autoTranscriptionOptions">
+                      <label class="settings-option">
+                        <input type="radio" name="autoTranscriptionMode" value="disabled" checked />
+                        <span>Отключить автоматическую расшифровку</span>
+                      </label>
+                      <label class="settings-option">
+                        <input type="radio" name="autoTranscriptionMode" value="all" />
+                        <span>Все звонки</span>
+                      </label>
+                      <label class="settings-option">
+                        <input type="radio" name="autoTranscriptionMode" value="incoming" />
+                        <span>Все входящие</span>
+                      </label>
+                      <label class="settings-option">
+                        <input type="radio" name="autoTranscriptionMode" value="outgoing" />
+                        <span>Все исходящие</span>
+                      </label>
+                    </div>
+                    <div class="action-stack">
+                      <button id="saveSettings" class="accent" type="button">Сохранить настройки</button>
+                    </div>
+                  </section>
+                </div>
+              </section>
+            </div>
+          </section>
         </main>
 
         <aside class="service-menu">
@@ -223,6 +267,7 @@
               <button id="showDashboardView" class="menu-link primary-action" type="button">Дашборд</button>
               <button id="showReportView" class="menu-link" type="button">Отчет по звонкам</button>
               <button id="showScenariosView" class="menu-link" type="button">Сценарии анализа</button>
+              <button id="showSettingsView" class="menu-link" type="button">Настройки</button>
             </nav>
           </div>
         </aside>

@@ -16,6 +16,7 @@ const MAX_CALLS_PER_BATCH = Number(process.env.MAX_CALLS_PER_BATCH || 20);
 const DATA_DIR = path.join(__dirname, "data");
 const ANALYSES_FILE = path.join(DATA_DIR, "analyses.json");
 const SCENARIOS_FILE = path.join(DATA_DIR, "scenarios.json");
+const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -68,6 +69,24 @@ async function ensureDataFiles() {
       "utf8",
     );
   }
+  try {
+    await fs.access(SETTINGS_FILE);
+  } catch {
+    await fs.writeFile(
+      SETTINGS_FILE,
+      JSON.stringify(
+        {
+          settings: {
+            autoTranscriptionMode: "disabled",
+          },
+          updatedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+  }
 }
 
 async function readAnalysisStore() {
@@ -91,6 +110,17 @@ async function writeScenarioStore(store) {
   await ensureDataFiles();
   store.updatedAt = new Date().toISOString();
   await fs.writeFile(SCENARIOS_FILE, JSON.stringify(store, null, 2), "utf8");
+}
+
+async function readSettingsStore() {
+  await ensureDataFiles();
+  return JSON.parse(await fs.readFile(SETTINGS_FILE, "utf8"));
+}
+
+async function writeSettingsStore(store) {
+  await ensureDataFiles();
+  store.updatedAt = new Date().toISOString();
+  await fs.writeFile(SETTINGS_FILE, JSON.stringify(store, null, 2), "utf8");
 }
 
 function createId(prefix = "id") {
@@ -131,6 +161,17 @@ function sanitizeScenario(input = {}) {
     autoApply: Boolean(input.autoApply),
     isDefault: Boolean(input.isDefault),
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function sanitizeSettings(input = {}) {
+  const allowedModes = new Set(["disabled", "all", "incoming", "outgoing"]);
+  const autoTranscriptionMode = allowedModes.has(String(input.autoTranscriptionMode || ""))
+    ? String(input.autoTranscriptionMode)
+    : "disabled";
+
+  return {
+    autoTranscriptionMode,
   };
 }
 
@@ -1065,6 +1106,26 @@ app.get("/api/scenarios", async (_req, res, next) => {
   try {
     const store = await readScenarioStore();
     res.json({ success: true, data: { scenarios: store.scenarios || [] } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/settings", async (_req, res, next) => {
+  try {
+    const store = await readSettingsStore();
+    res.json({ success: true, data: { settings: sanitizeSettings(store.settings || {}) } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/settings", async (req, res, next) => {
+  try {
+    const store = await readSettingsStore();
+    store.settings = sanitizeSettings(req.body || {});
+    await writeSettingsStore(store);
+    res.json({ success: true, data: { settings: store.settings } });
   } catch (error) {
     next(error);
   }

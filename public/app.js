@@ -5,6 +5,9 @@ const state = {
   summary: null,
   analyses: [],
   scenarios: [],
+  settings: {
+    autoTranscriptionMode: "disabled",
+  },
   selectedAnalysis: null,
   selectedScenarioId: "",
   currentView: "dashboard",
@@ -16,9 +19,11 @@ const el = {
   dashboardView: document.getElementById("dashboardView"),
   reportView: document.getElementById("reportView"),
   scenariosView: document.getElementById("scenariosView"),
+  settingsView: document.getElementById("settingsView"),
   showDashboardView: document.getElementById("showDashboardView"),
   showReportView: document.getElementById("showReportView"),
   showScenariosView: document.getElementById("showScenariosView"),
+  showSettingsView: document.getElementById("showSettingsView"),
   managerIdsDropdown: document.getElementById("managerIdsDropdown"),
   managerIdsLabel: document.getElementById("managerIdsLabel"),
   managerIdsOptions: document.getElementById("managerIdsOptions"),
@@ -57,6 +62,7 @@ const el = {
   managerScoreChart: document.getElementById("managerScoreChart"),
   sentimentChart: document.getElementById("sentimentChart"),
   dailyScoreChart: document.getElementById("dailyScoreChart"),
+  saveSettings: document.getElementById("saveSettings"),
 };
 
 function selectedCheckboxValues(container, selector) {
@@ -243,6 +249,10 @@ function localizeCheckpointStatus(value) {
 
 function localizeDirection(value) {
   return value === "incoming" ? "Входящий" : value === "outgoing" ? "Исходящий" : value || "—";
+}
+
+function autoTranscriptionMode() {
+  return document.querySelector('input[name="autoTranscriptionMode"]:checked')?.value || "disabled";
 }
 
 function localizeFreeText(value) {
@@ -468,9 +478,11 @@ function setCurrentView(view) {
   el.dashboardView.classList.toggle("active", view === "dashboard");
   el.reportView.classList.toggle("active", view === "report");
   el.scenariosView.classList.toggle("active", view === "scenarios");
+  el.settingsView.classList.toggle("active", view === "settings");
   el.showDashboardView.classList.toggle("primary-action", view === "dashboard");
   el.showReportView.classList.toggle("primary-action", view === "report");
   el.showScenariosView.classList.toggle("primary-action", view === "scenarios");
+  el.showSettingsView.classList.toggle("primary-action", view === "settings");
 }
 
 function analysisStatus(call) {
@@ -703,7 +715,7 @@ function renderSentimentChart() {
           <div class="bar-track ${toneClass}">
             <div class="bar-fill" style="width:${width}%"></div>
           </div>
-          <div class="bar-value">${escapeHtml(item.value)} <span class="muted">(${escapeHtml(percent)}%)</span></div>
+          <div class="bar-value"><span>${escapeHtml(item.value)}</span><span class="muted">(${escapeHtml(percent)}%)</span></div>
         </div>`;
     })
     .join("")}</div>`;
@@ -831,6 +843,33 @@ async function loadScenarios() {
   }
 }
 
+function applySettings(settings) {
+  state.settings = {
+    autoTranscriptionMode: settings?.autoTranscriptionMode || "disabled",
+  };
+  const selectedMode = document.querySelector(
+    `input[name="autoTranscriptionMode"][value="${state.settings.autoTranscriptionMode}"]`,
+  );
+  if (selectedMode) selectedMode.checked = true;
+}
+
+async function loadSettings() {
+  const data = await api("/api/settings");
+  applySettings(data.settings || {});
+}
+
+async function saveSettings() {
+  const data = await api("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ autoTranscriptionMode: autoTranscriptionMode() }),
+  });
+  applySettings(data.settings || {});
+  if (el.statusText) {
+    el.statusText.textContent = "Настройки сохранены.";
+  }
+}
+
 async function saveScenario() {
   const payload = collectScenarioPayload();
   if (!payload.name) throw new Error("Укажите название сценария");
@@ -932,7 +971,7 @@ function scheduleFiltersReload() {
 function resetFilters() {
   el.dateFrom.value = "";
   el.dateTo.value = "";
-  el.onlyRecorded.checked = false;
+  el.onlyRecorded.checked = true;
 
   Array.from(el.managerIdsOptions?.querySelectorAll('input[data-filter-option="manager"]') || []).forEach((input) => {
     input.checked = false;
@@ -1036,6 +1075,16 @@ if (el.deleteScenario) {
   });
 }
 
+if (el.saveSettings) {
+  el.saveSettings.addEventListener("click", async () => {
+    try {
+      await saveSettings();
+    } catch (error) {
+      notifyLoadError(error);
+    }
+  });
+}
+
 if (el.showDashboardView) {
   el.showDashboardView.addEventListener("click", () => {
     setCurrentView("dashboard");
@@ -1051,6 +1100,12 @@ if (el.showReportView) {
 if (el.showScenariosView) {
   el.showScenariosView.addEventListener("click", () => {
     setCurrentView("scenarios");
+  });
+}
+
+if (el.showSettingsView) {
+  el.showSettingsView.addEventListener("click", () => {
+    setCurrentView("settings");
   });
 }
 
@@ -1075,6 +1130,7 @@ if (el.nextPage) {
   try {
     setCurrentView("dashboard");
     await loadManagers();
+    await loadSettings();
     await loadScenarios();
     await Promise.all([loadCalls(), loadSummary()]);
     renderAnalysis(null);
