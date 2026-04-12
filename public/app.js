@@ -102,6 +102,13 @@ function refreshFilterLabels() {
   }
 }
 
+function closeFilterDropdowns(except = null) {
+  [el.managerIdsDropdown, el.directionsDropdown].forEach((dropdown) => {
+    if (!dropdown || dropdown === except) return;
+    dropdown.open = false;
+  });
+}
+
 function filters() {
   return {
     managerIds: selectedManagerIds(),
@@ -261,6 +268,60 @@ function localizeFreeText(value) {
   return map[normalized.toLowerCase()] || normalized;
 }
 
+function isTemporaryHtmlError(error) {
+  return /html вместо json/i.test(String(error?.message || ""));
+}
+
+function notifyLoadError(error) {
+  if (isTemporaryHtmlError(error)) {
+    if (el.statusText) {
+      el.statusText.textContent = "Сервер временно перезапускается. Данные будут доступны после повторной загрузки.";
+    }
+    return;
+  }
+  alert(error.message);
+}
+
+function participantBadgeClass(role) {
+  const normalized = String(role || "").toLowerCase();
+  if (normalized.includes("1")) return "participant-1";
+  if (normalized.includes("2")) return "participant-2";
+  return "participant-other";
+}
+
+function transcriptRoleLabel(segment, index) {
+  const candidates = [
+    segment?.speakerLabel,
+    segment?.speakerName,
+    segment?.speaker,
+    segment?.speakerId,
+    segment?.participant,
+    segment?.role,
+    segment?.channel,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  const normalized = candidates.join(" ").toLowerCase();
+  if (
+    normalized.includes("2") ||
+    normalized.includes("speaker_b") ||
+    normalized.includes("participant_b") ||
+    normalized.includes("second")
+  ) {
+    return "Участник 2";
+  }
+  if (
+    normalized.includes("1") ||
+    normalized.includes("speaker_a") ||
+    normalized.includes("participant_a") ||
+    normalized.includes("first")
+  ) {
+    return "Участник 1";
+  }
+  return `Участник ${Math.min(2, (index % 2) + 1)}`;
+}
+
 function inferTranscriptSegments(analysis) {
   const lines = String(analysis.transcriptText || "")
     .split("\n")
@@ -299,16 +360,19 @@ function transcriptSegmentsMarkup(analysis) {
 
   return `<div class="transcript-list">${segments
     .map(
-      (segment) => `
+      (segment, index) => {
+        const roleLabel = transcriptRoleLabel(segment, index);
+        return `
         <article class="transcript-row">
           <div class="transcript-meta-line">
             <span class="transcript-role">
-              <span class="transcript-role-badge">${escapeHtml(segment.role || "Участник 1")}</span>
+              <span class="transcript-role-badge ${participantBadgeClass(roleLabel)}">${escapeHtml(roleLabel)}</span>
               <span class="transcript-time">${escapeHtml(segment.startLabel || formatTimestamp(segment.start))} - ${escapeHtml(segment.endLabel || formatTimestamp(segment.end))}</span>
             </span>
           </div>
           <p class="transcript-text">${escapeHtml(segment.text || "")}</p>
-        </article>`,
+        </article>`;
+      },
     )
     .join("")}</div>`;
 }
@@ -327,7 +391,9 @@ function collectScenarioPayload() {
       directions: el.scenarioDirection.value ? [el.scenarioDirection.value] : [],
       managerIds: el.scenarioManagerIds.value
         .split(",")
-        .map((item) => Number(item.trim()))
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => Number(item))
         .filter((item) => Number.isFinite(item)),
       subjectKeywords: el.scenarioKeywords.value
         .split(",")
@@ -528,12 +594,17 @@ function renderAnalysis(analysis) {
   el.analysisState.textContent = hasDetailedResult ? "Готово" : "Неполный результат";
   el.analysisState.className = `badge ${hasDetailedResult ? "success" : "warning"}`;
   el.analysisDetail.className = "analysis-detail";
+  const resultExplanation = analysis.summary
+    ? analysis.summary
+    : analysis.transcriptText
+      ? "Полный AI-разбор пока не сформирован: сохранилась транскрибация, но резюме и оценка сценария не были получены. Обычно помогает повторный анализ звонка."
+      : "Результат анализа пока не заполнен. Попробуйте повторно запустить анализ звонка.";
 
   el.analysisDetail.innerHTML = `
     <section class="detail-block">
       <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
       <div class="muted">${escapeHtml(analysis.managerName || "—")} • ${localizeDirection(analysis.direction)} • ${formatDuration(analysis.durationSeconds)}</div>
-      <p>${escapeHtml(analysis.summary || "Резюме пока отсутствует. Обычно это означает, что звонок сохранился с техническим результатом без полного AI-разбора.")}</p>
+      <p>${escapeHtml(resultExplanation)}</p>
       <p class="muted">Сценарий: ${escapeHtml(analysis.selectedScenarioName || "Автоподбор / ручной ввод")}</p>
       <p class="muted">Токены: ${escapeHtml(analysis.tokenUsage?.totalTokens ?? "—")} (транскрибация ${escapeHtml(analysis.tokenUsage?.transcriptionTokens ?? "—")}, анализ ${escapeHtml(analysis.tokenUsage?.analysisTotalTokens ?? "—")})</p>
     </section>
@@ -623,16 +694,16 @@ function renderSentimentChart() {
       const width = Math.max(8, Math.round((item.value / maxValue) * 100));
       const toneClass =
         item.label === "Позитив" ? "is-positive" : item.label === "Нейтрал" ? "is-neutral" : "is-negative";
+      const percent = Math.round((item.value / total) * 100) || 0;
       return `
         <div class="bar-row">
           <div class="bar-label">
             <strong>${escapeHtml(item.label)}</strong>
-            <span class="muted">${escapeHtml(Math.round((item.value / total) * 100) || 0)}% от всех звонков</span>
           </div>
           <div class="bar-track ${toneClass}">
             <div class="bar-fill" style="width:${width}%"></div>
           </div>
-          <div class="bar-value">${escapeHtml(item.value)}</div>
+          <div class="bar-value">${escapeHtml(item.value)} <span class="muted">(${escapeHtml(percent)}%)</span></div>
         </div>`;
     })
     .join("")}</div>`;
@@ -853,7 +924,7 @@ function scheduleFiltersReload() {
     try {
       await Promise.all([loadCalls(), loadSummary()]);
     } catch (error) {
-      alert(error.message);
+      notifyLoadError(error);
     }
   }, 250);
 }
@@ -861,7 +932,7 @@ function scheduleFiltersReload() {
 function resetFilters() {
   el.dateFrom.value = "";
   el.dateTo.value = "";
-  el.onlyRecorded.checked = true;
+  el.onlyRecorded.checked = false;
 
   Array.from(el.managerIdsOptions?.querySelectorAll('input[data-filter-option="manager"]') || []).forEach((input) => {
     input.checked = false;
@@ -871,10 +942,15 @@ function resetFilters() {
   });
 
   refreshFilterLabels();
+  closeFilterDropdowns();
   scheduleFiltersReload();
 }
 
 document.addEventListener("click", async (event) => {
+  if (!event.target.closest(".multi-select")) {
+    closeFilterDropdowns();
+  }
+
   const pickScenarioButton = event.target.closest("[data-action='pick-scenario']");
   if (pickScenarioButton) {
     const scenario = state.scenarios.find((item) => item.id === pickScenarioButton.getAttribute("data-id"));
@@ -896,9 +972,13 @@ document.addEventListener("click", async (event) => {
   try {
     await analyzeOne(analyzeButton.getAttribute("data-id"));
   } catch (error) {
-    await Promise.all([loadCalls(), loadSummary()]);
-    selectAnalysisByCallId(analyzeButton.getAttribute("data-id"));
-    alert(error.message);
+    try {
+      await Promise.all([loadCalls(), loadSummary()]);
+      selectAnalysisByCallId(analyzeButton.getAttribute("data-id"));
+    } catch (refreshError) {
+      notifyLoadError(refreshError);
+    }
+    notifyLoadError(error);
   } finally {
     analyzeButton.disabled = false;
   }
@@ -914,6 +994,15 @@ document.addEventListener("change", (event) => {
   }
 });
 
+[el.managerIdsDropdown, el.directionsDropdown].forEach((dropdown) => {
+  if (!dropdown) return;
+  dropdown.addEventListener("toggle", () => {
+    if (dropdown.open) {
+      closeFilterDropdowns(dropdown);
+    }
+  });
+});
+
 if (el.resetFilters) {
   el.resetFilters.addEventListener("click", () => {
     resetFilters();
@@ -925,7 +1014,7 @@ if (el.saveScenario) {
     try {
       await saveScenario();
     } catch (error) {
-      alert(error.message);
+      notifyLoadError(error);
     }
   });
 }
@@ -942,7 +1031,7 @@ if (el.deleteScenario) {
     try {
       await deleteScenario();
     } catch (error) {
-      alert(error.message);
+      notifyLoadError(error);
     }
   });
 }
