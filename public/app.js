@@ -246,7 +246,7 @@ function localizeFreeText(value) {
     sale: "Продажа",
     success: "Успех",
     follow_up: "Нужен повторный контакт",
-    follow-up: "Нужен повторный контакт",
+    "follow-up": "Нужен повторный контакт",
     callback: "Перезвон",
     consultation: "Консультация",
     no_answer: "Не удалось связаться",
