@@ -22,21 +22,12 @@
         <main class="main-stage">
           <section id="dashboardView" class="view-shell active">
             <div class="view-stack">
-              <section class="panel">
-                <div class="section-head">
-                  <div class="section-head-main">
-                    <h2>Дашборд</h2>
-                    <span class="muted">Ключевые показатели по текущей выборке звонков.</span>
-                  </div>
-                </div>
-                <section id="dashboardSummaryCards" class="summary-grid"></section>
-              </section>
-
+              <section id="dashboardSummaryCards" class="summary-grid dashboard-summary-grid"></section>
               <section class="dashboard-grid">
                 <article class="panel chart-panel">
                   <div class="section-head">
                     <h2>Средний балл по менеджерам</h2>
-                    <span class="muted">Сортировка по убыванию</span>
+                    <span class="muted">Показатель: средний score</span>
                   </div>
                   <div id="managerScoreChart" class="chart-host"></div>
                 </article>
@@ -44,7 +35,7 @@
                 <article class="panel chart-panel">
                   <div class="section-head">
                     <h2>Тональность звонков</h2>
-                    <span class="muted">Позитив / нейтрал / негатив</span>
+                    <span class="muted">Показатель: количество звонков</span>
                   </div>
                   <div id="sentimentChart" class="chart-host"></div>
                 </article>
@@ -77,7 +68,10 @@
                 <div class="filter-toolbar">
                   <label class="filter-field filter-field-wide">
                     <span>Менеджеры</span>
-                    <select id="managerIds" multiple size="4"></select>
+                    <details class="multi-select" id="managerIdsDropdown">
+                      <summary><span id="managerIdsLabel">Все менеджеры</span></summary>
+                      <div id="managerIdsOptions" class="multi-select-menu"></div>
+                    </details>
                   </label>
 
                   <label class="filter-field">
@@ -92,16 +86,27 @@
 
                   <label class="filter-field">
                     <span>Направления</span>
-                    <select id="directions" multiple size="3">
-                      <option value="incoming">Входящие</option>
-                      <option value="outgoing">Исходящие</option>
-                    </select>
+                    <details class="multi-select" id="directionsDropdown">
+                      <summary><span id="directionsLabel">Все направления</span></summary>
+                      <div id="directionsOptions" class="multi-select-menu">
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="incoming" data-filter-option="direction" />
+                          <span>Входящие</span>
+                        </label>
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="outgoing" data-filter-option="direction" />
+                          <span>Исходящие</span>
+                        </label>
+                      </div>
+                    </details>
                   </label>
 
                   <label class="checkbox compact-checkbox">
                     <input id="onlyRecorded" type="checkbox" checked />
                     <span>Только со звуковой записью</span>
                   </label>
+
+                  <button id="resetFilters" class="filter-reset" type="button">Сбросить</button>
                 </div>
 
                 <div class="table-wrap">

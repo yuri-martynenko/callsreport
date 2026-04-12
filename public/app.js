@@ -19,11 +19,16 @@ const el = {
   showDashboardView: document.getElementById("showDashboardView"),
   showReportView: document.getElementById("showReportView"),
   showScenariosView: document.getElementById("showScenariosView"),
-  managerIds: document.getElementById("managerIds"),
+  managerIdsDropdown: document.getElementById("managerIdsDropdown"),
+  managerIdsLabel: document.getElementById("managerIdsLabel"),
+  managerIdsOptions: document.getElementById("managerIdsOptions"),
   dateFrom: document.getElementById("dateFrom"),
   dateTo: document.getElementById("dateTo"),
-  directions: document.getElementById("directions"),
+  directionsDropdown: document.getElementById("directionsDropdown"),
+  directionsLabel: document.getElementById("directionsLabel"),
+  directionsOptions: document.getElementById("directionsOptions"),
   onlyRecorded: document.getElementById("onlyRecorded"),
+  resetFilters: document.getElementById("resetFilters"),
   scenarioName: document.getElementById("scenarioName"),
   scenarioDescription: document.getElementById("scenarioDescription"),
   scenarioScriptChecklist: document.getElementById("scenarioScriptChecklist"),
@@ -54,18 +59,55 @@ const el = {
   dailyScoreChart: document.getElementById("dailyScoreChart"),
 };
 
-function selectedValues(select) {
-  return Array.from(select?.selectedOptions || [])
-    .map((option) => option.value)
+function selectedCheckboxValues(container, selector) {
+  return Array.from(container?.querySelectorAll(selector) || [])
+    .filter((input) => input.checked)
+    .map((input) => input.value)
     .filter(Boolean);
+}
+
+function selectedManagerIds() {
+  return selectedCheckboxValues(el.managerIdsOptions, 'input[data-filter-option="manager"]');
+}
+
+function selectedDirections() {
+  return selectedCheckboxValues(el.directionsOptions, 'input[data-filter-option="direction"]');
+}
+
+function selectedItemsLabel(values, fallbackLabel, optionsMap) {
+  if (!values.length) return fallbackLabel;
+  if (values.length === 1) return optionsMap.get(values[0]) || values[0];
+  return `Выбрано: ${values.length}`;
+}
+
+function refreshFilterLabels() {
+  const managerMap = new Map(
+    Array.from(el.managerIdsOptions?.querySelectorAll('input[data-filter-option="manager"]') || []).map((input) => [
+      input.value,
+      input.dataset.label || input.value,
+    ]),
+  );
+  const directionMap = new Map(
+    Array.from(el.directionsOptions?.querySelectorAll('input[data-filter-option="direction"]') || []).map((input) => [
+      input.value,
+      input.dataset.label || input.value,
+    ]),
+  );
+
+  if (el.managerIdsLabel) {
+    el.managerIdsLabel.textContent = selectedItemsLabel(selectedManagerIds(), "Все менеджеры", managerMap);
+  }
+  if (el.directionsLabel) {
+    el.directionsLabel.textContent = selectedItemsLabel(selectedDirections(), "Все направления", directionMap);
+  }
 }
 
 function filters() {
   return {
-    managerIds: selectedValues(el.managerIds),
+    managerIds: selectedManagerIds(),
     dateFrom: el.dateFrom.value,
     dateTo: el.dateTo.value,
-    directions: selectedValues(el.directions),
+    directions: selectedDirections(),
     onlyRecorded: Boolean(el.onlyRecorded.checked),
   };
 }
@@ -115,6 +157,10 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function summaryCard(title, value, hint) {
   return `<article class="summary-card"><div class="muted">${title}</div><div class="value">${value}</div><div class="hint">${hint}</div></article>`;
 }
@@ -142,6 +188,9 @@ function localizeSentiment(value) {
     neutral: "Нейтральный",
     negative: "Негативный",
     mixed: "Смешанный",
+    positive_call: "Позитивный",
+    neutral_call: "Нейтральный",
+    negative_call: "Негативный",
     позитивный: "Позитивный",
     нейтральный: "Нейтральный",
     негативный: "Негативный",
@@ -155,6 +204,9 @@ function localizeRisk(value) {
     low: "Низкий",
     medium: "Средний",
     high: "Высокий",
+    low_risk: "Низкий",
+    medium_risk: "Средний",
+    high_risk: "Высокий",
     низкий: "Низкий",
     средний: "Средний",
     высокий: "Высокий",
@@ -182,8 +234,65 @@ function localizeCheckpointStatus(value) {
   return map[String(value || "").toLowerCase()] || value || "—";
 }
 
+function localizeDirection(value) {
+  return value === "incoming" ? "Входящий" : value === "outgoing" ? "Исходящий" : value || "—";
+}
+
+function localizeFreeText(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "—";
+
+  const map = {
+    sale: "Продажа",
+    success: "Успех",
+    follow_up: "Нужен повторный контакт",
+    follow-up: "Нужен повторный контакт",
+    callback: "Перезвон",
+    consultation: "Консультация",
+    no_answer: "Не удалось связаться",
+    objection: "Есть возражения",
+    price_objection: "Возражение по цене",
+    interested: "Заинтересован",
+    not_interested: "Не заинтересован",
+    qualified_lead: "Квалифицированный лид",
+    unqualified_lead: "Неквалифицированный лид",
+  };
+
+  return map[normalized.toLowerCase()] || normalized;
+}
+
+function inferTranscriptSegments(analysis) {
+  const lines = String(analysis.transcriptText || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines
+    .map((line, index) => {
+      const match = line.match(/^\[(\d{2}:\d{2}(?::\d{2})?)\s*-\s*(\d{2}:\d{2}(?::\d{2})?)\]\s*([^:]+):\s*(.+)$/);
+      if (match) {
+        return {
+          index,
+          role: match[3].trim() || `Участник ${Math.min(2, (index % 2) + 1)}`,
+          startLabel: match[1],
+          endLabel: match[2],
+          text: match[4].trim(),
+        };
+      }
+      return {
+        index,
+        role: `Участник ${Math.min(2, (index % 2) + 1)}`,
+        startLabel: "",
+        endLabel: "",
+        text: line,
+      };
+    })
+    .filter((segment) => segment.text);
+}
+
 function transcriptSegmentsMarkup(analysis) {
-  const segments = Array.isArray(analysis.transcriptSegments) ? analysis.transcriptSegments : [];
+  const rawSegments = Array.isArray(analysis.transcriptSegments) ? analysis.transcriptSegments : [];
+  const segments = rawSegments.length ? rawSegments : inferTranscriptSegments(analysis);
   if (!segments.length) {
     return `<p class="transcript-text">${escapeHtml(analysis.transcriptText || "Транскрипт отсутствует")}</p>`;
   }
@@ -193,8 +302,10 @@ function transcriptSegmentsMarkup(analysis) {
       (segment) => `
         <article class="transcript-row">
           <div class="transcript-meta-line">
-            <span class="pill">${escapeHtml(segment.role || "Диалог")}</span>
-            <span class="muted">${formatTimestamp(segment.start)} - ${formatTimestamp(segment.end)}</span>
+            <span class="transcript-role">
+              <span class="transcript-role-badge">${escapeHtml(segment.role || "Участник 1")}</span>
+              <span class="transcript-time">${escapeHtml(segment.startLabel || formatTimestamp(segment.start))} - ${escapeHtml(segment.endLabel || formatTimestamp(segment.end))}</span>
+            </span>
           </div>
           <p class="transcript-text">${escapeHtml(segment.text || "")}</p>
         </article>`,
@@ -222,8 +333,8 @@ function collectScenarioPayload() {
         .split(",")
         .map((item) => item.trim())
         .filter(Boolean),
-      minDurationSeconds: el.scenarioMinDuration.value ? Number(el.scenarioMinDuration.value) : null,
-      maxDurationSeconds: el.scenarioMaxDuration.value ? Number(el.scenarioMaxDuration.value) : null,
+      minDurationSeconds: el.scenarioMinDuration.value.trim() === "" ? null : Number(el.scenarioMinDuration.value),
+      maxDurationSeconds: el.scenarioMaxDuration.value.trim() === "" ? null : Number(el.scenarioMaxDuration.value),
     },
   };
 }
@@ -370,7 +481,7 @@ function renderCalls() {
         <tr class="${state.selectedAnalysis?.activityId === call.id ? "is-selected" : ""}">
           <td><div class="call-subject">${escapeHtml(call.subject)}</div><div class="call-meta">${formatDate(call.startTime)}</div></td>
           <td><div>${escapeHtml(call.managerName || "—")}</div><div class="call-meta">${escapeHtml(call.managerPosition || "Без должности")}</div></td>
-          <td>${call.direction === "incoming" ? "Входящий" : "Исходящий"}</td>
+          <td>${localizeDirection(call.direction)}</td>
           <td>${formatDuration(call.durationSeconds)}</td>
           <td><span class="status-pill ${status.className}">${status.label}</span></td>
           <td>${escapeHtml(scenarioName)}</td>
@@ -421,7 +532,7 @@ function renderAnalysis(analysis) {
   el.analysisDetail.innerHTML = `
     <section class="detail-block">
       <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
-      <div class="muted">${escapeHtml(analysis.managerName || "—")} • ${analysis.direction === "incoming" ? "Входящий" : "Исходящий"} • ${formatDuration(analysis.durationSeconds)}</div>
+      <div class="muted">${escapeHtml(analysis.managerName || "—")} • ${localizeDirection(analysis.direction)} • ${formatDuration(analysis.durationSeconds)}</div>
       <p>${escapeHtml(analysis.summary || "Резюме пока отсутствует. Обычно это означает, что звонок сохранился с техническим результатом без полного AI-разбора.")}</p>
       <p class="muted">Сценарий: ${escapeHtml(analysis.selectedScenarioName || "Автоподбор / ручной ввод")}</p>
       <p class="muted">Токены: ${escapeHtml(analysis.tokenUsage?.totalTokens ?? "—")} (транскрибация ${escapeHtml(analysis.tokenUsage?.transcriptionTokens ?? "—")}, анализ ${escapeHtml(analysis.tokenUsage?.analysisTotalTokens ?? "—")})</p>
@@ -434,21 +545,21 @@ function renderAnalysis(analysis) {
         <span class="pill">Score: ${escapeHtml(analysis.scriptAnalysis?.overallScore ?? "—")}</span>
         <span class="pill">Соблюдение скрипта: ${escapeHtml(analysis.scriptAnalysis?.compliancePercent ?? "—")}%</span>
       </div>
-      <p class="muted">Исход: ${escapeHtml(analysis.overview?.callOutcome || "—")}</p>
-      <p class="muted">Потребность клиента: ${escapeHtml(analysis.overview?.clientNeed || "—")}</p>
+      <p class="muted">Исход: ${escapeHtml(localizeFreeText(analysis.overview?.callOutcome))}</p>
+      <p class="muted">Потребность клиента: ${escapeHtml(localizeFreeText(analysis.overview?.clientNeed))}</p>
     </section>
     <section class="detail-block">
       <h3>Рекомендации</h3>
-      <ul class="flat">${(analysis.recommendations || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>Рекомендации отсутствуют</li>"}</ul>
+      <ul class="flat">${(analysis.recommendations || []).map((item) => `<li>${escapeHtml(localizeFreeText(item))}</li>`).join("") || "<li>Рекомендации отсутствуют</li>"}</ul>
     </section>
     <section class="detail-block">
       <h3>Проверка сценария</h3>
-      <ul class="flat">${(analysis.scriptAnalysis?.checkpoints || []).map((item) => `<li><strong>${escapeHtml(item.name)}</strong>: ${escapeHtml(localizeCheckpointStatus(item.status))} — ${escapeHtml(item.comment)}</li>`).join("") || "<li>Пункты сценария ещё не заполнены</li>"}</ul>
+      <ul class="flat">${(analysis.scriptAnalysis?.checkpoints || []).map((item) => `<li><strong>${escapeHtml(localizeFreeText(item.name))}</strong>: ${escapeHtml(localizeCheckpointStatus(item.status))} — ${escapeHtml(localizeFreeText(item.comment))}</li>`).join("") || "<li>Пункты сценария ещё не заполнены</li>"}</ul>
     </section>
     <section class="detail-block">
       <h3>Индивидуальные параметры</h3>
-      <ul class="flat">${(analysis.customMetrics || []).map((item) => `<li><strong>${escapeHtml(item.name)}</strong>: ${escapeHtml(item.score)} (${escapeHtml(localizeCheckpointStatus(item.status))}) — ${escapeHtml(item.comment)}</li>`).join("") || "<li>Индивидуальные параметры ещё не заполнены</li>"}</ul>
-      <p class="muted">Следующий шаг: ${escapeHtml(analysis.nextStep || "—")}</p>
+      <ul class="flat">${(analysis.customMetrics || []).map((item) => `<li><strong>${escapeHtml(localizeFreeText(item.name))}</strong>: ${escapeHtml(item.score)} (${escapeHtml(localizeCheckpointStatus(item.status))}) — ${escapeHtml(localizeFreeText(item.comment))}</li>`).join("") || "<li>Индивидуальные параметры ещё не заполнены</li>"}</ul>
+      <p class="muted">Следующий шаг: ${escapeHtml(localizeFreeText(analysis.nextStep))}</p>
     </section>
     <section class="detail-block">
       <h3>Транскрипт</h3>
@@ -506,37 +617,25 @@ function renderSentimentChart() {
     return;
   }
 
-  let offset = 0;
-  const stops = parts
+  const maxValue = Math.max(...parts.map((item) => item.value), 1);
+  el.sentimentChart.innerHTML = `<div class="bars-vertical">${parts
     .map((item) => {
-      const start = total ? (offset / total) * 100 : 0;
-      offset += item.value;
-      const end = total ? (offset / total) * 100 : start;
-      return `${item.color} ${start}% ${end}%`;
+      const width = Math.max(8, Math.round((item.value / maxValue) * 100));
+      const toneClass =
+        item.label === "Позитив" ? "is-positive" : item.label === "Нейтрал" ? "is-neutral" : "is-negative";
+      return `
+        <div class="bar-row">
+          <div class="bar-label">
+            <strong>${escapeHtml(item.label)}</strong>
+            <span class="muted">${escapeHtml(Math.round((item.value / total) * 100) || 0)}% от всех звонков</span>
+          </div>
+          <div class="bar-track ${toneClass}">
+            <div class="bar-fill" style="width:${width}%"></div>
+          </div>
+          <div class="bar-value">${escapeHtml(item.value)}</div>
+        </div>`;
     })
-    .join(", ");
-
-  el.sentimentChart.innerHTML = `
-    <div class="sentiment-layout">
-      <div class="sentiment-donut" style="background: conic-gradient(${stops})">
-        <div class="sentiment-donut-center">
-          <strong>${escapeHtml(total)}</strong>
-          <span>звонков</span>
-        </div>
-      </div>
-      <div class="sentiment-legend">
-        ${parts
-          .map(
-            (item) => `
-              <div class="legend-row">
-                <span class="legend-swatch" style="background:${item.color}"></span>
-                <span>${escapeHtml(item.label)}</span>
-                <strong>${escapeHtml(item.value)}</strong>
-              </div>`,
-          )
-          .join("")}
-      </div>
-    </div>`;
+    .join("")}</div>`;
 }
 
 function dailyScoreSeries() {
@@ -612,26 +711,43 @@ function renderDashboard() {
   renderDailyScoreChart();
 }
 async function api(url, options) {
-  const response = await fetch(url, options);
-  const text = await response.text();
-  let payload;
-  try {
-    payload = text ? JSON.parse(text) : {};
-  } catch {
-    if (text.trim().startsWith("<")) {
-      throw new Error("Сервер вернул HTML вместо JSON. Обычно это означает, что приложение перезапускается или ответ пришёл не от API.");
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+      const text = await response.text();
+      let payload;
+      try {
+        payload = text ? JSON.parse(text) : {};
+      } catch {
+        if (text.trim().startsWith("<")) {
+          const error = new Error("Сервер временно вернул HTML вместо JSON. Обычно это происходит при перезапуске приложения. Запрос будет повторен автоматически.");
+          error.retryable = true;
+          throw error;
+        }
+        throw new Error(`Сервер вернул некорректный ответ: ${text.slice(0, 200)}`);
+      }
+      if (!response.ok || payload.success === false) throw new Error(payload?.error?.message || "Request failed");
+      return payload.data;
+    } catch (error) {
+      lastError = error;
+      if (!error.retryable || attempt === 3) break;
+      await delay(1000 * attempt);
     }
-    throw new Error(`Сервер вернул некорректный ответ: ${text.slice(0, 200)}`);
   }
-  if (!response.ok || payload.success === false) throw new Error(payload?.error?.message || "Request failed");
-  return payload.data;
+  throw lastError;
 }
 
 async function loadManagers() {
+  const selected = new Set(selectedManagerIds());
   const managers = await api("/api/managers");
-  el.managerIds.innerHTML = managers
-    .map((manager) => `<option value="${manager.id}">${escapeHtml(manager.fullName)}</option>`)
+  el.managerIdsOptions.innerHTML = managers
+    .map(
+      (manager) => `<label class="multi-select-option"><input type="checkbox" value="${manager.id}" data-filter-option="manager" data-label="${escapeHtml(manager.fullName)}" ${selected.has(String(manager.id)) ? "checked" : ""} /><span>${escapeHtml(manager.fullName)}</span></label>`,
+    )
     .join("");
+  refreshFilterLabels();
 }
 
 async function loadScenarios() {
@@ -731,6 +847,7 @@ async function analyzeOne(activityId) {
 
 function scheduleFiltersReload() {
   clearTimeout(state.filtersTimer);
+  refreshFilterLabels();
   state.filtersTimer = setTimeout(async () => {
     state.page = 1;
     try {
@@ -739,6 +856,22 @@ function scheduleFiltersReload() {
       alert(error.message);
     }
   }, 250);
+}
+
+function resetFilters() {
+  el.dateFrom.value = "";
+  el.dateTo.value = "";
+  el.onlyRecorded.checked = true;
+
+  Array.from(el.managerIdsOptions?.querySelectorAll('input[data-filter-option="manager"]') || []).forEach((input) => {
+    input.checked = false;
+  });
+  Array.from(el.directionsOptions?.querySelectorAll('input[data-filter-option="direction"]') || []).forEach((input) => {
+    input.checked = false;
+  });
+
+  refreshFilterLabels();
+  scheduleFiltersReload();
 }
 
 document.addEventListener("click", async (event) => {
@@ -771,8 +904,18 @@ document.addEventListener("click", async (event) => {
   }
 });
 
-[el.managerIds, el.dateFrom, el.dateTo, el.directions, el.onlyRecorded].forEach((control) => {
+[el.dateFrom, el.dateTo, el.onlyRecorded].forEach((control) => {
   control.addEventListener("change", scheduleFiltersReload);
+});
+
+document.addEventListener("change", (event) => {
+  if (event.target.matches('input[data-filter-option="manager"], input[data-filter-option="direction"]')) {
+    scheduleFiltersReload();
+  }
+});
+
+el.resetFilters.addEventListener("click", () => {
+  resetFilters();
 });
 
 el.saveScenario.addEventListener("click", async () => {

@@ -98,6 +98,11 @@ function createId(prefix = "id") {
 }
 
 function sanitizeScenario(input = {}) {
+  const minDurationRaw = input.matchRules?.minDurationSeconds;
+  const maxDurationRaw = input.matchRules?.maxDurationSeconds;
+  const hasMinDuration = minDurationRaw !== null && minDurationRaw !== undefined && String(minDurationRaw).trim() !== "";
+  const hasMaxDuration = maxDurationRaw !== null && maxDurationRaw !== undefined && String(maxDurationRaw).trim() !== "";
+
   return {
     id: input.id || createId("scenario"),
     name: String(input.name || "").trim() || "Новый сценарий",
@@ -116,11 +121,11 @@ function sanitizeScenario(input = {}) {
       subjectKeywords: Array.isArray(input.matchRules?.subjectKeywords)
         ? input.matchRules.subjectKeywords.map((item) => String(item).trim()).filter(Boolean)
         : [],
-      minDurationSeconds: Number.isFinite(Number(input.matchRules?.minDurationSeconds))
-        ? Number(input.matchRules.minDurationSeconds)
+      minDurationSeconds: hasMinDuration && Number.isFinite(Number(minDurationRaw))
+        ? Number(minDurationRaw)
         : null,
-      maxDurationSeconds: Number.isFinite(Number(input.matchRules?.maxDurationSeconds))
-        ? Number(input.matchRules.maxDurationSeconds)
+      maxDurationSeconds: hasMaxDuration && Number.isFinite(Number(maxDurationRaw))
+        ? Number(maxDurationRaw)
         : null,
     },
     autoApply: Boolean(input.autoApply),
@@ -283,14 +288,6 @@ function buildSpeakerRoles(segments, call) {
 
   const roleMap = new Map();
   labels.forEach((label, index) => {
-    if (index === 0) {
-      roleMap.set(label, call.direction === "incoming" ? "Клиент" : "Менеджер");
-      return;
-    }
-    if (index === 1) {
-      roleMap.set(label, call.direction === "incoming" ? "Менеджер" : "Клиент");
-      return;
-    }
     roleMap.set(label, `Участник ${index + 1}`);
   });
   return roleMap;
@@ -304,12 +301,13 @@ function normalizeTranscriptSegments(transcriptionPayload, call) {
   return rawSegments
     .map((segment, index) => {
       const speaker = String(segment.speaker ?? segment.speaker_label ?? segment.speakerLabel ?? segment.channel ?? "").trim();
+      const fallbackRole = `Участник ${Math.min(2, (index % 2) + 1)}`;
       return {
         index,
         start: Number(segment.start ?? 0),
         end: Number(segment.end ?? 0),
         speaker,
-        role: roleMap.get(speaker) || (speaker ? speaker : "Диалог"),
+        role: roleMap.get(speaker) || fallbackRole,
         text: String(segment.text || "").trim(),
       };
     })
@@ -369,6 +367,53 @@ function normalizeAnalysisResult(raw = {}) {
       : [],
     nextStep: String(raw.nextStep || "").trim(),
   };
+}
+
+function containsMeaningfulLatin(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  const latinMatches = text.match(/[A-Za-z]{3,}/g) || [];
+  if (!latinMatches.length) return false;
+  return latinMatches.some((word) => !["json", "score"].includes(word.toLowerCase()));
+}
+
+function analysisNeedsRussianLocalization(analysis) {
+  const texts = [
+    analysis?.summary,
+    analysis?.overview?.callOutcome,
+    analysis?.overview?.clientNeed,
+    analysis?.nextStep,
+    ...(analysis?.recommendations || []),
+    ...(analysis?.scriptAnalysis?.strengths || []),
+    ...(analysis?.scriptAnalysis?.violations || []),
+    ...(analysis?.scriptAnalysis?.checkpoints || []).flatMap((item) => [item?.name, item?.comment]),
+    ...(analysis?.customMetrics || []).flatMap((item) => [item?.name, item?.comment]),
+  ];
+
+  return texts.some((item) => containsMeaningfulLatin(item));
+}
+
+async function localizeAnalysisToRussian(analysis) {
+  const payload = await vibeJson("/v1/ai/chat/completions", {
+    method: "POST",
+    body: JSON.stringify({
+      model: AI_CHAT_MODEL,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "Переведи все текстовые поля JSON на русский язык. Сохрани JSON-структуру, числа, статусы и смысл. Верни только JSON.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify(analysis),
+        },
+      ],
+    }),
+  });
+
+  return normalizeAnalysisResult(JSON.parse(payload?.data?.choices?.[0]?.message?.content || "{}"));
 }
 
 function mergeTokenUsage(transcriptionUsage, analysisUsage) {
@@ -884,6 +929,9 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
       customMetrics: effectiveCustomMetrics,
       call,
     });
+    const normalizedAnalysis = analysisNeedsRussianLocalization(analysisResult.analysis)
+      ? await localizeAnalysisToRussian(analysisResult.analysis)
+      : analysisResult.analysis;
 
     const record = {
       activityId,
@@ -906,7 +954,7 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
         model: AI_TRANSCRIPTION_MODEL,
       },
       tokenUsage: mergeTokenUsage(transcriptionUsage, analysisResult.usage),
-      ...analysisResult.analysis,
+      ...normalizedAnalysis,
     };
 
     store.analyses = store.analyses.filter(
