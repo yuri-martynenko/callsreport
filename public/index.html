@@ -16,148 +16,213 @@
             Whisper Large v3 Turbo для транскрибации, AI-анализ по сценарию, рекомендации и сводная аналитика.
           </p>
         </div>
-        <div class="topbar-actions">
-          <div class="view-switch" role="tablist" aria-label="Разделы приложения">
-            <button id="showReportView" class="primary-action" type="button">Отчёт по звонкам</button>
-            <button id="showScenariosView" type="button">Сценарии анализа</button>
-          </div>
-        </div>
       </header>
 
-      <section id="reportView" class="view-shell active">
-        <div class="shell">
-          <aside class="sidebar">
-            <section class="panel">
-              <h2>Фильтры</h2>
-              <label><span>Менеджер</span><select id="managerId"><option value="">Все менеджеры</option></select></label>
-              <label><span>Дата с</span><input id="dateFrom" type="date" /></label>
-              <label><span>Дата по</span><input id="dateTo" type="date" /></label>
-              <label>
-                <span>Направление</span>
-                <select id="direction">
-                  <option value="">Все</option>
-                  <option value="incoming">Входящие</option>
-                  <option value="outgoing">Исходящие</option>
-                </select>
-              </label>
-              <label class="checkbox"><input id="onlyRecorded" type="checkbox" checked /><span>Только со звуковой записью</span></label>
-              <button id="refreshCalls" class="primary">Обновить список</button>
-            </section>
-          </aside>
-
-          <main class="content">
-            <section id="summaryCards" class="summary-grid"></section>
-            <div id="statusText" class="status-line muted"></div>
-
-            <section class="panel calls-panel">
-              <div class="section-head">
-                <div class="section-head-main">
-                  <h2>Список звонков</h2>
-                  <span class="muted">Детализация открывается по кнопке «Показать» или после анализа звонка.</span>
-                </div>
-                <span id="callsCount" class="badge">0</span>
-              </div>
-
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Звонок</th>
-                      <th>Менеджер</th>
-                      <th>Направление</th>
-                      <th>Длительность</th>
-                      <th>Статус анализа</th>
-                      <th>Сценарий</th>
-                      <th>Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody id="callsTable"></tbody>
-                </table>
-              </div>
-
-              <div class="table-footer">
-                <button id="prevPage" type="button">Назад</button>
-                <span id="pageInfo" class="muted">Страница 1 из 1</span>
-                <button id="nextPage" type="button">Вперёд</button>
-              </div>
-
-              <div class="detail-shell">
+      <div class="workspace">
+        <main class="main-stage">
+          <section id="dashboardView" class="view-shell active">
+            <div class="view-stack">
+              <section class="panel">
                 <div class="section-head">
-                  <h2>Детализация звонка</h2>
-                  <span id="analysisState" class="badge neutral">Не выбран</span>
+                  <div class="section-head-main">
+                    <h2>Дашборд</h2>
+                    <span class="muted">Ключевые показатели по текущей выборке звонков.</span>
+                  </div>
                 </div>
-                <div id="analysisDetail" class="analysis-detail empty">
-                  Выберите звонок со статусом «Готово» или нажмите «Анализировать», чтобы здесь появились резюме, рекомендации и проверка по сценарию.
-                </div>
-              </div>
-            </section>
-          </main>
-        </div>
-      </section>
-
-      <section id="scenariosView" class="view-shell">
-        <main class="scenarios-page">
-          <section class="panel scenario-editor-panel">
-            <div class="section-head">
-              <div class="section-head-main">
-                <h2>Настройка сценариев анализа</h2>
-                <span class="muted">Здесь хранится библиотека сценариев, правил автоподбора и индивидуальных параметров.</span>
-              </div>
-            </div>
-
-            <div class="scenario-layout">
-              <section class="scenario-library">
-                <div class="section-head">
-                  <h2>Библиотека сценариев</h2>
-                  <button id="newScenario" type="button">Новый сценарий</button>
-                </div>
-                <div class="table-wrap scenario-table-wrap">
-                  <table class="scenario-table">
-                    <thead>
-                      <tr>
-                        <th>Название</th>
-                        <th>Описание</th>
-                        <th>Автоподбор</th>
-                        <th>Правила</th>
-                      </tr>
-                    </thead>
-                    <tbody id="scenarioList"></tbody>
-                  </table>
-                </div>
+                <section id="dashboardSummaryCards" class="summary-grid"></section>
               </section>
 
-              <div class="scenario-form">
-                <label><span>Название сценария</span><input id="scenarioName" type="text" placeholder="Например: Продажи первичных консультаций" /></label>
-                <label><span>Описание</span><input id="scenarioDescription" type="text" placeholder="Кратко опишите, когда использовать этот сценарий" /></label>
-                <label><span>Сценарий для проверки</span><textarea id="scenarioScriptChecklist" rows="10" placeholder="Опишите этапы скрипта: приветствие, квалификация, презентация, работа с возражениями, следующий шаг."></textarea></label>
-                <label><span>Индивидуальные параметры</span><textarea id="scenarioCustomMetrics" rows="8" placeholder='Например: ["Юридическая точность", "Эмпатия", "Чёткость следующего шага"]'></textarea></label>
-                <div class="rules-grid">
-                  <label>
-                    <span>Авто: направление</span>
-                    <select id="scenarioDirection">
-                      <option value="">Любое</option>
+              <section class="dashboard-grid">
+                <article class="panel chart-panel">
+                  <div class="section-head">
+                    <h2>Средний балл по менеджерам</h2>
+                    <span class="muted">Сортировка по убыванию</span>
+                  </div>
+                  <div id="managerScoreChart" class="chart-host"></div>
+                </article>
+
+                <article class="panel chart-panel">
+                  <div class="section-head">
+                    <h2>Тональность звонков</h2>
+                    <span class="muted">Позитив / нейтрал / негатив</span>
+                  </div>
+                  <div id="sentimentChart" class="chart-host"></div>
+                </article>
+
+                <article class="panel chart-panel chart-panel-wide">
+                  <div class="section-head">
+                    <h2>Динамика среднего score</h2>
+                    <span class="muted">Группировка по дням звонков</span>
+                  </div>
+                  <div id="dailyScoreChart" class="chart-host"></div>
+                </article>
+              </section>
+            </div>
+          </section>
+
+          <section id="reportView" class="view-shell">
+            <div class="view-stack">
+              <section id="summaryCards" class="summary-grid"></section>
+              <div id="statusText" class="status-line muted"></div>
+
+              <section class="panel calls-panel">
+                <div class="section-head">
+                  <div class="section-head-main">
+                    <h2>Список звонков</h2>
+                    <span class="muted">Фильтры вынесены наверх таблицы, детализация обновляется после завершения анализа.</span>
+                  </div>
+                  <span id="callsCount" class="badge">0</span>
+                </div>
+
+                <div class="filter-toolbar">
+                  <label class="filter-field filter-field-wide">
+                    <span>Менеджеры</span>
+                    <select id="managerIds" multiple size="4"></select>
+                  </label>
+
+                  <label class="filter-field">
+                    <span>Период с</span>
+                    <input id="dateFrom" type="date" />
+                  </label>
+
+                  <label class="filter-field">
+                    <span>Период по</span>
+                    <input id="dateTo" type="date" />
+                  </label>
+
+                  <label class="filter-field">
+                    <span>Направления</span>
+                    <select id="directions" multiple size="3">
                       <option value="incoming">Входящие</option>
                       <option value="outgoing">Исходящие</option>
                     </select>
                   </label>
-                  <label><span>Авто: менеджеры</span><input id="scenarioManagerIds" type="text" placeholder="ID через запятую" /></label>
-                  <label><span>Авто: ключевые слова</span><input id="scenarioKeywords" type="text" placeholder="Например: банкротство, консультация" /></label>
-                  <label><span>Мин. длительность, сек</span><input id="scenarioMinDuration" type="number" min="0" step="1" /></label>
+
+                  <label class="checkbox compact-checkbox">
+                    <input id="onlyRecorded" type="checkbox" checked />
+                    <span>Только со звуковой записью</span>
+                  </label>
                 </div>
-                <div class="rules-grid">
-                  <label><span>Макс. длительность, сек</span><input id="scenarioMaxDuration" type="number" min="0" step="1" /></label>
-                  <label class="checkbox"><input id="scenarioAutoApply" type="checkbox" checked /><span>Участвует в автоподборе</span></label>
-                  <label class="checkbox"><input id="scenarioIsDefault" type="checkbox" /><span>Сценарий по умолчанию</span></label>
+
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Звонок</th>
+                        <th>Менеджер</th>
+                        <th>Направление</th>
+                        <th>Длительность</th>
+                        <th>Статус анализа</th>
+                        <th>Сценарий</th>
+                        <th>Всего токенов</th>
+                        <th>Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody id="callsTable"></tbody>
+                  </table>
                 </div>
-                <div class="action-stack">
-                  <button id="saveScenario" class="accent" type="button">Сохранить сценарий</button>
-                  <button id="deleteScenario" type="button">Удалить сценарий</button>
+
+                <div class="table-footer">
+                  <button id="prevPage" type="button">Назад</button>
+                  <span id="pageInfo" class="muted">Страница 1 из 1</span>
+                  <button id="nextPage" type="button">Вперёд</button>
                 </div>
-              </div>
+
+                <div class="detail-shell">
+                  <div class="section-head">
+                    <h2>Детализация звонка</h2>
+                    <span id="analysisState" class="badge neutral">Не выбран</span>
+                  </div>
+                  <div id="analysisDetail" class="analysis-detail empty">
+                    Выберите звонок со статусом «Готово» или нажмите «Анализировать», чтобы здесь появились резюме, рекомендации и проверка по сценарию.
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="scenariosView" class="view-shell">
+            <div class="view-stack">
+              <section class="panel scenario-editor-panel">
+                <div class="section-head">
+                  <div class="section-head-main">
+                    <h2>Настройка сценариев анализа</h2>
+                    <span class="muted">Библиотека сценариев, автоподбор и параметры оценки каждого типа звонков.</span>
+                  </div>
+                </div>
+
+                <div class="scenario-layout">
+                  <section class="scenario-library">
+                    <div class="section-head">
+                      <h2>Библиотека сценариев</h2>
+                      <button id="newScenario" type="button">Новый сценарий</button>
+                    </div>
+                    <div class="table-wrap scenario-table-wrap">
+                      <table class="scenario-table">
+                        <thead>
+                          <tr>
+                            <th>Название</th>
+                            <th>Описание</th>
+                            <th>Автоподбор</th>
+                            <th>Правила</th>
+                          </tr>
+                        </thead>
+                        <tbody id="scenarioList"></tbody>
+                      </table>
+                    </div>
+                  </section>
+
+                  <div class="scenario-form">
+                    <label><span>Название сценария</span><input id="scenarioName" type="text" placeholder="Например: Продажи первичных консультаций" /></label>
+                    <label><span>Описание</span><input id="scenarioDescription" type="text" placeholder="Кратко опишите, когда использовать этот сценарий" /></label>
+                    <label><span>Сценарий для проверки</span><textarea id="scenarioScriptChecklist" rows="10" placeholder="Опишите этапы скрипта: приветствие, квалификация, презентация, работа с возражениями, следующий шаг."></textarea></label>
+                    <label><span>Индивидуальные параметры</span><textarea id="scenarioCustomMetrics" rows="8" placeholder='Например: ["Юридическая точность", "Эмпатия", "Чёткость следующего шага"]'></textarea></label>
+                    <div class="rules-grid">
+                      <label>
+                        <span>Авто: направление</span>
+                        <select id="scenarioDirection">
+                          <option value="">Любое</option>
+                          <option value="incoming">Входящие</option>
+                          <option value="outgoing">Исходящие</option>
+                        </select>
+                      </label>
+                      <label><span>Авто: менеджеры</span><input id="scenarioManagerIds" type="text" placeholder="ID через запятую" /></label>
+                      <label><span>Авто: ключевые слова</span><input id="scenarioKeywords" type="text" placeholder="Например: банкротство, консультация" /></label>
+                      <label><span>Мин. длительность, сек</span><input id="scenarioMinDuration" type="number" min="0" step="1" /></label>
+                    </div>
+                    <div class="rules-grid">
+                      <label><span>Макс. длительность, сек</span><input id="scenarioMaxDuration" type="number" min="0" step="1" /></label>
+                      <label class="checkbox"><input id="scenarioAutoApply" type="checkbox" checked /><span>Участвует в автоподборе</span></label>
+                      <label class="checkbox"><input id="scenarioIsDefault" type="checkbox" /><span>Сценарий по умолчанию</span></label>
+                    </div>
+                    <div class="action-stack">
+                      <button id="saveScenario" class="accent" type="button">Сохранить сценарий</button>
+                      <button id="deleteScenario" type="button">Удалить сценарий</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
           </section>
         </main>
-      </section>
+
+        <aside class="service-menu">
+          <div class="panel service-menu-panel">
+            <div class="section-head">
+              <div class="section-head-main">
+                <h2>Меню сервиса</h2>
+                <span class="muted">Основные разделы приложения.</span>
+              </div>
+            </div>
+
+            <nav class="menu-nav" aria-label="Основное меню">
+              <button id="showDashboardView" class="menu-link primary-action" type="button">Дашборд</button>
+              <button id="showReportView" class="menu-link" type="button">Отчет по звонкам</button>
+              <button id="showScenariosView" class="menu-link" type="button">Сценарии анализа</button>
+            </nav>
+          </div>
+        </aside>
+      </div>
     </div>
 
     <script src="/app.js"></script>
