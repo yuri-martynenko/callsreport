@@ -369,6 +369,24 @@ function normalizeAnalysisResult(raw = {}) {
   };
 }
 
+function analysisHasMeaningfulContent(analysis = {}) {
+  return Boolean(
+    analysis?.summary ||
+      analysis?.overview?.sentiment ||
+      analysis?.overview?.callOutcome ||
+      analysis?.overview?.clientNeed ||
+      analysis?.overview?.riskLevel ||
+      analysis?.nextStep ||
+      analysis?.recommendations?.length ||
+      analysis?.scriptAnalysis?.strengths?.length ||
+      analysis?.scriptAnalysis?.violations?.length ||
+      analysis?.scriptAnalysis?.checkpoints?.length ||
+      Number.isFinite(Number(analysis?.scriptAnalysis?.overallScore)) ||
+      Number.isFinite(Number(analysis?.scriptAnalysis?.compliancePercent)) ||
+      analysis?.customMetrics?.length
+  );
+}
+
 function containsMeaningfulLatin(value) {
   const text = String(value || "").trim();
   if (!text) return false;
@@ -908,7 +926,7 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
   const existing = store.analyses.find(
     (item) => String(item.activityId) === String(activityId) && item.signature === signature,
   );
-  if (existing) return { cached: true, analysis: existing };
+  if (existing && analysisHasMeaningfulContent(existing)) return { cached: true, analysis: existing };
 
   try {
     const audio = await downloadCallAudio(call.recordingFileId);
@@ -932,6 +950,14 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
     const normalizedAnalysis = analysisNeedsRussianLocalization(analysisResult.analysis)
       ? await localizeAnalysisToRussian(analysisResult.analysis)
       : analysisResult.analysis;
+
+    if (!analysisHasMeaningfulContent(normalizedAnalysis)) {
+      const error = new Error(
+        "AI-разбор вернул пустой структурированный ответ: транскрибация получена, но резюме, рекомендации и оценка сценария не заполнены.",
+      );
+      error.statusCode = 502;
+      throw error;
+    }
 
     const record = {
       activityId,
