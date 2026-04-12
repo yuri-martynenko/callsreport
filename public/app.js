@@ -914,42 +914,56 @@ document.addEventListener("change", (event) => {
   }
 });
 
-el.resetFilters.addEventListener("click", () => {
-  resetFilters();
-});
+if (el.resetFilters) {
+  el.resetFilters.addEventListener("click", () => {
+    resetFilters();
+  });
+}
 
-el.saveScenario.addEventListener("click", async () => {
-  try {
-    await saveScenario();
-  } catch (error) {
-    alert(error.message);
-  }
-});
+if (el.saveScenario) {
+  el.saveScenario.addEventListener("click", async () => {
+    try {
+      await saveScenario();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+}
 
-el.newScenario.addEventListener("click", () => {
-  resetScenarioForm();
-  renderScenarioList();
-});
+if (el.newScenario) {
+  el.newScenario.addEventListener("click", () => {
+    resetScenarioForm();
+    renderScenarioList();
+  });
+}
 
-el.deleteScenario.addEventListener("click", async () => {
-  try {
-    await deleteScenario();
-  } catch (error) {
-    alert(error.message);
-  }
-});
+if (el.deleteScenario) {
+  el.deleteScenario.addEventListener("click", async () => {
+    try {
+      await deleteScenario();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+}
 
-el.showDashboardView.addEventListener("click", () => {
-  setCurrentView("dashboard");
-});
+if (el.showDashboardView) {
+  el.showDashboardView.addEventListener("click", () => {
+    setCurrentView("dashboard");
+  });
+}
 
-el.showReportView.addEventListener("click", () => {
-  setCurrentView("report");
-});
+if (el.showReportView) {
+  el.showReportView.addEventListener("click", () => {
+    setCurrentView("report");
+  });
+}
 
-el.showScenariosView.addEventListener("click", () => {
-  setCurrentView("scenarios");
-});
+if (el.showScenariosView) {
+  el.showScenariosView.addEventListener("click", () => {
+    setCurrentView("scenarios");
+  });
+}
 
 if (el.prevPage) {
   el.prevPage.addEventListener("click", () => {
