@@ -836,6 +836,14 @@ function applyClientSideCallFilters(calls, query) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+  const analysisStates = String(query.analysisStates || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const scenarioIds = String(query.scenarioIds || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
   let filtered = calls;
   if (managerIds.length) {
@@ -843,6 +851,15 @@ function applyClientSideCallFilters(calls, query) {
   }
   if (directions.length) {
     filtered = filtered.filter((call) => directions.includes(String(call.direction)));
+  }
+  if (analysisStates.length) {
+    filtered = filtered.filter((call) => {
+      const state = !call.hasRecording ? "missing" : String(call.analysis?.state || "pending");
+      return analysisStates.includes(state);
+    });
+  }
+  if (scenarioIds.length) {
+    filtered = filtered.filter((call) => scenarioIds.includes(String(call.analysis?.selectedScenarioId || "")));
   }
   return filtered;
 }
@@ -857,9 +874,26 @@ function matchesSummaryFilters(item, query) {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
+  const analysisStates = String(query.analysisStates || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const scenarioIds = String(query.scenarioIds || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 
   if (managerIds.length && !managerIds.includes(String(item.managerId))) return false;
   if (directions.length && !directions.includes(String(item.direction))) return false;
+  if (scenarioIds.length && !scenarioIds.includes(String(item.selectedScenarioId || ""))) return false;
+  if (analysisStates.length) {
+    const inferredState = analysisHasMeaningfulContent(item)
+      ? "ready"
+      : item?.transcriptText
+        ? "partial"
+        : "technical";
+    if (!analysisStates.includes(inferredState)) return false;
+  }
   if (query.dateFrom && new Date(item.startTime || item.updatedAt || 0) < new Date(`${query.dateFrom}T00:00:00`)) return false;
   if (query.dateTo && new Date(item.startTime || item.updatedAt || 0) > new Date(`${query.dateTo}T23:59:59`)) return false;
   return true;

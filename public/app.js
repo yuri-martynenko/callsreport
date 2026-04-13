@@ -8,6 +8,8 @@ const state = {
   settings: {
     autoTranscriptionMode: "disabled",
   },
+  settingsDirty: false,
+  selectedCallId: null,
   selectedAnalysis: null,
   selectedScenarioId: "",
   currentView: "dashboard",
@@ -34,6 +36,12 @@ const el = {
   directionsDropdown: document.getElementById("directionsDropdown"),
   directionsLabel: document.getElementById("directionsLabel"),
   directionsOptions: document.getElementById("directionsOptions"),
+  analysisStatesDropdown: document.getElementById("analysisStatesDropdown"),
+  analysisStatesLabel: document.getElementById("analysisStatesLabel"),
+  analysisStatesOptions: document.getElementById("analysisStatesOptions"),
+  scenarioFilterDropdown: document.getElementById("scenarioFilterDropdown"),
+  scenarioFilterLabel: document.getElementById("scenarioFilterLabel"),
+  scenarioFilterOptions: document.getElementById("scenarioFilterOptions"),
   onlyRecorded: document.getElementById("onlyRecorded"),
   resetFilters: document.getElementById("resetFilters"),
   scenarioName: document.getElementById("scenarioName"),
@@ -86,6 +94,14 @@ function selectedDirections() {
   return selectedCheckboxValues(el.directionsOptions, 'input[data-filter-option="direction"]');
 }
 
+function selectedAnalysisStates() {
+  return selectedCheckboxValues(el.analysisStatesOptions, 'input[data-filter-option="analysis-state"]');
+}
+
+function selectedScenarioFilters() {
+  return selectedCheckboxValues(el.scenarioFilterOptions, 'input[data-filter-option="scenario"]');
+}
+
 function selectedItemsLabel(values, fallbackLabel, optionsMap) {
   if (!values.length) return fallbackLabel;
   if (values.length === 1) return optionsMap.get(values[0]) || values[0];
@@ -105,6 +121,18 @@ function refreshFilterLabels() {
       input.dataset.label || input.value,
     ]),
   );
+  const analysisStateMap = new Map(
+    Array.from(el.analysisStatesOptions?.querySelectorAll('input[data-filter-option="analysis-state"]') || []).map((input) => [
+      input.value,
+      input.dataset.label || input.value,
+    ]),
+  );
+  const scenarioMap = new Map(
+    Array.from(el.scenarioFilterOptions?.querySelectorAll('input[data-filter-option="scenario"]') || []).map((input) => [
+      input.value,
+      input.dataset.label || input.value,
+    ]),
+  );
 
   if (el.managerIdsLabel) {
     el.managerIdsLabel.textContent = selectedItemsLabel(selectedManagerIds(), "Все менеджеры", managerMap);
@@ -112,10 +140,16 @@ function refreshFilterLabels() {
   if (el.directionsLabel) {
     el.directionsLabel.textContent = selectedItemsLabel(selectedDirections(), "Все направления", directionMap);
   }
+  if (el.analysisStatesLabel) {
+    el.analysisStatesLabel.textContent = selectedItemsLabel(selectedAnalysisStates(), "Все статусы", analysisStateMap);
+  }
+  if (el.scenarioFilterLabel) {
+    el.scenarioFilterLabel.textContent = selectedItemsLabel(selectedScenarioFilters(), "Все сценарии", scenarioMap);
+  }
 }
 
 function closeFilterDropdowns(except = null) {
-  [el.managerIdsDropdown, el.directionsDropdown].forEach((dropdown) => {
+  [el.managerIdsDropdown, el.directionsDropdown, el.analysisStatesDropdown, el.scenarioFilterDropdown].forEach((dropdown) => {
     if (!dropdown || dropdown === except) return;
     dropdown.open = false;
   });
@@ -127,6 +161,8 @@ function filters() {
     dateFrom: el.dateFrom.value,
     dateTo: el.dateTo.value,
     directions: selectedDirections(),
+    analysisStates: selectedAnalysisStates(),
+    scenarioIds: selectedScenarioFilters(),
     onlyRecorded: Boolean(el.onlyRecorded.checked),
   };
 }
@@ -138,6 +174,8 @@ function filtersQuery() {
   if (current.dateFrom) params.set("dateFrom", current.dateFrom);
   if (current.dateTo) params.set("dateTo", current.dateTo);
   if (current.directions.length) params.set("directions", current.directions.join(","));
+  if (current.analysisStates.length) params.set("analysisStates", current.analysisStates.join(","));
+  if (current.scenarioIds.length) params.set("scenarioIds", current.scenarioIds.join(","));
   params.set("onlyRecorded", String(current.onlyRecorded));
   return params.toString();
 }
@@ -559,26 +597,31 @@ function setCurrentView(view) {
   el.showSettingsView.classList.toggle("primary-action", view === "settings");
 }
 
+function analysisStateKey(call) {
+  if (!call.hasRecording) return "missing";
+  return String(call.analysis?.state || "pending");
+}
+
 function analysisStatus(call) {
-  if (!call.hasRecording) return { label: "Нет записи", className: "status-missing" };
+  if (!call.hasRecording) return { key: "missing", label: "Нет записи", className: "status-missing" };
 
   switch (call.analysis?.state) {
     case "queued":
-      return { label: "В очереди", className: "status-pending" };
+      return { key: "queued", label: "В очереди", className: "status-pending" };
     case "processing":
-      return { label: "В работе", className: "status-processing" };
+      return { key: "processing", label: "В работе", className: "status-processing" };
     case "ready":
-      return { label: "Готово", className: "status-ready" };
+      return { key: "ready", label: "Готово", className: "status-ready" };
     case "partial":
-      return { label: "Частично", className: "status-partial" };
+      return { key: "partial", label: "Частично", className: "status-partial" };
     case "technical":
-      return { label: "Тех. результат", className: "status-partial" };
+      return { key: "technical", label: "Тех. результат", className: "status-partial" };
     case "outdated":
-      return { label: "Нужен повтор", className: "status-warning" };
+      return { key: "outdated", label: "Нужен повтор", className: "status-warning" };
     case "error":
-      return { label: "Ошибка", className: "status-error" };
+      return { key: "error", label: "Ошибка", className: "status-error" };
     default:
-      return { label: "Ожидает анализа", className: "status-pending" };
+      return { key: "pending", label: "Ожидает анализа", className: "status-pending" };
   }
 }
 
@@ -641,7 +684,7 @@ function renderCalls() {
       ].join("");
       const totalTokens = analysis?.tokenUsage?.totalTokens ?? "—";
       return `
-        <tr class="${state.selectedAnalysis?.activityId === call.id ? "is-selected" : ""}">
+        <tr class="${String(state.selectedCallId || state.selectedAnalysis?.activityId || "") === String(call.id) ? "is-selected" : ""} is-clickable" data-action="select-call" data-id="${call.id}">
           <td><div class="call-subject">${escapeHtml(call.subject)}</div><div class="call-meta">${formatDate(call.startTime)}</div></td>
           <td>
             <div>${escapeHtml(call.managerName || "—")}</div>
@@ -650,9 +693,9 @@ function renderCalls() {
           <td>${localizeDirection(call.direction)}</td>
           <td>${formatDuration(call.durationSeconds)}</td>
           <td><span class="status-pill ${status.className}">${status.label}</span></td>
-          <td><select class="scenario-select" data-scenario-select="${call.id}">${scenarioOptions}</select></td>
+          <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}">${scenarioOptions}</select></td>
           <td class="token-cell">${escapeHtml(totalTokens)}</td>
-          <td><div class="action-stack">${analysis ? `<button class="call-action" data-action="show" data-id="${call.id}">Показать</button>` : ""}${call.crmEntityUrl ? `<a class="call-action crm-link-button" href="${escapeHtml(call.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Карточка</a>` : ""}<button class="call-action primary-action" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "Анализировать" : "Нет записи"}</button></div></td>
+          <td class="actions-cell"><div class="action-stack">${call.crmEntityUrl ? `<a class="call-action crm-link-button" href="${escapeHtml(call.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Карточка</a>` : ""}<button class="call-action primary-action" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "Анализировать" : "Нет записи"}</button></div></td>
         </tr>`;
     })
     .join("");
@@ -936,11 +979,26 @@ async function loadManagers() {
 async function loadScenarios() {
   const data = await api("/api/scenarios");
   state.scenarios = data.scenarios || [];
+  const selected = new Set(selectedScenarioFilters());
+  if (el.scenarioFilterOptions) {
+    el.scenarioFilterOptions.innerHTML = state.scenarios
+      .map(
+        (scenario) =>
+          `<label class="multi-select-option"><input type="checkbox" value="${escapeHtml(scenario.id)}" data-filter-option="scenario" data-label="${escapeHtml(scenario.name)}" ${selected.has(String(scenario.id)) ? "checked" : ""} /><span>${escapeHtml(scenario.name)}</span></label>`,
+      )
+      .join("");
+  }
   renderScenarioList();
+  refreshFilterLabels();
   if (state.selectedScenarioId) {
     const scenario = state.scenarios.find((item) => item.id === state.selectedScenarioId);
     if (scenario) applyScenarioToForm(scenario);
   }
+}
+
+function updateSaveSettingsState() {
+  if (!el.saveSettings) return;
+  el.saveSettings.disabled = !state.settingsDirty;
 }
 
 function applySettings(settings) {
@@ -951,6 +1009,8 @@ function applySettings(settings) {
     `input[name="autoTranscriptionMode"][value="${state.settings.autoTranscriptionMode}"]`,
   );
   if (selectedMode) selectedMode.checked = true;
+  state.settingsDirty = false;
+  updateSaveSettingsState();
 }
 
 async function loadSettings() {
@@ -985,16 +1045,15 @@ async function saveScenario() {
   });
   state.scenarios = data.scenarios || [];
   state.selectedScenarioId = data.scenario.id;
-  renderScenarioList();
+  await loadScenarios();
   applyScenarioToForm(data.scenario);
 }
 
 async function deleteScenario() {
   if (!state.selectedScenarioId) return;
-  const data = await api(`/api/scenarios/${state.selectedScenarioId}`, { method: "DELETE" });
-  state.scenarios = data.scenarios || [];
+  await api(`/api/scenarios/${state.selectedScenarioId}`, { method: "DELETE" });
+  await loadScenarios();
   resetScenarioForm();
-  renderScenarioList();
 }
 
 async function loadCalls() {
@@ -1009,7 +1068,11 @@ async function loadCalls() {
     }
   }
   renderCalls();
-  renderAnalysis(state.selectedAnalysis);
+  if (state.selectedCallId) {
+    selectAnalysisByCallId(state.selectedCallId);
+  } else {
+    renderAnalysis(state.selectedAnalysis);
+  }
   renderDashboard();
   ensureAnalysisPolling();
   if (el.statusText) el.statusText.textContent = `Найдено звонков: ${data.total}`;
@@ -1057,8 +1120,21 @@ function ensureAnalysisPolling() {
 function selectAnalysisByCallId(activityId) {
   const call = state.calls.find((item) => String(item.id) === String(activityId));
   const analysis = call ? effectiveAnalysis(call) : analysisOverride(activityId);
+  state.selectedCallId = activityId;
   if (!analysis) {
-    renderAnalysis(null);
+    state.selectedAnalysis = null;
+    renderCalls();
+    el.analysisState.textContent = "Не готов";
+    el.analysisState.className = "badge neutral";
+    el.analysisDetail.className = "analysis-detail";
+    el.analysisDetail.innerHTML = `
+      <section class="detail-block">
+        <h3>${escapeHtml(call?.subject || "Звонок")}</h3>
+        <div class="muted">${escapeHtml(callMetaLine(call || {}))}</div>
+        <p>Для этого звонка результат анализа пока отсутствует.</p>
+        <p class="muted">Статус: ${escapeHtml(analysisStatus(call || {}).label || "Ожидает анализа")}</p>
+        <p class="muted">Сценарий: ${escapeHtml(defaultScenario()?.name || "Автосценарий")}</p>
+      </section>`;
     return;
   }
   state.selectedAnalysis = analysis;
@@ -1072,6 +1148,7 @@ async function analyzeOne(activityId) {
   const scenarioId = scenarioSelect?.value || "";
   const selectedScenario = state.scenarios.find((item) => String(item.id) === String(scenarioId)) || null;
   if (call) {
+    state.selectedCallId = call.id;
     const processingAnalysis = {
       ...(effectiveAnalysis(call) || {}),
       activityId: call.id,
@@ -1167,6 +1244,12 @@ function resetFilters() {
   Array.from(el.directionsOptions?.querySelectorAll('input[data-filter-option="direction"]') || []).forEach((input) => {
     input.checked = false;
   });
+  Array.from(el.analysisStatesOptions?.querySelectorAll('input[data-filter-option="analysis-state"]') || []).forEach((input) => {
+    input.checked = false;
+  });
+  Array.from(el.scenarioFilterOptions?.querySelectorAll('input[data-filter-option="scenario"]') || []).forEach((input) => {
+    input.checked = false;
+  });
 
   refreshFilterLabels();
   closeFilterDropdowns();
@@ -1186,9 +1269,12 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  const showButton = event.target.closest("[data-action='show']");
-  if (showButton) {
-    selectAnalysisByCallId(showButton.getAttribute("data-id"));
+  const selectCallRow = event.target.closest("[data-action='select-call']");
+  if (
+    selectCallRow &&
+    !event.target.closest("button, a, select, option, input, label, summary, details")
+  ) {
+    selectAnalysisByCallId(selectCallRow.getAttribute("data-id"));
     return;
   }
 
@@ -1216,12 +1302,22 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("change", (event) => {
-  if (event.target.matches('input[data-filter-option="manager"], input[data-filter-option="direction"]')) {
+  if (
+    event.target.matches(
+      'input[data-filter-option="manager"], input[data-filter-option="direction"], input[data-filter-option="analysis-state"], input[data-filter-option="scenario"]',
+    )
+  ) {
     scheduleFiltersReload();
+    return;
+  }
+
+  if (event.target.matches('input[name="autoTranscriptionMode"]')) {
+    state.settingsDirty = autoTranscriptionMode() !== state.settings.autoTranscriptionMode;
+    updateSaveSettingsState();
   }
 });
 
-[el.managerIdsDropdown, el.directionsDropdown].forEach((dropdown) => {
+[el.managerIdsDropdown, el.directionsDropdown, el.analysisStatesDropdown, el.scenarioFilterDropdown].forEach((dropdown) => {
   if (!dropdown) return;
   dropdown.addEventListener("toggle", () => {
     if (dropdown.open) {

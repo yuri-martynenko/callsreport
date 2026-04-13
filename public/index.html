@@ -99,6 +99,59 @@
                     </details>
                   </label>
 
+                  <label class="filter-field filter-status">
+                    <span>Статус анализа</span>
+                    <details class="multi-select" id="analysisStatesDropdown">
+                      <summary><span id="analysisStatesLabel">Все статусы</span></summary>
+                      <div id="analysisStatesOptions" class="multi-select-menu">
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="pending" data-filter-option="analysis-state" data-label="Ожидает анализа" />
+                          <span>Ожидает анализа</span>
+                        </label>
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="queued" data-filter-option="analysis-state" data-label="В очереди" />
+                          <span>В очереди</span>
+                        </label>
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="processing" data-filter-option="analysis-state" data-label="В работе" />
+                          <span>В работе</span>
+                        </label>
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="ready" data-filter-option="analysis-state" data-label="Готово" />
+                          <span>Готово</span>
+                        </label>
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="partial" data-filter-option="analysis-state" data-label="Частично" />
+                          <span>Частично</span>
+                        </label>
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="technical" data-filter-option="analysis-state" data-label="Технический результат" />
+                          <span>Технический результат</span>
+                        </label>
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="outdated" data-filter-option="analysis-state" data-label="Нужен повтор" />
+                          <span>Нужен повтор</span>
+                        </label>
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="error" data-filter-option="analysis-state" data-label="Ошибка" />
+                          <span>Ошибка</span>
+                        </label>
+                        <label class="multi-select-option">
+                          <input type="checkbox" value="missing" data-filter-option="analysis-state" data-label="Нет записи" />
+                          <span>Нет записи</span>
+                        </label>
+                      </div>
+                    </details>
+                  </label>
+
+                  <label class="filter-field filter-scenario">
+                    <span>Сценарий</span>
+                    <details class="multi-select" id="scenarioFilterDropdown">
+                      <summary><span id="scenarioFilterLabel">Все сценарии</span></summary>
+                      <div id="scenarioFilterOptions" class="multi-select-menu"></div>
+                    </details>
+                  </label>
+
                   <label class="checkbox compact-checkbox filter-recorded">
                     <input id="onlyRecorded" type="checkbox" checked />
                     <span>Только со звуковой записью</span>
@@ -251,7 +304,7 @@
                       </label>
                     </div>
                     <div class="action-stack">
-                      <button id="saveSettings" class="accent" type="button">Сохранить настройки</button>
+                      <button id="saveSettings" class="accent" type="button" disabled>Сохранить настройки</button>
                     </div>
                   </section>
                 </div>
