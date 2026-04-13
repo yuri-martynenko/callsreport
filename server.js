@@ -20,11 +20,22 @@ const AI_CHAT_MODEL = envValue("AI_CHAT_MODEL", "bitrix/bitrixgpt-5");
 const AI_TRANSCRIPTION_MODEL = envValue("AI_TRANSCRIPTION_MODEL", "bitrix/deepdml/faster-whisper-large-v3-turbo-ct2");
 const AI_TRANSCRIPTION_RETRIES = Math.max(1, Number(envValue("AI_TRANSCRIPTION_RETRIES", "3")));
 const MAX_CALLS_PER_BATCH = Number(envValue("MAX_CALLS_PER_BATCH", "20"));
+const ANALYSIS_QUEUE_CONCURRENCY = Math.max(1, Number(envValue("ANALYSIS_QUEUE_CONCURRENCY", "1")));
+const ANALYSIS_AUTO_SCAN_INTERVAL_MS = Math.max(15000, Number(envValue("ANALYSIS_AUTO_SCAN_INTERVAL_MS", "30000")));
+const ANALYSIS_AUTO_SCAN_BATCH = Math.max(1, Number(envValue("ANALYSIS_AUTO_SCAN_BATCH", "10")));
 
 const DATA_DIR = path.join(__dirname, "data");
 const ANALYSES_FILE = path.join(DATA_DIR, "analyses.json");
 const SCENARIOS_FILE = path.join(DATA_DIR, "scenarios.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+
+const ACTIVE_ANALYSIS_JOB_STATUSES = new Set(["queued", "processing"]);
+const TERMINAL_ANALYSIS_JOB_STATUSES = new Set(["ready", "partial", "technical", "error"]);
+
+let queueLoopActive = false;
+let queueRunningCount = 0;
+let queueScanTimer = null;
+let analysisStoreMutation = Promise.resolve();
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -44,7 +55,7 @@ async function ensureDataFiles() {
   } catch {
     await fs.writeFile(
       ANALYSES_FILE,
-      JSON.stringify({ analyses: [], updatedAt: new Date().toISOString() }, null, 2),
+      JSON.stringify({ analyses: [], failures: [], jobs: [], updatedAt: new Date().toISOString() }, null, 2),
         "utf8",
       );
   }
@@ -97,16 +108,36 @@ async function ensureDataFiles() {
   }
 }
 
+function normalizeAnalysisStore(store = {}) {
+  return {
+    analyses: Array.isArray(store.analyses) ? store.analyses : [],
+    failures: Array.isArray(store.failures) ? store.failures : [],
+    jobs: Array.isArray(store.jobs) ? store.jobs : [],
+    updatedAt: store.updatedAt || null,
+  };
+}
+
 async function readAnalysisStore() {
   await ensureDataFiles();
-  return JSON.parse(await fs.readFile(ANALYSES_FILE, "utf8"));
+  return normalizeAnalysisStore(JSON.parse(await fs.readFile(ANALYSES_FILE, "utf8")));
 }
 
 async function writeAnalysisStore(store) {
   await ensureDataFiles();
-  store.updatedAt = new Date().toISOString();
-  if (!Array.isArray(store.failures)) store.failures = [];
-  await fs.writeFile(ANALYSES_FILE, JSON.stringify(store, null, 2), "utf8");
+  const normalized = normalizeAnalysisStore(store);
+  normalized.updatedAt = new Date().toISOString();
+  await fs.writeFile(ANALYSES_FILE, JSON.stringify(normalized, null, 2), "utf8");
+}
+
+async function mutateAnalysisStore(mutator) {
+  const operation = analysisStoreMutation.then(async () => {
+    const store = await readAnalysisStore();
+    const result = await mutator(store);
+    await writeAnalysisStore(store);
+    return result;
+  });
+  analysisStoreMutation = operation.catch(() => {});
+  return operation;
 }
 
 async function readScenarioStore() {
@@ -255,6 +286,37 @@ function buildLatestRecordsMap(items = [], keySelector) {
 
 function uniqueLatestAnalyses(analyses = []) {
   return Array.from(buildLatestRecordsMap(analyses, (item) => item.activityId).values());
+}
+
+function listJobsNewestFirst(jobs = []) {
+  return [...jobs].sort(
+    (left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0),
+  );
+}
+
+function buildLatestJobMap(jobs = []) {
+  return buildLatestRecordsMap(listJobsNewestFirst(jobs), (job) => job.activityId);
+}
+
+function buildLatestActiveJobMap(jobs = []) {
+  return buildLatestRecordsMap(
+    listJobsNewestFirst(jobs).filter((job) => ACTIVE_ANALYSIS_JOB_STATUSES.has(String(job.status || ""))),
+    (job) => job.activityId,
+  );
+}
+
+function deriveAnalysisResultState(analysis = {}) {
+  if (analysisHasMeaningfulContent(analysis)) return "ready";
+  if (analysis?.transcriptText) return "partial";
+  return "technical";
+}
+
+function updateJobRecord(job, patch = {}) {
+  return {
+    ...job,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 function deriveTranscriptionTokenUsage(transcriptionPayload) {
@@ -549,22 +611,23 @@ function mergeTokenUsage(transcriptionUsage, analysisUsage) {
   };
 }
 
-async function saveAnalysisFailure(store, call, signature, error, stage) {
-  store.failures = (store.failures || []).filter(
-    (item) => !(String(item.activityId) === String(call.id) && item.signature === signature),
-  );
-  store.failures.unshift({
-    activityId: call.id,
-    signature,
-    sourceUpdatedAt: call.sourceUpdatedAt || null,
-    updatedAt: new Date().toISOString(),
-    subject: call.subject,
-    managerId: call.managerId,
-    managerName: call.managerName,
-    stage,
-    errorMessage: error.message,
+async function saveAnalysisFailure(_store, call, signature, error, stage) {
+  await mutateAnalysisStore(async (store) => {
+    store.failures = (store.failures || []).filter(
+      (item) => !(String(item.activityId) === String(call.id) && item.signature === signature),
+    );
+    store.failures.unshift({
+      activityId: call.id,
+      signature,
+      sourceUpdatedAt: call.sourceUpdatedAt || null,
+      updatedAt: new Date().toISOString(),
+      subject: call.subject,
+      managerId: call.managerId,
+      managerName: call.managerName,
+      stage,
+      errorMessage: error.message,
+    });
   });
-  await writeAnalysisStore(store);
 }
 
 function vibeHeaders(extra = {}) {
@@ -798,7 +861,7 @@ function canonicalRiskLevel(value) {
   return "";
 }
 
-function normalizeCall(activity, managersById, analysis, failure) {
+function normalizeCall(activity, managersById, analysis, failure, latestJob = null) {
   const manager = managersById.get(activity.responsibleId) || null;
   const rawFiles = activity?.FILES ?? activity?.files ?? activity?.recordings ?? [];
   const files = Array.isArray(rawFiles) ? rawFiles : [];
@@ -811,7 +874,13 @@ function normalizeCall(activity, managersById, analysis, failure) {
       (!analysis || new Date(failure.updatedAt || 0).getTime() >= new Date(analysis.updatedAt || 0).getTime()),
   );
 
-  const analysisState = isFailureCurrent
+  const jobStatus = String(latestJob?.status || "");
+  const isJobActive = ACTIVE_ANALYSIS_JOB_STATUSES.has(jobStatus);
+  const isJobError = jobStatus === "error";
+
+  const analysisState = isJobActive
+    ? jobStatus
+    : isFailureCurrent || isJobError
     ? "error"
     : !analysis
     ? "pending"
@@ -856,16 +925,17 @@ function normalizeCall(activity, managersById, analysis, failure) {
           nextStep: analysis.nextStep || "",
           transcriptMeta: analysis.transcriptMeta || null,
           tokenUsage: analysis.tokenUsage || null,
-          selectedScenarioId: analysis.selectedScenarioId || null,
-          selectedScenarioName: analysis.selectedScenarioName || "",
-          errorMessage: isFailureCurrent ? failure.errorMessage : "",
+          selectedScenarioId: latestJob?.selectedScenarioId || analysis.selectedScenarioId || null,
+          selectedScenarioName: latestJob?.selectedScenarioName || analysis.selectedScenarioName || "",
+          errorMessage: isFailureCurrent ? failure.errorMessage : isJobError ? latestJob?.errorMessage || "" : "",
           state: analysisState,
           isCurrent: analysis.sourceUpdatedAt === activity.updatedAt,
+          jobId: latestJob?.id || null,
         }
-      : failure
+      : failure || latestJob
         ? {
             activityId: activity.id,
-            updatedAt: failure.updatedAt,
+            updatedAt: latestJob?.updatedAt || failure?.updatedAt || null,
             summary: "",
             transcriptText: "",
             transcriptSegments: [],
@@ -878,11 +948,12 @@ function normalizeCall(activity, managersById, analysis, failure) {
             nextStep: "",
             transcriptMeta: null,
             tokenUsage: null,
-            selectedScenarioId: null,
-            selectedScenarioName: "",
-            errorMessage: failure.errorMessage,
-            state: "error",
+            selectedScenarioId: latestJob?.selectedScenarioId || null,
+            selectedScenarioName: latestJob?.selectedScenarioName || "",
+            errorMessage: latestJob?.errorMessage || failure?.errorMessage || "",
+            state: analysisState,
             isCurrent: true,
+            jobId: latestJob?.id || null,
           }
         : null,
   };
@@ -900,6 +971,7 @@ async function fetchCalls(query) {
     analysisStore.failures || [],
     (failure) => failure.activityId,
   );
+  const jobsByActivityId = buildLatestJobMap(analysisStore.jobs || []);
   const defaultScenario = getDefaultScenario(scenarioStore.scenarios || []);
 
   const { filter, managerIds } = buildCallFilter(query);
@@ -924,7 +996,8 @@ async function fetchCalls(query) {
   let calls = rawActivities.map((activity) => {
     const analysis = analysesByActivityId.get(String(activity.id));
     const failure = failuresByActivityId.get(String(activity.id));
-    const normalizedCall = normalizeCall(activity, managersById, analysis, failure);
+    const latestJob = jobsByActivityId.get(String(activity.id));
+    const normalizedCall = normalizeCall(activity, managersById, analysis, failure, latestJob);
 
     if (
       normalizedCall.analysis &&
@@ -1204,20 +1277,236 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
       ...normalizedAnalysis,
     };
 
-    store.analyses = store.analyses.filter(
-      (item) => !(String(item.activityId) === String(activityId) && item.signature === signature),
-    );
-    store.failures = (store.failures || []).filter(
-      (item) => !(String(item.activityId) === String(activityId) && item.signature === signature),
-    );
-    store.analyses.unshift(record);
-    await writeAnalysisStore(store);
+    await mutateAnalysisStore(async (latestStore) => {
+      latestStore.analyses = latestStore.analyses.filter(
+        (item) => !(String(item.activityId) === String(activityId) && item.signature === signature),
+      );
+      latestStore.failures = (latestStore.failures || []).filter(
+        (item) => !(String(item.activityId) === String(activityId) && item.signature === signature),
+      );
+      latestStore.analyses.unshift(record);
+    });
 
     return { cached: false, analysis: record };
   } catch (error) {
     await saveAnalysisFailure(store, { ...call, sourceUpdatedAt: rawCall.updatedAt }, signature, error, "analysis");
     throw error;
   }
+}
+
+async function buildAnalysisJobContext(activityId, scriptChecklist, customMetrics, scenarioId) {
+  const [callPayload, managers, scenarioStore, analysisStore] = await Promise.all([
+    vibeJson(`/v1/activities/${activityId}`),
+    listManagers(),
+    readScenarioStore(),
+    readAnalysisStore(),
+  ]);
+
+  const managersById = new Map(managers.map((manager) => [manager.id, manager]));
+  const rawCall = callPayload.data;
+  const call = normalizeCall(rawCall, managersById, null, null);
+  const selectedScenario = pickScenarioForCall(call, scenarioStore.scenarios || [], scenarioId);
+  const effectiveScriptChecklist = String(scriptChecklist || selectedScenario?.scriptChecklist || "").trim();
+  const effectiveCustomMetrics =
+    Array.isArray(customMetrics) && customMetrics.length
+      ? customMetrics
+      : Array.isArray(selectedScenario?.customMetrics)
+        ? selectedScenario.customMetrics
+        : [];
+
+  if (!call.hasRecording || !call.recordingFileId) {
+    const error = new Error("У звонка нет записи для транскрибации");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    analysisStore,
+    rawCall,
+    call,
+    selectedScenario,
+    effectiveScriptChecklist,
+    effectiveCustomMetrics,
+  };
+}
+
+function matchesAutoAnalyzeMode(call, mode) {
+  if (mode === "all") return true;
+  if (mode === "incoming") return call.direction === "incoming";
+  if (mode === "outgoing") return call.direction === "outgoing";
+  return false;
+}
+
+async function enqueueAnalysisJob({
+  activityId,
+  scriptChecklist,
+  customMetrics,
+  scenarioId,
+  source = "manual",
+}) {
+  const context = await buildAnalysisJobContext(activityId, scriptChecklist, customMetrics, scenarioId);
+  const {
+    analysisStore,
+    rawCall,
+    call,
+    selectedScenario,
+    effectiveScriptChecklist,
+    effectiveCustomMetrics,
+  } = context;
+
+  const activeJob = listJobsNewestFirst(analysisStore.jobs || []).find(
+    (job) => String(job.activityId) === String(activityId) && ACTIVE_ANALYSIS_JOB_STATUSES.has(String(job.status || "")),
+  );
+  if (activeJob) {
+    return { queued: false, existing: true, job: activeJob };
+  }
+
+  const job = {
+    id: createId("job"),
+    activityId: call.id,
+    sourceUpdatedAt: rawCall.updatedAt,
+    subject: call.subject,
+    managerId: call.managerId,
+    managerName: call.managerName,
+    direction: call.direction,
+    durationSeconds: call.durationSeconds,
+    recordingFileId: call.recordingFileId,
+    selectedScenarioId: selectedScenario?.id || null,
+    selectedScenarioName: selectedScenario?.name || "",
+    scriptChecklist: effectiveScriptChecklist,
+    customMetrics: effectiveCustomMetrics,
+    source,
+    status: "queued",
+    attempts: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    startedAt: null,
+    finishedAt: null,
+    errorMessage: "",
+    analysisUpdatedAt: null,
+  };
+
+  await mutateAnalysisStore(async (store) => {
+    store.jobs = [job, ...(store.jobs || [])];
+  });
+
+  scheduleAnalysisQueue();
+  return { queued: true, existing: false, job };
+}
+
+async function finalizeAnalysisJob(jobId, patch) {
+  return mutateAnalysisStore(async (store) => {
+    store.jobs = (store.jobs || []).map((job) =>
+      String(job.id) === String(jobId) ? updateJobRecord(job, patch) : job,
+    );
+    return store.jobs.find((job) => String(job.id) === String(jobId)) || null;
+  });
+}
+
+async function processQueuedAnalysisJob(job) {
+  await finalizeAnalysisJob(job.id, {
+    status: "processing",
+    startedAt: job.startedAt || new Date().toISOString(),
+    attempts: Number(job.attempts || 0) + 1,
+    errorMessage: "",
+  });
+
+  try {
+    const result = await analyzeCall(job.activityId, job.scriptChecklist, job.customMetrics, job.selectedScenarioId);
+    const finalStatus = deriveAnalysisResultState(result.analysis);
+    await finalizeAnalysisJob(job.id, {
+      status: finalStatus,
+      finishedAt: new Date().toISOString(),
+      errorMessage: "",
+      analysisUpdatedAt: result.analysis?.updatedAt || null,
+    });
+  } catch (error) {
+    await finalizeAnalysisJob(job.id, {
+      status: "error",
+      finishedAt: new Date().toISOString(),
+      errorMessage: error.message || "Ошибка анализа",
+    });
+  }
+}
+
+async function processAnalysisQueue() {
+  if (queueLoopActive || queueRunningCount >= ANALYSIS_QUEUE_CONCURRENCY) return;
+  queueLoopActive = true;
+
+  try {
+    while (queueRunningCount < ANALYSIS_QUEUE_CONCURRENCY) {
+      const store = await readAnalysisStore();
+      const nextJob = listJobsNewestFirst(store.jobs || [])
+        .filter((job) => String(job.status || "") === "queued")
+        .sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0))[0];
+
+      if (!nextJob) break;
+
+      queueRunningCount += 1;
+      try {
+        await processQueuedAnalysisJob(nextJob);
+      } finally {
+        queueRunningCount = Math.max(0, queueRunningCount - 1);
+      }
+    }
+  } finally {
+    queueLoopActive = false;
+  }
+}
+
+function scheduleAnalysisQueue() {
+  setTimeout(() => {
+    processAnalysisQueue().catch((error) => {
+      console.error("Failed to process analysis queue", error);
+    });
+  }, 0);
+}
+
+async function autoEnqueuePendingCalls() {
+  const settingsStore = await readSettingsStore();
+  const mode = String(settingsStore.settings?.autoTranscriptionMode || "disabled");
+  if (mode === "disabled") return { queued: 0 };
+
+  const callsData = await fetchCalls({
+    onlyRecorded: "true",
+    limit: Math.max(ANALYSIS_AUTO_SCAN_BATCH * 5, 50),
+    offset: 0,
+  });
+
+  let queued = 0;
+  for (const call of callsData.calls) {
+    if (!matchesAutoAnalyzeMode(call, mode)) continue;
+    const state = String(call.analysis?.state || "");
+    if (!["", "pending", "outdated"].includes(state)) continue;
+    if (!call.hasRecording || !call.recordingFileId) continue;
+    await enqueueAnalysisJob({ activityId: call.id, source: "auto" });
+    queued += 1;
+    if (queued >= ANALYSIS_AUTO_SCAN_BATCH) break;
+  }
+
+  return { queued };
+}
+
+async function refreshAutomaticAnalysis() {
+  const autoScan = await autoEnqueuePendingCalls();
+  await processAnalysisQueue();
+  return autoScan;
+}
+
+function startAnalysisQueueScheduler() {
+  if (queueScanTimer) clearInterval(queueScanTimer);
+  queueScanTimer = setInterval(() => {
+    refreshAutomaticAnalysis()
+      .catch((error) => {
+        console.error("Failed to scan pending calls for analysis", error);
+      });
+  }, ANALYSIS_AUTO_SCAN_INTERVAL_MS);
+
+  scheduleAnalysisQueue();
+  refreshAutomaticAnalysis()
+    .catch((error) => {
+      console.error("Failed to initialize analysis queue", error);
+    });
 }
 
 function summarizeAnalyses(analyses) {
@@ -1305,7 +1594,8 @@ app.post("/api/settings", async (req, res, next) => {
     const store = await readSettingsStore();
     store.settings = sanitizeSettings(req.body || {});
     await writeSettingsStore(store);
-    res.json({ success: true, data: { settings: store.settings } });
+    const autoScan = await refreshAutomaticAnalysis();
+    res.json({ success: true, data: { settings: store.settings, autoScan } });
   } catch (error) {
     next(error);
   }
@@ -1357,6 +1647,15 @@ app.get("/api/calls", async (req, res, next) => {
   }
 });
 
+app.get("/api/analyze/jobs", async (_req, res, next) => {
+  try {
+    const store = await readAnalysisStore();
+    res.json({ success: true, data: { jobs: listJobsNewestFirst(store.jobs || []) } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/analyze", async (req, res, next) => {
   try {
     const { activityId, scriptChecklist, customMetrics, scenarioId } = req.body || {};
@@ -1365,7 +1664,10 @@ app.post("/api/analyze", async (req, res, next) => {
       error.statusCode = 400;
       throw error;
     }
-    res.json({ success: true, data: await analyzeCall(activityId, scriptChecklist, customMetrics, scenarioId) });
+    res.json({
+      success: true,
+      data: await enqueueAnalysisJob({ activityId, scriptChecklist, customMetrics, scenarioId, source: "manual" }),
+    });
   } catch (error) {
     next(error);
   }
@@ -1385,14 +1687,21 @@ app.post("/api/analyze-batch", async (req, res, next) => {
 
     for (const call of selectedCalls) {
       try {
-        const analysis = await analyzeCall(call.id, scriptChecklist, customMetrics, scenarioId);
+        const queuedJob = await enqueueAnalysisJob({
+          activityId: call.id,
+          scriptChecklist,
+          customMetrics,
+          scenarioId,
+          source: "batch",
+        });
         results.push({
           activityId: call.id,
           subject: call.subject,
           managerName: call.managerName,
-          status: "ok",
-          cached: analysis.cached,
-          analysis: analysis.analysis,
+          status: queuedJob.job?.status || "queued",
+          queued: Boolean(queuedJob.queued),
+          existing: Boolean(queuedJob.existing),
+          job: queuedJob.job,
         });
       } catch (error) {
         results.push({
@@ -1440,6 +1749,7 @@ ensureDataFiles()
     app.listen(PORT, () => {
       console.log(`CallsReport listening on port ${PORT}`);
     });
+    startAnalysisQueueScheduler();
   })
   .catch((error) => {
     console.error("Failed to initialize application", error);

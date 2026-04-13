@@ -14,6 +14,7 @@ const state = {
   page: 1,
   filtersTimer: null,
   analysisOverrides: {},
+  analysisPollingTimer: null,
 };
 
 const el = {
@@ -169,6 +170,14 @@ function setAnalysisOverride(activityId, analysis) {
 
 function clearAnalysisOverride(activityId) {
   delete state.analysisOverrides[String(activityId)];
+}
+
+function defaultScenario() {
+  return state.scenarios.find((scenario) => scenario.isDefault) || state.scenarios[0] || null;
+}
+
+function selectedScenarioIdForCall(call) {
+  return effectiveAnalysis(call)?.selectedScenarioId || defaultScenario()?.id || "";
 }
 
 function formatDate(value) {
@@ -518,6 +527,8 @@ function analysisStatus(call) {
   if (!call.hasRecording) return { label: "Нет записи", className: "status-missing" };
 
   switch (call.analysis?.state) {
+    case "queued":
+      return { label: "В очереди", className: "status-pending" };
     case "processing":
       return { label: "В работе", className: "status-processing" };
     case "ready":
@@ -584,7 +595,14 @@ function renderCalls() {
     .map((call) => {
       const analysis = effectiveAnalysis(call);
       const status = analysisStatus({ ...call, analysis });
-      const scenarioName = analysis?.selectedScenarioName || "—";
+      const currentScenarioId = selectedScenarioIdForCall(call);
+      const scenarioOptions = [
+        `<option value="">Автосценарий</option>`,
+        ...state.scenarios.map(
+          (scenario) =>
+            `<option value="${escapeHtml(scenario.id)}" ${String(currentScenarioId) === String(scenario.id) ? "selected" : ""}>${escapeHtml(scenario.name)}</option>`,
+        ),
+      ].join("");
       const totalTokens = analysis?.tokenUsage?.totalTokens ?? "—";
       return `
         <tr class="${state.selectedAnalysis?.activityId === call.id ? "is-selected" : ""}">
@@ -596,7 +614,7 @@ function renderCalls() {
           <td>${localizeDirection(call.direction)}</td>
           <td>${formatDuration(call.durationSeconds)}</td>
           <td><span class="status-pill ${status.className}">${status.label}</span></td>
-          <td>${escapeHtml(scenarioName)}</td>
+          <td><select class="scenario-select" data-scenario-select="${call.id}">${scenarioOptions}</select></td>
           <td class="token-cell">${escapeHtml(totalTokens)}</td>
           <td><div class="action-stack">${analysis ? `<button class="call-action" data-action="show" data-id="${call.id}">Показать</button>` : ""}<button class="call-action primary-action" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "Анализировать" : "Нет записи"}</button></div></td>
         </tr>`;
@@ -614,15 +632,15 @@ function renderAnalysis(analysis) {
     return;
   }
 
-  if (analysis.state === "processing") {
-    el.analysisState.textContent = "В работе";
+  if (analysis.state === "queued" || analysis.state === "processing") {
+    el.analysisState.textContent = analysis.state === "queued" ? "В очереди" : "В работе";
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
       <section class="detail-block">
         <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
         <div class="muted">${escapeHtml(callMetaLine(analysis))}</div>
-        <p>Анализ выполняется. После завершения статус и детализация обновятся автоматически.</p>
+        <p>${analysis.state === "queued" ? "Звонок поставлен в очередь на анализ. Статус и детализация обновятся автоматически." : "Анализ выполняется. После завершения статус и детализация обновятся автоматически."}</p>
       </section>`;
     return;
   }
@@ -909,8 +927,13 @@ async function saveSettings() {
     body: JSON.stringify({ autoTranscriptionMode: autoTranscriptionMode() }),
   });
   applySettings(data.settings || {});
+  await Promise.all([loadCalls(), loadSummary()]);
   if (el.statusText) {
-    el.statusText.textContent = "Настройки сохранены.";
+    const queued = Number(data.autoScan?.queued || 0);
+    el.statusText.textContent =
+      queued > 0
+        ? `Настройки сохранены. В автоматическую обработку поставлено ${queued} звонков.`
+        : "Настройки сохранены. Новый режим автоматической обработки применён.";
   }
 }
 
@@ -950,6 +973,7 @@ async function loadCalls() {
   renderCalls();
   renderAnalysis(state.selectedAnalysis);
   renderDashboard();
+  ensureAnalysisPolling();
   if (el.statusText) el.statusText.textContent = `Найдено звонков: ${data.total}`;
 }
 
@@ -959,6 +983,37 @@ async function loadSummary() {
   state.analyses = data.analyses;
   renderSummary();
   renderDashboard();
+}
+
+function hasActiveAnalysisWork() {
+  return state.calls.some((call) => {
+    const analysis = effectiveAnalysis(call);
+    return ["queued", "processing"].includes(String(analysis?.state || ""));
+  });
+}
+
+function stopAnalysisPolling() {
+  if (!state.analysisPollingTimer) return;
+  clearTimeout(state.analysisPollingTimer);
+  state.analysisPollingTimer = null;
+}
+
+function ensureAnalysisPolling() {
+  if (!hasActiveAnalysisWork()) {
+    stopAnalysisPolling();
+    return;
+  }
+  if (state.analysisPollingTimer) return;
+  state.analysisPollingTimer = setTimeout(async function poll() {
+    state.analysisPollingTimer = null;
+    try {
+      await Promise.all([loadCalls(), loadSummary()]);
+    } catch (error) {
+      notifyLoadError(error);
+    } finally {
+      if (hasActiveAnalysisWork()) ensureAnalysisPolling();
+    }
+  }, 4000);
 }
 
 function selectAnalysisByCallId(activityId) {
@@ -975,6 +1030,9 @@ function selectAnalysisByCallId(activityId) {
 
 async function analyzeOne(activityId) {
   const call = state.calls.find((item) => String(item.id) === String(activityId));
+  const scenarioSelect = document.querySelector(`[data-scenario-select="${activityId}"]`);
+  const scenarioId = scenarioSelect?.value || "";
+  const selectedScenario = state.scenarios.find((item) => String(item.id) === String(scenarioId)) || null;
   if (call) {
     const processingAnalysis = {
       ...(effectiveAnalysis(call) || {}),
@@ -983,8 +1041,9 @@ async function analyzeOne(activityId) {
       managerName: call.managerName,
       direction: call.direction,
       durationSeconds: call.durationSeconds,
-      selectedScenarioName: effectiveAnalysis(call)?.selectedScenarioName || "Автосценарий",
-      state: "processing",
+      selectedScenarioId: scenarioId || null,
+      selectedScenarioName: selectedScenario?.name || "Автосценарий",
+      state: "queued",
     };
     setAnalysisOverride(call.id, processingAnalysis);
     state.selectedAnalysis = processingAnalysis;
@@ -998,14 +1057,20 @@ async function analyzeOne(activityId) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         activityId,
-        scenarioId: null,
+        scenarioId: scenarioId || null,
         scriptChecklist: "",
         customMetrics: parsedCustomMetrics(),
       }),
     });
 
-    clearAnalysisOverride(activityId);
-    state.selectedAnalysis = result.analysis;
+    setAnalysisOverride(activityId, {
+      ...(analysisOverride(activityId) || {}),
+      activityId,
+      state: result.job?.status || "queued",
+      selectedScenarioId: result.job?.selectedScenarioId || scenarioId || null,
+      selectedScenarioName: result.job?.selectedScenarioName || selectedScenario?.name || "Автосценарий",
+      errorMessage: "",
+    });
     await Promise.all([loadCalls(), loadSummary()]);
     selectAnalysisByCallId(activityId);
   } catch (error) {
