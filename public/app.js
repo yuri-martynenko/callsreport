@@ -13,6 +13,7 @@ const state = {
   currentView: "dashboard",
   page: 1,
   filtersTimer: null,
+  analysisOverrides: {},
 };
 
 const el = {
@@ -140,6 +141,34 @@ function formatDuration(seconds) {
   const safe = Number(seconds || 0);
   const minutes = Math.floor(safe / 60);
   return `${minutes}:${String(safe % 60).padStart(2, "0")}`;
+}
+
+function callMetaLine(source = {}) {
+  return [
+    source.managerName || "—",
+    localizeDirection(source.direction),
+    formatDuration(source.durationSeconds),
+  ].join(" • ");
+}
+
+function analysisOverride(activityId) {
+  return state.analysisOverrides[String(activityId)] || null;
+}
+
+function effectiveAnalysis(call) {
+  return analysisOverride(call.id) || call.analysis || null;
+}
+
+function setAnalysisOverride(activityId, analysis) {
+  state.analysisOverrides[String(activityId)] = {
+    ...(state.analysisOverrides[String(activityId)] || {}),
+    ...analysis,
+    activityId,
+  };
+}
+
+function clearAnalysisOverride(activityId) {
+  delete state.analysisOverrides[String(activityId)];
 }
 
 function formatDate(value) {
@@ -508,7 +537,8 @@ function analysisStatus(call) {
 
 function hydrateSelectedAnalysis() {
   if (!state.selectedAnalysis?.activityId) return;
-  const actual = state.calls.find((call) => String(call.id) === String(state.selectedAnalysis.activityId))?.analysis;
+  const call = state.calls.find((item) => String(item.id) === String(state.selectedAnalysis.activityId));
+  const actual = call ? effectiveAnalysis(call) : analysisOverride(state.selectedAnalysis.activityId);
   if (actual) state.selectedAnalysis = actual;
 }
 
@@ -552,9 +582,10 @@ function renderCalls() {
   el.callsCount.textContent = String(state.calls.length);
   el.callsTable.innerHTML = pagedCalls()
     .map((call) => {
-      const status = analysisStatus(call);
-      const scenarioName = call.analysis?.selectedScenarioName || "—";
-      const totalTokens = call.analysis?.tokenUsage?.totalTokens ?? "—";
+      const analysis = effectiveAnalysis(call);
+      const status = analysisStatus({ ...call, analysis });
+      const scenarioName = analysis?.selectedScenarioName || "—";
+      const totalTokens = analysis?.tokenUsage?.totalTokens ?? "—";
       return `
         <tr class="${state.selectedAnalysis?.activityId === call.id ? "is-selected" : ""}">
           <td><div class="call-subject">${escapeHtml(call.subject)}</div><div class="call-meta">${formatDate(call.startTime)}</div></td>
@@ -567,7 +598,7 @@ function renderCalls() {
           <td><span class="status-pill ${status.className}">${status.label}</span></td>
           <td>${escapeHtml(scenarioName)}</td>
           <td class="token-cell">${escapeHtml(totalTokens)}</td>
-          <td><div class="action-stack">${call.analysis ? `<button class="call-action" data-action="show" data-id="${call.id}">Показать</button>` : ""}<button class="call-action primary-action" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "Анализировать" : "Нет записи"}</button></div></td>
+          <td><div class="action-stack">${analysis ? `<button class="call-action" data-action="show" data-id="${call.id}">Показать</button>` : ""}<button class="call-action primary-action" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "Анализировать" : "Нет записи"}</button></div></td>
         </tr>`;
     })
     .join("");
@@ -587,7 +618,12 @@ function renderAnalysis(analysis) {
     el.analysisState.textContent = "В работе";
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
-    el.analysisDetail.innerHTML = `<section class="detail-block"><h3>${escapeHtml(analysis.subject || "Звонок")}</h3><p>Анализ выполняется. После завершения статус и детализация обновятся автоматически.</p></section>`;
+    el.analysisDetail.innerHTML = `
+      <section class="detail-block">
+        <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
+        <div class="muted">${escapeHtml(callMetaLine(analysis))}</div>
+        <p>Анализ выполняется. После завершения статус и детализация обновятся автоматически.</p>
+      </section>`;
     return;
   }
 
@@ -595,7 +631,12 @@ function renderAnalysis(analysis) {
     el.analysisState.textContent = "Ошибка";
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
-    el.analysisDetail.innerHTML = `<section class="detail-block"><h3>${escapeHtml(analysis.subject || "Звонок")}</h3><p>${escapeHtml(analysis.errorMessage || "Ошибка анализа")}</p></section>`;
+    el.analysisDetail.innerHTML = `
+      <section class="detail-block">
+        <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
+        <div class="muted">${escapeHtml(callMetaLine(analysis))}</div>
+        <p>${escapeHtml(analysis.errorMessage || "Ошибка анализа")}</p>
+      </section>`;
     return;
   }
 
@@ -618,7 +659,7 @@ function renderAnalysis(analysis) {
   el.analysisDetail.innerHTML = `
     <section class="detail-block">
       <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
-      <div class="muted">${escapeHtml(analysis.managerName || "—")} • ${localizeDirection(analysis.direction)} • ${formatDuration(analysis.durationSeconds)}</div>
+      <div class="muted">${escapeHtml(callMetaLine(analysis))}</div>
       <p>${escapeHtml(resultExplanation)}</p>
       <p class="muted">Сценарий: ${escapeHtml(analysis.selectedScenarioName || "Автоподбор / ручной ввод")}</p>
       <p class="muted">Токены: ${escapeHtml(analysis.tokenUsage?.totalTokens ?? "—")} (транскрибация ${escapeHtml(analysis.tokenUsage?.transcriptionTokens ?? "—")}, анализ ${escapeHtml(analysis.tokenUsage?.analysisTotalTokens ?? "—")})</p>
@@ -899,6 +940,13 @@ async function loadCalls() {
   if (el.statusText) el.statusText.textContent = "Загружаю список звонков...";
   const data = await api(`/api/calls?${filtersQuery()}`);
   state.calls = data.calls;
+  for (const call of state.calls) {
+    const override = analysisOverride(call.id);
+    if (!override) continue;
+    if (call.analysis?.state && call.analysis.state !== "pending") {
+      clearAnalysisOverride(call.id);
+    }
+  }
   renderCalls();
   renderAnalysis(state.selectedAnalysis);
   renderDashboard();
@@ -915,47 +963,73 @@ async function loadSummary() {
 
 function selectAnalysisByCallId(activityId) {
   const call = state.calls.find((item) => String(item.id) === String(activityId));
-  if (!call?.analysis) {
+  const analysis = call ? effectiveAnalysis(call) : analysisOverride(activityId);
+  if (!analysis) {
     renderAnalysis(null);
     return;
   }
-  state.selectedAnalysis = call.analysis;
+  state.selectedAnalysis = analysis;
   renderCalls();
-  renderAnalysis(call.analysis);
+  renderAnalysis(analysis);
 }
 
 async function analyzeOne(activityId) {
   const call = state.calls.find((item) => String(item.id) === String(activityId));
   if (call) {
-    call.analysis = {
-      ...(call.analysis || {}),
+    const processingAnalysis = {
+      ...(effectiveAnalysis(call) || {}),
       activityId: call.id,
       subject: call.subject,
       managerName: call.managerName,
       direction: call.direction,
       durationSeconds: call.durationSeconds,
-      selectedScenarioName: call.analysis?.selectedScenarioName || "Автосценарий",
+      selectedScenarioName: effectiveAnalysis(call)?.selectedScenarioName || "Автосценарий",
       state: "processing",
     };
-    state.selectedAnalysis = call.analysis;
+    setAnalysisOverride(call.id, processingAnalysis);
+    state.selectedAnalysis = processingAnalysis;
     renderCalls();
-    renderAnalysis(call.analysis);
+    renderAnalysis(processingAnalysis);
   }
 
-  const result = await api("/api/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      activityId,
-      scenarioId: null,
-      scriptChecklist: "",
-      customMetrics: parsedCustomMetrics(),
-    }),
-  });
+  try {
+    const result = await api("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        activityId,
+        scenarioId: null,
+        scriptChecklist: "",
+        customMetrics: parsedCustomMetrics(),
+      }),
+    });
 
-  state.selectedAnalysis = result.analysis;
-  await Promise.all([loadCalls(), loadSummary()]);
-  selectAnalysisByCallId(activityId);
+    clearAnalysisOverride(activityId);
+    state.selectedAnalysis = result.analysis;
+    await Promise.all([loadCalls(), loadSummary()]);
+    selectAnalysisByCallId(activityId);
+  } catch (error) {
+    const failedCall = state.calls.find((item) => String(item.id) === String(activityId));
+    const errorAnalysis = {
+      ...(analysisOverride(activityId) || effectiveAnalysis(failedCall || {}) || {}),
+      activityId,
+      subject: failedCall?.subject || state.selectedAnalysis?.subject || "Звонок",
+      managerName: failedCall?.managerName || state.selectedAnalysis?.managerName || "",
+      direction: failedCall?.direction || state.selectedAnalysis?.direction || "",
+      durationSeconds: failedCall?.durationSeconds || state.selectedAnalysis?.durationSeconds || 0,
+      selectedScenarioName:
+        analysisOverride(activityId)?.selectedScenarioName ||
+        effectiveAnalysis(failedCall || {})?.selectedScenarioName ||
+        "Автосценарий",
+      state: "error",
+      errorMessage: error.message || "Ошибка анализа",
+    };
+    setAnalysisOverride(activityId, errorAnalysis);
+    state.selectedAnalysis = errorAnalysis;
+    renderCalls();
+    renderAnalysis(errorAnalysis);
+    throw error;
+  }
 }
 
 function scheduleFiltersReload() {
