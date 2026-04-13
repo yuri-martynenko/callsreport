@@ -42,6 +42,10 @@ const el = {
   scenarioCustomMetrics: document.getElementById("scenarioCustomMetrics"),
   scenarioDirection: document.getElementById("scenarioDirection"),
   scenarioManagerIds: document.getElementById("scenarioManagerIds"),
+  scenarioEntityTypeIds: document.getElementById("scenarioEntityTypeIds"),
+  scenarioPipelineIds: document.getElementById("scenarioPipelineIds"),
+  scenarioStageIds: document.getElementById("scenarioStageIds"),
+  scenarioLineNumbers: document.getElementById("scenarioLineNumbers"),
   scenarioKeywords: document.getElementById("scenarioKeywords"),
   scenarioMinDuration: document.getElementById("scenarioMinDuration"),
   scenarioMaxDuration: document.getElementById("scenarioMaxDuration"),
@@ -233,6 +237,19 @@ function parsedCustomMetrics() {
   return [];
 }
 
+function parseTextList(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseNumericList(value) {
+  return parseTextList(value)
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && item > 0);
+}
+
 function localizeSentiment(value) {
   const map = {
     positive: "Позитивный",
@@ -287,6 +304,17 @@ function localizeCheckpointStatus(value) {
 
 function localizeDirection(value) {
   return value === "incoming" ? "Входящий" : value === "outgoing" ? "Исходящий" : value || "—";
+}
+
+function ownerTypeLabel(value) {
+  const map = {
+    1: "Лид",
+    2: "Сделка",
+    3: "Контакт",
+    4: "Компания",
+    31: "Смарт-процесс",
+  };
+  return map[Number(value)] || (value ? `CRM ${value}` : "—");
 }
 
 function autoTranscriptionMode() {
@@ -437,16 +465,12 @@ function collectScenarioPayload() {
     isDefault: el.scenarioIsDefault.checked,
     matchRules: {
       directions: el.scenarioDirection.value ? [el.scenarioDirection.value] : [],
-      managerIds: el.scenarioManagerIds.value
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .map((item) => Number(item))
-        .filter((item) => Number.isFinite(item) && item > 0),
-      subjectKeywords: el.scenarioKeywords.value
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean),
+      managerIds: parseNumericList(el.scenarioManagerIds.value),
+      entityTypeIds: parseNumericList(el.scenarioEntityTypeIds.value),
+      pipelineIds: parseNumericList(el.scenarioPipelineIds.value),
+      stageIds: parseTextList(el.scenarioStageIds.value),
+      lineNumbers: parseTextList(el.scenarioLineNumbers.value),
+      subjectKeywords: parseTextList(el.scenarioKeywords.value),
       minDurationSeconds: el.scenarioMinDuration.value.trim() === "" ? null : Number(el.scenarioMinDuration.value),
       maxDurationSeconds: el.scenarioMaxDuration.value.trim() === "" ? null : Number(el.scenarioMaxDuration.value),
     },
@@ -461,6 +485,10 @@ function resetScenarioForm() {
   el.scenarioCustomMetrics.value = "";
   el.scenarioDirection.value = "";
   el.scenarioManagerIds.value = "";
+  el.scenarioEntityTypeIds.value = "";
+  el.scenarioPipelineIds.value = "";
+  el.scenarioStageIds.value = "";
+  el.scenarioLineNumbers.value = "";
   el.scenarioKeywords.value = "";
   el.scenarioMinDuration.value = "";
   el.scenarioMaxDuration.value = "";
@@ -480,6 +508,10 @@ function applyScenarioToForm(scenario) {
   el.scenarioCustomMetrics.value = JSON.stringify(scenario.customMetrics || [], null, 2);
   el.scenarioDirection.value = scenario.matchRules?.directions?.[0] || "";
   el.scenarioManagerIds.value = (scenario.matchRules?.managerIds || []).join(", ");
+  el.scenarioEntityTypeIds.value = (scenario.matchRules?.entityTypeIds || []).join(", ");
+  el.scenarioPipelineIds.value = (scenario.matchRules?.pipelineIds || []).join(", ");
+  el.scenarioStageIds.value = (scenario.matchRules?.stageIds || []).join(", ");
+  el.scenarioLineNumbers.value = (scenario.matchRules?.lineNumbers || []).join(", ");
   el.scenarioKeywords.value = (scenario.matchRules?.subjectKeywords || []).join(", ");
   el.scenarioMinDuration.value = scenario.matchRules?.minDurationSeconds ?? "";
   el.scenarioMaxDuration.value = scenario.matchRules?.maxDurationSeconds ?? "";
@@ -497,6 +529,10 @@ function renderScenarioList() {
       if (scenario.matchRules?.directions?.length) tags.push(scenario.matchRules.directions.join(", "));
       const rules = [];
       if (scenario.matchRules?.managerIds?.length) rules.push(`менеджеры: ${scenario.matchRules.managerIds.join(", ")}`);
+      if (scenario.matchRules?.entityTypeIds?.length) rules.push(`сущности: ${scenario.matchRules.entityTypeIds.map((item) => ownerTypeLabel(item)).join(", ")}`);
+      if (scenario.matchRules?.pipelineIds?.length) rules.push(`воронки: ${scenario.matchRules.pipelineIds.join(", ")}`);
+      if (scenario.matchRules?.stageIds?.length) rules.push(`стадии: ${scenario.matchRules.stageIds.join(", ")}`);
+      if (scenario.matchRules?.lineNumbers?.length) rules.push(`линии: ${scenario.matchRules.lineNumbers.join(", ")}`);
       if (scenario.matchRules?.subjectKeywords?.length) rules.push(`ключи: ${scenario.matchRules.subjectKeywords.join(", ")}`);
       if (scenario.matchRules?.minDurationSeconds != null) rules.push(`от ${scenario.matchRules.minDurationSeconds} сек`);
       if (scenario.matchRules?.maxDurationSeconds != null) rules.push(`до ${scenario.matchRules.maxDurationSeconds} сек`);
@@ -616,7 +652,7 @@ function renderCalls() {
           <td><span class="status-pill ${status.className}">${status.label}</span></td>
           <td><select class="scenario-select" data-scenario-select="${call.id}">${scenarioOptions}</select></td>
           <td class="token-cell">${escapeHtml(totalTokens)}</td>
-          <td><div class="action-stack">${analysis ? `<button class="call-action" data-action="show" data-id="${call.id}">Показать</button>` : ""}<button class="call-action primary-action" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "Анализировать" : "Нет записи"}</button></div></td>
+          <td><div class="action-stack">${analysis ? `<button class="call-action" data-action="show" data-id="${call.id}">Показать</button>` : ""}${call.crmEntityUrl ? `<a class="call-action crm-link-button" href="${escapeHtml(call.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Карточка</a>` : ""}<button class="call-action primary-action" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "Анализировать" : "Нет записи"}</button></div></td>
         </tr>`;
     })
     .join("");
@@ -680,7 +716,9 @@ function renderAnalysis(analysis) {
       <div class="muted">${escapeHtml(callMetaLine(analysis))}</div>
       <p>${escapeHtml(resultExplanation)}</p>
       <p class="muted">Сценарий: ${escapeHtml(analysis.selectedScenarioName || "Автоподбор / ручной ввод")}</p>
+      <p class="muted">CRM: ${escapeHtml(analysis.ownerTypeLabel || "—")} #${escapeHtml(analysis.ownerId || "—")}</p>
       <p class="muted">Токены: ${escapeHtml(analysis.tokenUsage?.totalTokens ?? "—")} (транскрибация ${escapeHtml(analysis.tokenUsage?.transcriptionTokens ?? "—")}, анализ ${escapeHtml(analysis.tokenUsage?.analysisTotalTokens ?? "—")})</p>
+      ${analysis.crmEntityUrl ? `<p><a class="crm-link" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть карточку в Bitrix24</a></p>` : ""}
     </section>
     <section class="detail-block">
       <h3>Общий срез</h3>
@@ -1041,6 +1079,10 @@ async function analyzeOne(activityId) {
       managerName: call.managerName,
       direction: call.direction,
       durationSeconds: call.durationSeconds,
+      ownerId: call.ownerId,
+      ownerTypeId: call.ownerTypeId,
+      ownerTypeLabel: call.ownerTypeLabel,
+      crmEntityUrl: call.crmEntityUrl,
       selectedScenarioId: scenarioId || null,
       selectedScenarioName: selectedScenario?.name || "Автосценарий",
       state: "queued",
@@ -1082,6 +1124,10 @@ async function analyzeOne(activityId) {
       managerName: failedCall?.managerName || state.selectedAnalysis?.managerName || "",
       direction: failedCall?.direction || state.selectedAnalysis?.direction || "",
       durationSeconds: failedCall?.durationSeconds || state.selectedAnalysis?.durationSeconds || 0,
+      ownerId: failedCall?.ownerId || state.selectedAnalysis?.ownerId || null,
+      ownerTypeId: failedCall?.ownerTypeId || state.selectedAnalysis?.ownerTypeId || null,
+      ownerTypeLabel: failedCall?.ownerTypeLabel || state.selectedAnalysis?.ownerTypeLabel || "",
+      crmEntityUrl: failedCall?.crmEntityUrl || state.selectedAnalysis?.crmEntityUrl || "",
       selectedScenarioName:
         analysisOverride(activityId)?.selectedScenarioName ||
         effectiveAnalysis(failedCall || {})?.selectedScenarioName ||

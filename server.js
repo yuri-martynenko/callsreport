@@ -16,6 +16,7 @@ function envValue(name, fallback = "") {
 const PORT = Number(envValue("PORT", "3000"));
 const VIBE_API_URL = envValue("VIBE_API_URL", "https://vibecode.bitrix24.tech");
 const VIBE_API_KEY = envValue("VIBE_API_KEY", "");
+const BITRIX_PORTAL_URL = envValue("BITRIX_PORTAL_URL", "https://yurcentr41.bitrix24.ru").replace(/\/+$/, "");
 const AI_CHAT_MODEL = envValue("AI_CHAT_MODEL", "bitrix/bitrixgpt-5");
 const AI_TRANSCRIPTION_MODEL = envValue("AI_TRANSCRIPTION_MODEL", "bitrix/deepdml/faster-whisper-large-v3-turbo-ct2");
 const AI_TRANSCRIPTION_RETRIES = Math.max(1, Number(envValue("AI_TRANSCRIPTION_RETRIES", "3")));
@@ -166,6 +167,20 @@ function createId(prefix = "id") {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function sanitizeStringList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function sanitizePositiveIntList(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean)
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && item > 0);
+}
+
 function sanitizeScenario(input = {}) {
   const minDurationRaw = input.matchRules?.minDurationSeconds;
   const maxDurationRaw = input.matchRules?.maxDurationSeconds;
@@ -181,19 +196,13 @@ function sanitizeScenario(input = {}) {
       ? input.customMetrics.map((item) => String(item).trim()).filter(Boolean)
       : [],
     matchRules: {
-      directions: Array.isArray(input.matchRules?.directions)
-        ? input.matchRules.directions.map((item) => String(item)).filter(Boolean)
-        : [],
-      managerIds: Array.isArray(input.matchRules?.managerIds)
-        ? input.matchRules.managerIds
-            .map((item) => String(item ?? "").trim())
-            .filter(Boolean)
-            .map((item) => Number(item))
-            .filter((item) => Number.isFinite(item) && item > 0)
-        : [],
-      subjectKeywords: Array.isArray(input.matchRules?.subjectKeywords)
-        ? input.matchRules.subjectKeywords.map((item) => String(item).trim()).filter(Boolean)
-        : [],
+      directions: sanitizeStringList(input.matchRules?.directions),
+      managerIds: sanitizePositiveIntList(input.matchRules?.managerIds),
+      subjectKeywords: sanitizeStringList(input.matchRules?.subjectKeywords),
+      entityTypeIds: sanitizePositiveIntList(input.matchRules?.entityTypeIds),
+      pipelineIds: sanitizePositiveIntList(input.matchRules?.pipelineIds),
+      stageIds: sanitizeStringList(input.matchRules?.stageIds),
+      lineNumbers: sanitizeStringList(input.matchRules?.lineNumbers),
       minDurationSeconds: hasMinDuration && Number.isFinite(Number(minDurationRaw))
         ? Number(minDurationRaw)
         : null,
@@ -222,6 +231,13 @@ function matchesScenario(call, scenario) {
   const rules = scenario.matchRules || {};
   if (rules.directions?.length && !rules.directions.includes(call.direction)) return false;
   if (rules.managerIds?.length && !rules.managerIds.includes(call.managerId)) return false;
+  if (rules.entityTypeIds?.length && !rules.entityTypeIds.includes(Number(call.ownerTypeId))) return false;
+  if (rules.pipelineIds?.length && !rules.pipelineIds.includes(Number(call.pipelineId))) return false;
+  if (rules.stageIds?.length && !rules.stageIds.includes(String(call.stageId || ""))) return false;
+  if (rules.lineNumbers?.length) {
+    const lineValue = String(call.lineNumber || "").trim();
+    if (!lineValue || !rules.lineNumbers.includes(lineValue)) return false;
+  }
   if (
     Number.isFinite(rules.minDurationSeconds) &&
     Number(call.durationSeconds || 0) < Number(rules.minDurationSeconds)
@@ -245,13 +261,21 @@ function matchesScenario(call, scenario) {
 function scenarioPriority(call, scenario) {
   const rules = scenario.matchRules || {};
   let score = 0;
+  if (rules.entityTypeIds?.length) score += 5;
   if (rules.managerIds?.length) score += 4;
+  if (rules.pipelineIds?.length) score += 4;
+  if (rules.stageIds?.length) score += 4;
+  if (rules.lineNumbers?.length) score += 4;
   if (rules.subjectKeywords?.length) score += 3;
   if (rules.directions?.length) score += 2;
   if (Number.isFinite(rules.minDurationSeconds) || Number.isFinite(rules.maxDurationSeconds)) score += 1;
   if (scenario.isDefault) score -= 10;
+  if (call.ownerTypeId && rules.entityTypeIds?.includes(Number(call.ownerTypeId))) score += 2;
   if (call.direction && rules.directions?.includes(call.direction)) score += 1;
   if (call.managerId && rules.managerIds?.includes(call.managerId)) score += 2;
+  if (call.pipelineId && rules.pipelineIds?.includes(Number(call.pipelineId))) score += 2;
+  if (call.stageId && rules.stageIds?.includes(String(call.stageId))) score += 2;
+  if (call.lineNumber && rules.lineNumbers?.includes(String(call.lineNumber))) score += 2;
   return score;
 }
 
@@ -264,15 +288,12 @@ function pickScenarioForCall(call, scenarios, requestedScenarioId) {
     return scenarios.find((scenario) => String(scenario.id) === String(requestedScenarioId)) || null;
   }
 
-  const defaultScenario = getDefaultScenario(scenarios);
-  if (defaultScenario) return defaultScenario;
-
   const candidates = scenarios.filter((scenario) => scenario.autoApply && matchesScenario(call, scenario));
   if (candidates.length) {
     return candidates.sort((left, right) => scenarioPriority(call, right) - scenarioPriority(call, left))[0];
   }
 
-  return null;
+  return getDefaultScenario(scenarios);
 }
 
 function buildLatestRecordsMap(items = [], keySelector) {
@@ -861,6 +882,40 @@ function canonicalRiskLevel(value) {
   return "";
 }
 
+function extractPhoneNumber(text) {
+  const match = String(text || "").match(/(\+?\d[\d\s\-()]{8,}\d)/);
+  return match ? match[1].replace(/[^\d+]/g, "") : "";
+}
+
+function ownerTypeLabel(ownerTypeId) {
+  const mapping = {
+    1: "Лид",
+    2: "Сделка",
+    3: "Контакт",
+    4: "Компания",
+    31: "Смарт-процесс",
+  };
+  return mapping[Number(ownerTypeId)] || `CRM ${ownerTypeId || "—"}`;
+}
+
+function buildCrmEntityUrl(ownerTypeId, ownerId) {
+  const safeId = Number(ownerId || 0);
+  if (!safeId) return "";
+
+  switch (Number(ownerTypeId)) {
+    case 1:
+      return `${BITRIX_PORTAL_URL}/crm/lead/details/${safeId}/`;
+    case 2:
+      return `${BITRIX_PORTAL_URL}/crm/deal/details/${safeId}/`;
+    case 3:
+      return `${BITRIX_PORTAL_URL}/crm/contact/details/${safeId}/`;
+    case 4:
+      return `${BITRIX_PORTAL_URL}/crm/company/details/${safeId}/`;
+    default:
+      return "";
+  }
+}
+
 function normalizeCall(activity, managersById, analysis, failure, latestJob = null) {
   const manager = managersById.get(activity.responsibleId) || null;
   const rawFiles = activity?.FILES ?? activity?.files ?? activity?.recordings ?? [];
@@ -895,6 +950,7 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
   return {
     id: activity.id,
     subject: activity.subject,
+    clientPhone: extractPhoneNumber(activity.subject || ""),
     managerId: activity.responsibleId,
     managerName: manager?.fullName || `User #${activity.responsibleId}`,
     managerPosition: manager?.position || "",
@@ -906,6 +962,11 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
     status: activity.STATUS,
     ownerId: activity.ownerId,
     ownerTypeId: activity.ownerTypeId,
+    ownerTypeLabel: ownerTypeLabel(activity.ownerTypeId),
+    crmEntityUrl: buildCrmEntityUrl(activity.ownerTypeId, activity.ownerId),
+    pipelineId: null,
+    stageId: "",
+    lineNumber: "",
     missedCall: Boolean(activity.SETTINGS?.MISSED_CALL),
     hasRecording: files.length > 0,
     recordingFileId: files[0]?.id || null,
@@ -925,6 +986,10 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
           nextStep: analysis.nextStep || "",
           transcriptMeta: analysis.transcriptMeta || null,
           tokenUsage: analysis.tokenUsage || null,
+          ownerId: activity.ownerId,
+          ownerTypeId: activity.ownerTypeId,
+          ownerTypeLabel: ownerTypeLabel(activity.ownerTypeId),
+          crmEntityUrl: buildCrmEntityUrl(activity.ownerTypeId, activity.ownerId),
           selectedScenarioId: latestJob?.selectedScenarioId || analysis.selectedScenarioId || null,
           selectedScenarioName: latestJob?.selectedScenarioName || analysis.selectedScenarioName || "",
           errorMessage: isFailureCurrent ? failure.errorMessage : isJobError ? latestJob?.errorMessage || "" : "",
@@ -948,6 +1013,10 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
             nextStep: "",
             transcriptMeta: null,
             tokenUsage: null,
+            ownerId: activity.ownerId,
+            ownerTypeId: activity.ownerTypeId,
+            ownerTypeLabel: ownerTypeLabel(activity.ownerTypeId),
+            crmEntityUrl: buildCrmEntityUrl(activity.ownerTypeId, activity.ownerId),
             selectedScenarioId: latestJob?.selectedScenarioId || null,
             selectedScenarioName: latestJob?.selectedScenarioName || "",
             errorMessage: latestJob?.errorMessage || failure?.errorMessage || "",
