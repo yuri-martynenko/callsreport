@@ -584,6 +584,27 @@ function parseJsonSafely(text, context) {
   }
 }
 
+function extractUserPosition(user = {}) {
+  const directCandidates = [
+    user.workPosition,
+    user.WORK_POSITION,
+    user.work_position,
+    user.position,
+  ];
+
+  for (const value of directCandidates) {
+    const normalized = String(value || "").trim();
+    if (normalized) return normalized;
+  }
+
+  const customPositionEntry = Object.entries(user).find(([key, value]) => {
+    if (!/position|долж/i.test(String(key || ""))) return false;
+    return typeof value === "string" && value.trim();
+  });
+
+  return customPositionEntry ? String(customPositionEntry[1]).trim() : "";
+}
+
 async function vibeJson(pathname, options = {}) {
   requireConfig();
   const response = await fetch(`${VIBE_API_URL}${pathname}`, {
@@ -696,7 +717,7 @@ async function listManagers() {
     .map((user) => ({
       id: user.id,
       fullName: [user.lastName, user.name, user.secondName].filter(Boolean).join(" ").trim(),
-      position: user.workPosition || "",
+      position: extractUserPosition(user),
       departmentIds: user.departmentId || [],
     }))
     .sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));

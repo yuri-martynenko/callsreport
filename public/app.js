@@ -558,7 +558,10 @@ function renderCalls() {
       return `
         <tr class="${state.selectedAnalysis?.activityId === call.id ? "is-selected" : ""}">
           <td><div class="call-subject">${escapeHtml(call.subject)}</div><div class="call-meta">${formatDate(call.startTime)}</div></td>
-          <td><div>${escapeHtml(call.managerName || "—")}</div><div class="call-meta">${escapeHtml(call.managerPosition || "Без должности")}</div></td>
+          <td>
+            <div>${escapeHtml(call.managerName || "—")}</div>
+            ${call.managerPosition ? `<div class="call-meta">${escapeHtml(call.managerPosition)}</div>` : ""}
+          </td>
           <td>${localizeDirection(call.direction)}</td>
           <td>${formatDuration(call.durationSeconds)}</td>
           <td><span class="status-pill ${status.className}">${status.label}</span></td>
