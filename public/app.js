@@ -404,7 +404,7 @@ function collectScenarioPayload() {
         .map((item) => item.trim())
         .filter(Boolean)
         .map((item) => Number(item))
-        .filter((item) => Number.isFinite(item)),
+        .filter((item) => Number.isFinite(item) && item > 0),
       subjectKeywords: el.scenarioKeywords.value
         .split(",")
         .map((item) => item.trim())

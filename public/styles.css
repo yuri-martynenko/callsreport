@@ -126,11 +126,11 @@ tbody tr:hover, tbody tr.is-selected { background: rgba(255, 255, 255, 0.4); }
 .chart-host { min-height: 260px; }
 .chart-empty { min-height: 220px; display: grid; place-items: center; text-align: center; color: var(--muted); border-radius: 18px; background: rgba(255, 255, 255, 0.42); border: 1px dashed var(--line); }
 .bars-vertical { display: flex; flex-direction: column; gap: 14px; }
-.bar-row { display: grid; grid-template-columns: minmax(180px, 240px) 1fr minmax(92px, 120px); gap: 12px; align-items: center; }
+.bar-row { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 12px; align-items: center; }
 .bar-label { display: flex; flex-direction: column; gap: 4px; }
 .bar-track { position: relative; height: 14px; border-radius: 999px; background: rgba(29, 26, 22, 0.08); overflow: hidden; }
 .bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #1f6b5f, #3d8f81); }
-.bar-value { display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar-value { display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 72px; }
 .bar-value .muted { text-align: left; min-width: 46px; }
 .multi-select { position: relative; min-width: 0; }
 .multi-select[open] summary { border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }

@@ -1,17 +1,25 @@
 const express = require("express");
 const fs = require("fs/promises");
 const path = require("path");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
 
 const app = express();
+const execFileAsync = promisify(execFile);
 
-const PORT = Number(process.env.PORT || 3000);
-const VIBE_API_URL = process.env.VIBE_API_URL || "https://vibecode.bitrix24.tech";
-const VIBE_API_KEY = process.env.VIBE_API_KEY || "";
-const AI_CHAT_MODEL = process.env.AI_CHAT_MODEL || "bitrix/bitrixgpt-5";
-const AI_TRANSCRIPTION_MODEL =
-  process.env.AI_TRANSCRIPTION_MODEL || "bitrix/deepdml/faster-whisper-large-v3-turbo-ct2";
-const AI_TRANSCRIPTION_RETRIES = Math.max(1, Number(process.env.AI_TRANSCRIPTION_RETRIES || 3));
-const MAX_CALLS_PER_BATCH = Number(process.env.MAX_CALLS_PER_BATCH || 20);
+function envValue(name, fallback = "") {
+  const raw = process.env[name];
+  if (raw == null || raw === "") return fallback;
+  return String(raw).trim().replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1").trim();
+}
+
+const PORT = Number(envValue("PORT", "3000"));
+const VIBE_API_URL = envValue("VIBE_API_URL", "https://vibecode.bitrix24.tech");
+const VIBE_API_KEY = envValue("VIBE_API_KEY", "");
+const AI_CHAT_MODEL = envValue("AI_CHAT_MODEL", "bitrix/bitrixgpt-5");
+const AI_TRANSCRIPTION_MODEL = envValue("AI_TRANSCRIPTION_MODEL", "bitrix/deepdml/faster-whisper-large-v3-turbo-ct2");
+const AI_TRANSCRIPTION_RETRIES = Math.max(1, Number(envValue("AI_TRANSCRIPTION_RETRIES", "3")));
+const MAX_CALLS_PER_BATCH = Number(envValue("MAX_CALLS_PER_BATCH", "20"));
 
 const DATA_DIR = path.join(__dirname, "data");
 const ANALYSES_FILE = path.join(DATA_DIR, "analyses.json");
@@ -146,7 +154,11 @@ function sanitizeScenario(input = {}) {
         ? input.matchRules.directions.map((item) => String(item)).filter(Boolean)
         : [],
       managerIds: Array.isArray(input.matchRules?.managerIds)
-        ? input.matchRules.managerIds.map((item) => Number(item)).filter(Number.isFinite)
+        ? input.matchRules.managerIds
+            .map((item) => String(item ?? "").trim())
+            .filter(Boolean)
+            .map((item) => Number(item))
+            .filter((item) => Number.isFinite(item) && item > 0)
         : [],
       subjectKeywords: Array.isArray(input.matchRules?.subjectKeywords)
         ? input.matchRules.subjectKeywords.map((item) => String(item).trim()).filter(Boolean)
@@ -364,9 +376,55 @@ function buildTranscriptText(segments, plainText) {
   return String(plainText || "").trim();
 }
 
+function extractJsonObject(text) {
+  const source = String(text || "").trim();
+  if (!source) return {};
+
+  const fencedMatch = source.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fencedMatch ? fencedMatch[1].trim() : source;
+
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    const firstBrace = candidate.indexOf("{");
+    const lastBrace = candidate.lastIndexOf("}");
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      return JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
+    }
+    throw new Error("AI returned invalid JSON payload");
+  }
+}
+
+function extractCompletionContent(payload) {
+  const completion = payload?.data || payload || {};
+  const messageContent = completion?.choices?.[0]?.message?.content;
+
+  if (typeof messageContent === "string") {
+    return { completion, content: messageContent };
+  }
+
+  if (Array.isArray(messageContent)) {
+    const text = messageContent
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item?.type === "text") return item.text || "";
+        return "";
+      })
+      .join("")
+      .trim();
+    return { completion, content: text };
+  }
+
+  return { completion, content: "{}" };
+}
+
 function normalizeAnalysisResult(raw = {}) {
-  const overview = raw.overview || {};
-  const scriptAnalysis = raw.scriptAnalysis || {};
+  const source = raw.analysis || raw.result || raw.data || raw;
+  const overview = source.overview || source.callOverview || source.call_overview || {};
+  const scriptAnalysis =
+    source.scriptAnalysis || source.script_analysis || source.scenarioAnalysis || source.scenario_analysis || {};
+  const recommendations = source.recommendations || source.advice || source.suggestions || [];
+  const customMetrics = source.customMetrics || source.custom_metrics || source.metrics || [];
 
   return {
     overview: {
@@ -375,9 +433,9 @@ function normalizeAnalysisResult(raw = {}) {
       clientNeed: String(overview.clientNeed || "").trim(),
       riskLevel: normalizeRiskLevel(overview.riskLevel),
     },
-    summary: String(raw.summary || "").trim(),
-    recommendations: Array.isArray(raw.recommendations)
-      ? raw.recommendations.map((item) => String(item).trim()).filter(Boolean)
+    summary: String(source.summary || source.resume || source.overallSummary || "").trim(),
+    recommendations: Array.isArray(recommendations)
+      ? recommendations.map((item) => String(item).trim()).filter(Boolean)
       : [],
     scriptAnalysis: {
       overallScore: Number.isFinite(Number(scriptAnalysis.overallScore)) ? Number(scriptAnalysis.overallScore) : null,
@@ -398,15 +456,15 @@ function normalizeAnalysisResult(raw = {}) {
           }))
         : [],
     },
-    customMetrics: Array.isArray(raw.customMetrics)
-      ? raw.customMetrics.map((item) => ({
+    customMetrics: Array.isArray(customMetrics)
+      ? customMetrics.map((item) => ({
           name: String(item?.name || "").trim(),
           score: Number.isFinite(Number(item?.score)) ? Number(item.score) : null,
           status: normalizeCheckpointStatus(item?.status),
           comment: String(item?.comment || "").trim(),
         }))
       : [],
-    nextStep: String(raw.nextStep || "").trim(),
+    nextStep: String(source.nextStep || source.next_step || source.followUpAction || "").trim(),
   };
 }
 
@@ -472,7 +530,8 @@ async function localizeAnalysisToRussian(analysis) {
     }),
   });
 
-  return normalizeAnalysisResult(JSON.parse(payload?.data?.choices?.[0]?.message?.content || "{}"));
+  const { content } = extractCompletionContent(payload);
+  return normalizeAnalysisResult(extractJsonObject(content));
 }
 
 function mergeTokenUsage(transcriptionUsage, analysisUsage) {
@@ -548,6 +607,88 @@ async function vibeJson(pathname, options = {}) {
   return payload;
 }
 
+const PYTHON_ACTIVITY_SEARCH = `
+import json
+import sys
+import urllib.request
+
+base_url = sys.argv[1]
+api_key = sys.argv[2]
+payload = sys.argv[3]
+
+request = urllib.request.Request(
+    base_url + "/v1/activities/search",
+    data=payload.encode("utf-8"),
+    headers={
+        "X-Api-Key": api_key,
+        "Content-Type": "application/json",
+    },
+    method="POST",
+)
+
+with urllib.request.urlopen(request, timeout=60) as response:
+    sys.stdout.write(response.read().decode("utf-8"))
+`.trim();
+
+async function searchActivities(filter, limit, offset) {
+  requireConfig();
+  const requestBody = JSON.stringify({ filter, limit, offset });
+  const { stdout } = await execFileAsync(
+    "python3",
+    ["-c", PYTHON_ACTIVITY_SEARCH, VIBE_API_URL, VIBE_API_KEY, requestBody],
+    {
+      maxBuffer: 20 * 1024 * 1024,
+    },
+  );
+
+  const payload = parseJsonSafely(stdout, "Vibe API /v1/activities/search via python");
+  if (payload.success === false) {
+    const error = new Error(payload?.error?.message || payload?.message || "Activities search failed");
+    error.statusCode = 502;
+    error.payload = payload;
+    throw error;
+  }
+  return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+}
+
+function uniqueActivities(items = []) {
+  const map = new Map();
+  for (const item of items) {
+    if (!item?.id || map.has(String(item.id))) continue;
+    map.set(String(item.id), item);
+  }
+  return Array.from(map.values()).sort(
+    (left, right) => new Date(right.startTime || right.createdAt || 0) - new Date(left.startTime || left.createdAt || 0),
+  );
+}
+
+async function searchActivitiesByManagers(baseFilter, managerIds, limit, offset) {
+  const ids = Array.from(
+    new Set(
+      (managerIds || [])
+        .map((item) => Number(item))
+        .filter((item) => Number.isFinite(item) && item > 0),
+    ),
+  );
+  if (!ids.length) return [];
+
+  const perManagerLimit = Math.max(50, Math.min(limit + offset, 200));
+  const responses = await Promise.all(
+    ids.map((managerId) =>
+      searchActivities(
+        {
+          ...baseFilter,
+          responsibleId: managerId,
+        },
+        perManagerLimit,
+        0,
+      ),
+    ),
+  );
+
+  return uniqueActivities(responses.flat()).slice(offset, offset + limit);
+}
+
 async function listManagers() {
   const payload = await vibeJson("/v1/users?limit=500");
   return payload.data
@@ -566,7 +707,7 @@ function buildCallFilter(query) {
   const managerIds = String(query.managerIds || query.managerId || "")
     .split(",")
     .map((item) => Number(item.trim()))
-    .filter(Number.isFinite);
+    .filter((item) => Number.isFinite(item) && item > 0);
   const directions = String(query.directions || query.direction || "")
     .split(",")
     .map((item) => item.trim())
@@ -578,7 +719,6 @@ function buildCallFilter(query) {
     if (query.dateFrom) filter.startTime.$gte = new Date(`${query.dateFrom}T00:00:00`).toISOString();
     if (query.dateTo) filter.startTime.$lte = new Date(`${query.dateTo}T23:59:59`).toISOString();
   }
-  if (query.onlyRecorded === "true") filter.PROVIDER_ID = "VOXIMPLANT_CALL";
   return { filter, managerIds, directions };
 }
 
@@ -586,7 +726,7 @@ function applyClientSideCallFilters(calls, query) {
   const managerIds = String(query.managerIds || query.managerId || "")
     .split(",")
     .map((item) => Number(item.trim()))
-    .filter(Number.isFinite);
+    .filter((item) => Number.isFinite(item) && item > 0);
   const directions = String(query.directions || query.direction || "")
     .split(",")
     .map((item) => item.trim())
@@ -605,8 +745,9 @@ function applyClientSideCallFilters(calls, query) {
 function matchesSummaryFilters(item, query) {
   const managerIds = String(query.managerIds || query.managerId || "")
     .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
+    .map((value) => Number(String(value).trim()))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .map((value) => String(value));
   const directions = String(query.directions || query.direction || "")
     .split(",")
     .map((value) => value.trim())
@@ -638,7 +779,8 @@ function canonicalRiskLevel(value) {
 
 function normalizeCall(activity, managersById, analysis, failure) {
   const manager = managersById.get(activity.responsibleId) || null;
-  const files = Array.isArray(activity.FILES) ? activity.FILES : [];
+  const rawFiles = activity?.FILES ?? activity?.files ?? activity?.recordings ?? [];
+  const files = Array.isArray(rawFiles) ? rawFiles : [];
   const start = activity.startTime || activity.createdAt;
   const end = activity.endTime || activity.updatedAt || start;
   const durationSeconds = Math.max(0, Math.round((new Date(end) - new Date(start)) / 1000));
@@ -739,17 +881,26 @@ async function fetchCalls(query) {
   );
   const defaultScenario = getDefaultScenario(scenarioStore.scenarios || []);
 
-  const { filter } = buildCallFilter(query);
-  const payload = await vibeJson("/v1/activities/search", {
-    method: "POST",
-    body: JSON.stringify({
-      filter,
-      limit: Math.min(Number(query.limit || 100), 500),
-      offset: Number(query.offset || 0),
-    }),
-  });
+  const { filter, managerIds } = buildCallFilter(query);
+  const limit = Math.min(Number(query.limit || 500), 500);
+  const offset = Number(query.offset || 0);
 
-  let calls = payload.data.map((activity) => {
+  let rawActivities = [];
+  if (managerIds.length > 1) {
+    rawActivities = await searchActivitiesByManagers(filter, managerIds, limit, offset);
+  } else {
+    rawActivities = await searchActivities(filter, limit, offset);
+    if (!rawActivities.length && !managerIds.length) {
+      rawActivities = await searchActivitiesByManagers(
+        filter,
+        managers.map((manager) => manager.id),
+        limit,
+        offset,
+      );
+    }
+  }
+
+  let calls = rawActivities.map((activity) => {
     const analysis = analysesByActivityId.get(String(activity.id));
     const failure = failuresByActivityId.get(String(activity.id));
     const normalizedCall = normalizeCall(activity, managersById, analysis, failure);
@@ -922,10 +1073,12 @@ async function analyzeTranscript({ transcriptText, scriptChecklist, customMetric
     }),
   });
 
+  const { completion, content } = extractCompletionContent(payload);
+
   return {
-    analysis: normalizeAnalysisResult(JSON.parse(payload?.data?.choices?.[0]?.message?.content || "{}")),
-    usage: payload?.data?.usage || null,
-    model: payload?.data?.model || null,
+    analysis: normalizeAnalysisResult(extractJsonObject(content)),
+    usage: completion?.usage || null,
+    model: completion?.model || null,
   };
 }
 
@@ -967,7 +1120,13 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
   const existing = store.analyses.find(
     (item) => String(item.activityId) === String(activityId) && item.signature === signature,
   );
-  if (existing && analysisHasMeaningfulContent(existing)) return { cached: true, analysis: existing };
+  if (
+    existing &&
+    analysisHasMeaningfulContent(existing) &&
+    (Number(existing?.tokenUsage?.analysisTotalTokens || 0) > 0 || !existing?.tokenUsage)
+  ) {
+    return { cached: true, analysis: existing };
+  }
 
   try {
     const audio = await downloadCallAudio(call.recordingFileId);
