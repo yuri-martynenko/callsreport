@@ -687,6 +687,21 @@ function localizedStatusCountLabel(state) {
   return map[String(state || "").trim()] || String(state || "").trim();
 }
 
+function statusToneClass(state) {
+  const map = {
+    pending: "status-pending",
+    queued: "status-pending",
+    processing: "status-processing",
+    ready: "status-ready",
+    partial: "status-partial",
+    technical: "status-partial",
+    outdated: "status-warning",
+    error: "status-error",
+    missing: "status-missing",
+  };
+  return map[String(state || "").trim()] || "status-pending";
+}
+
 function callsStatusCounts(calls = []) {
   const order = ["pending", "queued", "processing", "ready", "partial", "technical", "outdated", "error", "missing"];
   const counts = new Map(order.map((key) => [key, 0]));
@@ -706,9 +721,18 @@ function renderReportMeta() {
   }
   if (el.callsBreakdown) {
     const items = callsStatusCounts(state.calls);
-    el.callsBreakdown.textContent = items.length
-      ? `По статусам: ${items.map((item) => `${localizedStatusCountLabel(item.key)} ${item.count}`).join(" · ")}`
-      : "По статусам: звонки ещё не загружены.";
+    el.callsBreakdown.innerHTML = items.length
+      ? `<div class="status-breakdown">${items
+          .map(
+            (item) => `
+              <span class="status-breakdown-item">
+                <span class="status-breakdown-label">${escapeHtml(localizedStatusCountLabel(item.key))}</span>
+                <span class="badge status-breakdown-badge ${statusToneClass(item.key)}">${escapeHtml(item.count)}</span>
+              </span>
+            `,
+          )
+          .join("")}</div>`
+      : '<div class="status-breakdown muted">Статусы звонков будут показаны после загрузки.</div>';
   }
 }
 
@@ -721,7 +745,9 @@ function renderPagination() {
 }
 function renderCalls() {
   hydrateSelectedAnalysis();
-  el.callsCount.textContent = String(state.calls.length);
+  if (el.callsCount) {
+    el.callsCount.textContent = String(state.calls.length);
+  }
   renderReportMeta();
   el.callsTable.innerHTML = pagedCalls()
     .map((call) => {
@@ -1129,7 +1155,6 @@ async function loadCalls() {
   }
   renderDashboard();
   ensureAnalysisPolling();
-  if (el.statusText) el.statusText.textContent = `Найдено звонков: ${data.total}`;
 }
 
 async function loadSummary() {
