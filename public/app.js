@@ -67,6 +67,8 @@ const el = {
   dashboardSummaryCards: document.getElementById("dashboardSummaryCards"),
   callsTable: document.getElementById("callsTable"),
   callsCount: document.getElementById("callsCount"),
+  callsBreakdown: document.getElementById("callsBreakdown"),
+  reportAutoMode: document.getElementById("reportAutoMode"),
   statusText: document.getElementById("statusText"),
   analysisDetail: document.getElementById("analysisDetail"),
   analysisState: document.getElementById("analysisState"),
@@ -660,6 +662,56 @@ function renderSummary() {
   renderSummaryInto(el.dashboardSummaryCards, state.summary);
 }
 
+function autoModeLabel(mode) {
+  const map = {
+    disabled: "Отключена",
+    all: "Все звонки",
+    incoming: "Все входящие",
+    outgoing: "Все исходящие",
+  };
+  return map[String(mode || "").trim()] || "Отключена";
+}
+
+function localizedStatusCountLabel(state) {
+  const map = {
+    pending: "ожидает анализа",
+    queued: "в очереди",
+    processing: "в работе",
+    ready: "готово",
+    partial: "частично",
+    technical: "технический результат",
+    outdated: "нужен повтор",
+    error: "ошибка",
+    missing: "нет записи",
+  };
+  return map[String(state || "").trim()] || String(state || "").trim();
+}
+
+function callsStatusCounts(calls = []) {
+  const order = ["pending", "queued", "processing", "ready", "partial", "technical", "outdated", "error", "missing"];
+  const counts = new Map(order.map((key) => [key, 0]));
+  for (const call of calls) {
+    const analysis = effectiveAnalysis(call);
+    const state = String(analysis?.state || (!call.hasRecording ? "missing" : "pending"));
+    counts.set(state, (counts.get(state) || 0) + 1);
+  }
+  return order
+    .map((key) => ({ key, count: counts.get(key) || 0 }))
+    .filter((item) => item.count > 0);
+}
+
+function renderReportMeta() {
+  if (el.reportAutoMode) {
+    el.reportAutoMode.textContent = `Автоматическая расшифровка: ${autoModeLabel(state.settings?.autoTranscriptionMode)}`;
+  }
+  if (el.callsBreakdown) {
+    const items = callsStatusCounts(state.calls);
+    el.callsBreakdown.textContent = items.length
+      ? `По статусам: ${items.map((item) => `${localizedStatusCountLabel(item.key)} ${item.count}`).join(" · ")}`
+      : "По статусам: звонки ещё не загружены.";
+  }
+}
+
 function renderPagination() {
   const totalPages = Math.max(1, Math.ceil(state.calls.length / PAGE_SIZE));
   if (state.page > totalPages) state.page = totalPages;
@@ -670,6 +722,7 @@ function renderPagination() {
 function renderCalls() {
   hydrateSelectedAnalysis();
   el.callsCount.textContent = String(state.calls.length);
+  renderReportMeta();
   el.callsTable.innerHTML = pagedCalls()
     .map((call) => {
       const analysis = effectiveAnalysis(call);
@@ -695,7 +748,7 @@ function renderCalls() {
           <td><span class="status-pill ${status.className}">${status.label}</span></td>
           <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}">${scenarioOptions}</select></td>
           <td class="token-cell">${escapeHtml(totalTokens)}</td>
-          <td class="actions-cell"><div class="action-stack">${call.crmEntityUrl ? `<a class="call-action crm-link-button" href="${escapeHtml(call.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Карточка</a>` : ""}<button class="call-action primary-action" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "Анализировать" : "Нет записи"}</button></div></td>
+          <td class="actions-cell"><div class="action-stack"><button class="call-action primary-action" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "Анализировать" : "Нет записи"}</button></div></td>
         </tr>`;
     })
     .join("");
@@ -1011,6 +1064,7 @@ function applySettings(settings) {
   if (selectedMode) selectedMode.checked = true;
   state.settingsDirty = false;
   updateSaveSettingsState();
+  renderReportMeta();
 }
 
 async function loadSettings() {

@@ -59,19 +59,13 @@
                 <div class="section-head">
                   <div class="section-head-main">
                     <h2>Список звонков</h2>
+                    <div id="reportAutoMode" class="section-note muted">Автоматическая расшифровка: Отключена</div>
+                    <div id="callsBreakdown" class="section-note muted">Статусы звонков будут показаны после загрузки.</div>
                   </div>
                   <span id="callsCount" class="badge">0</span>
                 </div>
 
                 <div class="filter-toolbar">
-                  <label class="filter-field filter-field-wide filter-manager">
-                    <span>Менеджеры</span>
-                    <details class="multi-select" id="managerIdsDropdown">
-                      <summary><span id="managerIdsLabel">Все менеджеры</span></summary>
-                      <div id="managerIdsOptions" class="multi-select-menu"></div>
-                    </details>
-                  </label>
-
                   <label class="filter-field filter-date-from">
                     <span>Период с</span>
                     <input id="dateFrom" type="date" />
@@ -80,6 +74,14 @@
                   <label class="filter-field filter-date-to">
                     <span>Период по</span>
                     <input id="dateTo" type="date" />
+                  </label>
+
+                  <label class="filter-field filter-field-wide filter-manager">
+                    <span>Менеджеры</span>
+                    <details class="multi-select" id="managerIdsDropdown">
+                      <summary><span id="managerIdsLabel">Все менеджеры</span></summary>
+                      <div id="managerIdsOptions" class="multi-select-menu"></div>
+                    </details>
                   </label>
 
                   <label class="filter-field filter-direction">
