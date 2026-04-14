@@ -105,6 +105,7 @@ button.accent { background: var(--accent); color: white; }
 table { width: 100%; border-collapse: collapse; table-layout: auto; }
 th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+.call-column { width: 34%; min-width: 300px; }
 tbody tr:hover, tbody tr.is-selected { background: rgba(255, 255, 255, 0.4); }
 tbody tr.is-clickable { cursor: pointer; }
 .call-subject { font-weight: 600; }
@@ -118,7 +119,17 @@ tbody tr.is-clickable { cursor: pointer; }
 .status-processing { background: rgba(36, 89, 166, 0.14); color: var(--info); }
 .status-missing { background: rgba(139, 61, 44, 0.12); color: var(--danger); }
 .action-stack { display: flex; gap: 8px; flex-wrap: wrap; }
+.call-action-icon {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 18px;
+  line-height: 1;
+}
 .scenario-cell { min-width: 220px; }
+.compliance-cell { min-width: 84px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .scenario-select { width: 100%; min-width: 0; padding: 8px 10px; border-radius: 12px; }
 .actions-cell { white-space: nowrap; }
 .crm-link {
@@ -135,6 +146,11 @@ tbody tr.is-clickable { cursor: pointer; }
 .analysis-detail { display: flex; flex-direction: column; gap: 14px; }
 .analysis-detail.empty { color: var(--muted); min-height: 220px; justify-content: center; }
 .detail-block { background: rgba(255, 255, 255, 0.5); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+.next-step-block {
+  background: linear-gradient(135deg, rgba(31, 107, 95, 0.12), rgba(255, 255, 255, 0.72));
+  border-color: rgba(31, 107, 95, 0.2);
+}
+.next-step-block p { margin: 8px 0 0; font-size: 16px; line-height: 1.5; }
 .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .pill { padding: 6px 10px; border-radius: 999px; background: rgba(139, 61, 44, 0.1); font-size: 12px; }
 .transcript-text { white-space: pre-wrap; line-height: 1.45; margin: 0; }

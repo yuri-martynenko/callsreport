@@ -1688,6 +1688,7 @@ function summarizeAnalyses(analyses) {
     negative: 0,
     mixed: 0,
     highRisk: 0,
+    totalTokens: 0,
     managers: {},
   };
 
@@ -1698,6 +1699,7 @@ function summarizeAnalyses(analyses) {
     const sentiment = canonicalSentiment(item?.overview?.sentiment);
     if (sentiment && Object.hasOwn(totals, sentiment)) totals[sentiment] += 1;
     if (canonicalRiskLevel(item?.overview?.riskLevel) === "high") totals.highRisk += 1;
+    totals.totalTokens += Number(item?.tokenUsage?.totalTokens || 0);
     if (typeof item?.scriptAnalysis?.overallScore === "number") {
       scoreSum += item.scriptAnalysis.overallScore;
       scoreCount += 1;

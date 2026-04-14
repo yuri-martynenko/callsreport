@@ -721,6 +721,7 @@ function renderReportMeta() {
   }
   if (el.callsBreakdown) {
     const items = callsStatusCounts(state.calls);
+    const totalTokens = Number(state.summary?.totalTokens || 0);
     el.callsBreakdown.innerHTML = items.length
       ? `<div class="status-breakdown">${items
           .map(
@@ -731,7 +732,12 @@ function renderReportMeta() {
               </span>
             `,
           )
-          .join("")}</div>`
+          .join("")}
+          <span class="status-breakdown-item status-breakdown-tokens">
+            <span class="status-breakdown-label">токены</span>
+            <span class="badge status-breakdown-badge">${escapeHtml(totalTokens)}</span>
+          </span>
+        </div>`
       : '<div class="status-breakdown muted">Статусы звонков будут показаны после загрузки.</div>';
   }
 }
@@ -762,9 +768,12 @@ function renderCalls() {
         ),
       ].join("");
       const totalTokens = analysis?.tokenUsage?.totalTokens ?? "—";
+      const compliancePercent = status.key === "ready" && Number.isFinite(Number(analysis?.scriptAnalysis?.compliancePercent))
+        ? `${analysis.scriptAnalysis.compliancePercent}%`
+        : "—";
       return `
         <tr class="${String(state.selectedCallId || state.selectedAnalysis?.activityId || "") === String(call.id) ? "is-selected" : ""} is-clickable" data-action="select-call" data-id="${call.id}">
-          <td><div class="call-subject">${escapeHtml(call.subject)}</div><div class="call-meta">${formatDate(call.startTime)}</div></td>
+          <td class="call-column"><div class="call-subject">${escapeHtml(call.subject)}</div><div class="call-meta">${formatDate(call.startTime)}</div></td>
           <td>
             <div>${escapeHtml(call.managerName || "—")}</div>
             ${call.managerPosition ? `<div class="call-meta">${escapeHtml(call.managerPosition)}</div>` : ""}
@@ -772,9 +781,10 @@ function renderCalls() {
           <td>${localizeDirection(call.direction)}</td>
           <td>${formatDuration(call.durationSeconds)}</td>
           <td><span class="status-pill ${status.className}">${status.label}</span></td>
+          <td class="compliance-cell">${escapeHtml(compliancePercent)}</td>
           <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}">${scenarioOptions}</select></td>
           <td class="token-cell">${escapeHtml(totalTokens)}</td>
-          <td class="actions-cell"><div class="action-stack"><button class="call-action primary-action" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "Анализировать" : "Нет записи"}</button></div></td>
+          <td class="actions-cell"><div class="action-stack"><button class="call-action call-action-icon primary-action" title="${call.hasRecording ? "Анализировать звонок" : "Нет записи"}" aria-label="${call.hasRecording ? "Анализировать звонок" : "Нет записи"}" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "▶" : "×"}</button></div></td>
         </tr>`;
     })
     .join("");
@@ -864,7 +874,10 @@ function renderAnalysis(analysis) {
     <section class="detail-block">
       <h3>Индивидуальные параметры</h3>
       <ul class="flat">${(analysis.customMetrics || []).map((item) => `<li><strong>${escapeHtml(localizeFreeText(item.name))}</strong>: ${escapeHtml(item.score)} (${escapeHtml(localizeCheckpointStatus(item.status))}) — ${escapeHtml(localizeFreeText(item.comment))}</li>`).join("") || "<li>Индивидуальные параметры ещё не заполнены</li>"}</ul>
-      <p class="muted">Следующий шаг: ${escapeHtml(localizeFreeText(analysis.nextStep))}</p>
+    </section>
+    <section class="detail-block next-step-block">
+      <h3>Следующий шаг</h3>
+      <p>${escapeHtml(localizeFreeText(analysis.nextStep || "Следующий шаг не определён"))}</p>
     </section>
     <section class="detail-block">
       <h3>Транскрипт</h3>
