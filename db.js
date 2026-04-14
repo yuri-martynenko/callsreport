@@ -29,6 +29,23 @@ let sqlPromise = null;
 let dbPromise = null;
 let writeChain = Promise.resolve();
 
+const DEFAULT_SCENARIO_FIXED = {
+  id: "default-sales",
+  name: "\u0411\u0430\u0437\u043e\u0432\u044b\u0439 \u0441\u0446\u0435\u043d\u0430\u0440\u0438\u0439 \u043f\u0440\u043e\u0434\u0430\u0436",
+  description: "\u0423\u043d\u0438\u0432\u0435\u0440\u0441\u0430\u043b\u044c\u043d\u044b\u0439 \u0441\u0446\u0435\u043d\u0430\u0440\u0438\u0439 \u0434\u043b\u044f \u043f\u0435\u0440\u0432\u0438\u0447\u043d\u044b\u0445 \u043f\u0440\u043e\u0434\u0430\u0436 \u0438 \u043a\u043e\u043d\u0441\u0443\u043b\u044c\u0442\u0430\u0446\u0438\u0439.",
+  scriptChecklist:
+    "\u041f\u0440\u043e\u0432\u0435\u0440\u044c \u0437\u0432\u043e\u043d\u043e\u043a \u043f\u043e \u044d\u0442\u0430\u043f\u0430\u043c: \u043f\u0440\u0438\u0432\u0435\u0442\u0441\u0442\u0432\u0438\u0435, \u0432\u044b\u044f\u0432\u043b\u0435\u043d\u0438\u0435 \u043f\u043e\u0442\u0440\u0435\u0431\u043d\u043e\u0441\u0442\u0438, \u043f\u0440\u0435\u0437\u0435\u043d\u0442\u0430\u0446\u0438\u044f \u0440\u0435\u0448\u0435\u043d\u0438\u044f, \u0440\u0430\u0431\u043e\u0442\u0430 \u0441 \u0432\u043e\u0437\u0440\u0430\u0436\u0435\u043d\u0438\u044f\u043c\u0438, \u0444\u0438\u043a\u0441\u0430\u0446\u0438\u044f \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0433\u043e \u0448\u0430\u0433\u0430.",
+  customMetrics: [
+    "\u042d\u043c\u043f\u0430\u0442\u0438\u044f",
+    "\u0427\u0435\u0442\u043a\u043e\u0441\u0442\u044c \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0433\u043e \u0448\u0430\u0433\u0430",
+    "\u0420\u0430\u0431\u043e\u0442\u0430 \u0441 \u0432\u043e\u0437\u0440\u0430\u0436\u0435\u043d\u0438\u044f\u043c\u0438",
+  ],
+  matchRules: {},
+  autoApply: true,
+  isDefault: true,
+  updatedAt: new Date().toISOString(),
+};
+
 function metadataValue(db, key) {
   const statement = db.prepare("SELECT value FROM metadata WHERE key = ?");
   try {
@@ -70,6 +87,11 @@ function tableCount(db, tableName) {
   } finally {
     statement.free();
   }
+}
+
+function looksLikeMojibake(value) {
+  const text = String(value || "");
+  return text.includes("Ð") || text.includes("Ñ") || text.includes("Р");
 }
 
 function normalizeAnalysisStore(store = {}) {
@@ -311,7 +333,23 @@ async function migrateLegacyDataIfNeeded(db) {
 
 function ensureDefaultRows(db) {
   if (tableCount(db, "scenarios") === 0) {
-    writeScenarioStoreToDb(db, { scenarios: [DEFAULT_SCENARIO] });
+    writeScenarioStoreToDb(db, { scenarios: [DEFAULT_SCENARIO_FIXED] });
+  } else {
+    const store = readScenarioStoreFromDb(db);
+    let changed = false;
+    const repaired = store.scenarios.map((scenario) => {
+      if (scenario.id !== DEFAULT_SCENARIO_FIXED.id) return scenario;
+      if (!looksLikeMojibake(scenario.name) && !looksLikeMojibake(scenario.description)) return scenario;
+      changed = true;
+      return {
+        ...scenario,
+        ...DEFAULT_SCENARIO_FIXED,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    if (changed) {
+      writeScenarioStoreToDb(db, { scenarios: repaired, updatedAt: store.updatedAt });
+    }
   }
   if (tableCount(db, "settings") === 0) {
     writeSettingsStoreToDb(db, { settings: { autoTranscriptionMode: "disabled" } });
