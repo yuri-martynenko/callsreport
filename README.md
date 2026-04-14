@@ -86,6 +86,7 @@ APP_LEGACY_DATA_DIR=/var/lib/callsreport/bootstrap-data
 - [Внутреннее API](./docs/api.md)
 - [Деплой](./docs/deployment.md)
 - [Эксплуатация](./docs/operations.md)
+- [Правила ведения документации](./docs/documentation-policy.md)
 - [Архитектурные решения](./docs/adr/001-use-persistent-db.md)
 
 ## Важное
