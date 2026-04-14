@@ -1,8 +1,17 @@
 const express = require("express");
-const fs = require("fs/promises");
 const path = require("path");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
+const {
+  ensurePersistence,
+  readAnalysisStore: persistenceReadAnalysisStore,
+  writeAnalysisStore: persistenceWriteAnalysisStore,
+  mutateAnalysisStore: persistenceMutateAnalysisStore,
+  readScenarioStore: persistenceReadScenarioStore,
+  writeScenarioStore: persistenceWriteScenarioStore,
+  readSettingsStore: persistenceReadSettingsStore,
+  writeSettingsStore: persistenceWriteSettingsStore,
+} = require("./db");
 
 const app = express();
 const execFileAsync = promisify(execFile);
@@ -27,18 +36,12 @@ const ANALYSIS_AUTO_SCAN_BATCH = Math.max(1, Number(envValue("ANALYSIS_AUTO_SCAN
 const VIBE_REQUEST_TIMEOUT_MS = Math.max(5000, Number(envValue("VIBE_REQUEST_TIMEOUT_MS", "60000")));
 const AI_TRANSCRIPTION_TIMEOUT_MS = Math.max(15000, Number(envValue("AI_TRANSCRIPTION_TIMEOUT_MS", "180000")));
 
-const DATA_DIR = path.join(__dirname, "data");
-const ANALYSES_FILE = path.join(DATA_DIR, "analyses.json");
-const SCENARIOS_FILE = path.join(DATA_DIR, "scenarios.json");
-const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
-
 const ACTIVE_ANALYSIS_JOB_STATUSES = new Set(["queued", "processing"]);
 const TERMINAL_ANALYSIS_JOB_STATUSES = new Set(["ready", "partial", "technical", "error"]);
 
 let queueLoopActive = false;
 let queueRunningCount = 0;
 let queueScanTimer = null;
-let analysisStoreMutation = Promise.resolve();
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -163,6 +166,39 @@ async function writeSettingsStore(store) {
   await ensureDataFiles();
   store.updatedAt = new Date().toISOString();
   await fs.writeFile(SETTINGS_FILE, JSON.stringify(store, null, 2), "utf8");
+}
+
+// Override legacy JSON storage with persistent SQLite-backed storage.
+async function ensureDataFiles() {
+  await ensurePersistence();
+}
+
+async function readAnalysisStore() {
+  return persistenceReadAnalysisStore();
+}
+
+async function writeAnalysisStore(store) {
+  return persistenceWriteAnalysisStore(store);
+}
+
+async function mutateAnalysisStore(mutator) {
+  return persistenceMutateAnalysisStore(mutator);
+}
+
+async function readScenarioStore() {
+  return persistenceReadScenarioStore();
+}
+
+async function writeScenarioStore(store) {
+  return persistenceWriteScenarioStore(store);
+}
+
+async function readSettingsStore() {
+  return persistenceReadSettingsStore();
+}
+
+async function writeSettingsStore(store) {
+  return persistenceWriteSettingsStore(store);
 }
 
 function createId(prefix = "id") {
