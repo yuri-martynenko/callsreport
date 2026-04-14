@@ -24,6 +24,8 @@ const MAX_CALLS_PER_BATCH = Number(envValue("MAX_CALLS_PER_BATCH", "20"));
 const ANALYSIS_QUEUE_CONCURRENCY = Math.max(1, Number(envValue("ANALYSIS_QUEUE_CONCURRENCY", "1")));
 const ANALYSIS_AUTO_SCAN_INTERVAL_MS = Math.max(15000, Number(envValue("ANALYSIS_AUTO_SCAN_INTERVAL_MS", "30000")));
 const ANALYSIS_AUTO_SCAN_BATCH = Math.max(1, Number(envValue("ANALYSIS_AUTO_SCAN_BATCH", "10")));
+const VIBE_REQUEST_TIMEOUT_MS = Math.max(5000, Number(envValue("VIBE_REQUEST_TIMEOUT_MS", "60000")));
+const AI_TRANSCRIPTION_TIMEOUT_MS = Math.max(15000, Number(envValue("AI_TRANSCRIPTION_TIMEOUT_MS", "180000")));
 
 const DATA_DIR = path.join(__dirname, "data");
 const ANALYSES_FILE = path.join(DATA_DIR, "analyses.json");
@@ -668,6 +670,27 @@ function parseJsonSafely(text, context) {
   }
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = VIBE_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: options.signal || controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+      timeoutError.statusCode = 504;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function extractUserPosition(user = {}) {
   const directCandidates = [
     user.workPosition,
@@ -691,13 +714,13 @@ function extractUserPosition(user = {}) {
 
 async function vibeJson(pathname, options = {}) {
   requireConfig();
-  const response = await fetch(`${VIBE_API_URL}${pathname}`, {
+  const response = await fetchWithTimeout(`${VIBE_API_URL}${pathname}`, {
     ...options,
     headers: vibeHeaders({
       "Content-Type": "application/json",
       ...(options.headers || {}),
     }),
-  });
+  }, VIBE_REQUEST_TIMEOUT_MS);
 
   const text = await response.text();
   const payload = parseJsonSafely(text, `Vibe API ${pathname}`);
@@ -1138,9 +1161,9 @@ async function fetchCalls(query) {
 
 async function downloadCallAudio(fileId) {
   requireConfig();
-  const response = await fetch(`${VIBE_API_URL}/v1/files/${fileId}/download`, {
+  const response = await fetchWithTimeout(`${VIBE_API_URL}/v1/files/${fileId}/download`, {
     headers: vibeHeaders(),
-  });
+  }, VIBE_REQUEST_TIMEOUT_MS);
   if (!response.ok) throw new Error(`Failed to download audio file ${fileId}`);
 
   const arrayBuffer = await response.arrayBuffer();
@@ -1155,33 +1178,41 @@ async function downloadCallAudio(fileId) {
 async function transcribeAudio(audio) {
   requireConfig();
   let lastError = null;
+  const transcriptionEndpoints = ["/v1/audio/transcriptions", "/v1/ai/audio/transcriptions"];
 
   for (let attempt = 1; attempt <= AI_TRANSCRIPTION_RETRIES; attempt += 1) {
     try {
-      const form = new FormData();
-      form.append("response_format", "verbose_json");
-      form.append("model", AI_TRANSCRIPTION_MODEL);
-      form.append("language", "ru");
-      form.append("file", new Blob([audio.buffer], { type: audio.contentType }), audio.fileName);
+      for (const endpoint of transcriptionEndpoints) {
+        const form = new FormData();
+        form.append("response_format", "verbose_json");
+        form.append("model", AI_TRANSCRIPTION_MODEL);
+        form.append("language", "ru");
+        form.append("file", new Blob([audio.buffer], { type: audio.contentType }), audio.fileName);
 
-      const response = await fetch(`${VIBE_API_URL}/v1/ai/audio/transcriptions`, {
-        method: "POST",
-        headers: vibeHeaders(),
-        body: form,
-      });
+        const response = await fetchWithTimeout(`${VIBE_API_URL}${endpoint}`, {
+          method: "POST",
+          headers: vibeHeaders(),
+          body: form,
+        }, AI_TRANSCRIPTION_TIMEOUT_MS);
 
-      const text = await response.text();
-      const payload = parseJsonSafely(text, "Audio transcription");
-      if (!response.ok) {
-        const error = new Error(payload?.error?.message || "Audio transcription failed");
-        error.statusCode = response.status || 500;
-        throw error;
+        const text = await response.text();
+        const payload = parseJsonSafely(text, "Audio transcription");
+        if (!response.ok) {
+          const error = new Error(payload?.error?.message || "Audio transcription failed");
+          error.statusCode = response.status || 500;
+          error.endpoint = endpoint;
+          if ([404, 405].includes(response.status) && endpoint !== transcriptionEndpoints[transcriptionEndpoints.length - 1]) {
+            lastError = error;
+            continue;
+          }
+          throw error;
+        }
+        return payload;
       }
-      return payload;
     } catch (error) {
       lastError = error;
       const retryable =
-        Number(error.statusCode || 0) >= 500 || /internalservererror|internal server error|500/i.test(String(error.message || ""));
+        Number(error.statusCode || 0) >= 500 || /internalservererror|internal server error|500|timed out/i.test(String(error.message || ""));
       if (!retryable || attempt >= AI_TRANSCRIPTION_RETRIES) break;
       await delay(1200 * attempt);
     }
