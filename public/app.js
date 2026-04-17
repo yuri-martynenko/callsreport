@@ -368,17 +368,38 @@ function localizeFreeText(value) {
   const map = {
     sale: "Продажа",
     success: "Успех",
+    successful_sale: "Успешная продажа",
+    sale_completed: "Продажа завершена",
+    deal_closed: "Сделка закрыта",
     follow_up: "Нужен повторный контакт",
     "follow-up": "Нужен повторный контакт",
+    followup: "Нужен повторный контакт",
+    follow_up_needed: "Нужен повторный контакт",
     callback: "Перезвон",
+    call_back: "Перезвон",
     consultation: "Консультация",
+    consult: "Консультация",
     no_answer: "Не удалось связаться",
+    no_response: "Не удалось связаться",
+    unreachable: "Не удалось связаться",
     objection: "Есть возражения",
     price_objection: "Возражение по цене",
+    price_concern: "Возражение по цене",
     interested: "Заинтересован",
     not_interested: "Не заинтересован",
     qualified_lead: "Квалифицированный лид",
     unqualified_lead: "Неквалифицированный лид",
+    voicemail: "Оставлено голосовое сообщение",
+    needs_follow_up: "Требуется повторный контакт",
+    pending_decision: "Клиенту нужно время на решение",
+    wrong_number: "Неверный номер",
+    technical_issue: "Техническая проблема",
+    issue_resolved: "Вопрос решён",
+    needs_manager_follow_up: "Нужен повторный контакт менеджера",
+    client_requests_proposal: "Клиент ожидает предложение",
+    client_needs_information: "Клиенту нужна дополнительная информация",
+    warm_lead: "Тёплый лид",
+    cold_lead: "Холодный лид",
   };
 
   return map[normalized.toLowerCase()] || normalized;
@@ -838,6 +859,10 @@ function renderAnalysis(analysis) {
   el.analysisDetail.className = "analysis-detail";
   const resultExplanation = analysis.summary
     ? analysis.summary
+    : analysis.processingNotes?.structuredAnalysisErrorMessage
+      ? `Транскрибация получена, но этап AI-разбора завершился технической ошибкой: ${analysis.processingNotes.structuredAnalysisErrorMessage}`
+    : analysis.processingNotes?.structuredResultEmpty
+      ? "Транскрибация получена, но структурированный AI-разбор вернулся пустым. Сохранён частичный результат звонка: транскрипт доступен, повторный анализ можно запустить позже."
     : analysis.transcriptText
       ? "Полный AI-разбор пока не сформирован: сохранилась транскрибация, но резюме и оценка сценария не были получены. Обычно помогает повторный анализ звонка."
       : "Результат анализа пока не заполнен. Попробуйте повторно запустить анализ звонка.";
@@ -1156,7 +1181,7 @@ async function loadCalls() {
   for (const call of state.calls) {
     const override = analysisOverride(call.id);
     if (!override) continue;
-    if (call.analysis?.state && call.analysis.state !== "pending") {
+    if (call.analysis?.state && call.analysis.state !== override.state) {
       clearAnalysisOverride(call.id);
     }
   }

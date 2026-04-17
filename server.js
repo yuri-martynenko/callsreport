@@ -453,6 +453,50 @@ function normalizeCheckpointStatus(value) {
   return map[String(value || "").toLowerCase()] || value || "";
 }
 
+function normalizeFreeTextValue(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+
+  const map = {
+    sale: "Продажа",
+    success: "Успех",
+    successful_sale: "Успешная продажа",
+    sale_completed: "Продажа завершена",
+    deal_closed: "Сделка закрыта",
+    follow_up: "Нужен повторный контакт",
+    "follow-up": "Нужен повторный контакт",
+    followup: "Нужен повторный контакт",
+    follow_up_needed: "Нужен повторный контакт",
+    callback: "Перезвон",
+    call_back: "Перезвон",
+    consultation: "Консультация",
+    consult: "Консультация",
+    no_answer: "Не удалось связаться",
+    no_response: "Не удалось связаться",
+    unreachable: "Не удалось связаться",
+    objection: "Есть возражения",
+    price_objection: "Возражение по цене",
+    price_concern: "Возражение по цене",
+    interested: "Заинтересован",
+    not_interested: "Не заинтересован",
+    qualified_lead: "Квалифицированный лид",
+    unqualified_lead: "Неквалифицированный лид",
+    voicemail: "Оставлено голосовое сообщение",
+    needs_follow_up: "Требуется повторный контакт",
+    pending_decision: "Клиенту нужно время на решение",
+    wrong_number: "Неверный номер",
+    technical_issue: "Техническая проблема",
+    issue_resolved: "Вопрос решён",
+    needs_manager_follow_up: "Нужен повторный контакт менеджера",
+    client_requests_proposal: "Клиент ожидает предложение",
+    client_needs_information: "Клиенту нужна дополнительная информация",
+    warm_lead: "Тёплый лид",
+    cold_lead: "Холодный лид",
+  };
+
+  return map[normalized.toLowerCase()] || normalized;
+}
+
 function buildSpeakerRoles(segments, call) {
   const labels = [];
   for (const segment of segments) {
@@ -550,13 +594,13 @@ function normalizeAnalysisResult(raw = {}) {
   return {
     overview: {
       sentiment: normalizeSentiment(overview.sentiment),
-      callOutcome: String(overview.callOutcome || overview.outcome || "").trim(),
-      clientNeed: String(overview.clientNeed || "").trim(),
+      callOutcome: normalizeFreeTextValue(overview.callOutcome || overview.outcome || ""),
+      clientNeed: normalizeFreeTextValue(overview.clientNeed || ""),
       riskLevel: normalizeRiskLevel(overview.riskLevel),
     },
-    summary: String(source.summary || source.resume || source.overallSummary || "").trim(),
+    summary: normalizeFreeTextValue(source.summary || source.resume || source.overallSummary || ""),
     recommendations: Array.isArray(recommendations)
-      ? recommendations.map((item) => String(item).trim()).filter(Boolean)
+      ? recommendations.map((item) => normalizeFreeTextValue(item)).filter(Boolean)
       : [],
     scriptAnalysis: {
       overallScore: Number.isFinite(Number(scriptAnalysis.overallScore)) ? Number(scriptAnalysis.overallScore) : null,
@@ -564,28 +608,28 @@ function normalizeAnalysisResult(raw = {}) {
         ? Number(scriptAnalysis.compliancePercent)
         : null,
       strengths: Array.isArray(scriptAnalysis.strengths)
-        ? scriptAnalysis.strengths.map((item) => String(item).trim()).filter(Boolean)
+        ? scriptAnalysis.strengths.map((item) => normalizeFreeTextValue(item)).filter(Boolean)
         : [],
       violations: Array.isArray(scriptAnalysis.violations)
-        ? scriptAnalysis.violations.map((item) => String(item).trim()).filter(Boolean)
+        ? scriptAnalysis.violations.map((item) => normalizeFreeTextValue(item)).filter(Boolean)
         : [],
       checkpoints: Array.isArray(scriptAnalysis.checkpoints)
         ? scriptAnalysis.checkpoints.map((item) => ({
-            name: String(item?.name || "").trim(),
+            name: normalizeFreeTextValue(item?.name || ""),
             status: normalizeCheckpointStatus(item?.status),
-            comment: String(item?.comment || "").trim(),
+            comment: normalizeFreeTextValue(item?.comment || ""),
           }))
         : [],
     },
     customMetrics: Array.isArray(customMetrics)
       ? customMetrics.map((item) => ({
-          name: String(item?.name || "").trim(),
+          name: normalizeFreeTextValue(item?.name || ""),
           score: Number.isFinite(Number(item?.score)) ? Number(item.score) : null,
           status: normalizeCheckpointStatus(item?.status),
-          comment: String(item?.comment || "").trim(),
+          comment: normalizeFreeTextValue(item?.comment || ""),
         }))
       : [],
-    nextStep: String(source.nextStep || source.next_step || source.followUpAction || "").trim(),
+    nextStep: normalizeFreeTextValue(source.nextStep || source.next_step || source.followUpAction || ""),
   };
 }
 
@@ -631,6 +675,28 @@ function analysisNeedsRussianLocalization(analysis) {
   return texts.some((item) => containsMeaningfulLatin(item));
 }
 
+function emptyStructuredAnalysis() {
+  return {
+    overview: {
+      sentiment: "",
+      callOutcome: "",
+      clientNeed: "",
+      riskLevel: "",
+    },
+    summary: "",
+    recommendations: [],
+    scriptAnalysis: {
+      overallScore: null,
+      compliancePercent: null,
+      strengths: [],
+      violations: [],
+      checkpoints: [],
+    },
+    customMetrics: [],
+    nextStep: "",
+  };
+}
+
 async function localizeAnalysisToRussian(analysis) {
   const payload = await vibeJson("/v1/ai/chat/completions", {
     method: "POST",
@@ -668,6 +734,18 @@ function mergeTokenUsage(transcriptionUsage, analysisUsage) {
     analysisTotalTokens: analysisTotal,
     totalTokens: transcriptionTotal + analysisTotal,
   };
+}
+
+async function upsertAnalysisRecord(record) {
+  await mutateAnalysisStore(async (store) => {
+    store.analyses = (store.analyses || []).filter(
+      (item) => !(String(item.activityId) === String(record.activityId) && item.signature === record.signature),
+    );
+    store.failures = (store.failures || []).filter(
+      (item) => !(String(item.activityId) === String(record.activityId) && item.signature === record.signature),
+    );
+    store.analyses.unshift(record);
+  });
 }
 
 async function saveAnalysisFailure(_store, call, signature, error, stage) {
@@ -946,11 +1024,7 @@ function matchesSummaryFilters(item, query) {
   if (directions.length && !directions.includes(String(item.direction))) return false;
   if (scenarioIds.length && !scenarioIds.includes(String(item.selectedScenarioId || ""))) return false;
   if (analysisStates.length) {
-    const inferredState = analysisHasMeaningfulContent(item)
-      ? "ready"
-      : item?.transcriptText
-        ? "partial"
-        : "technical";
+    const inferredState = deriveAnalysisResultState(item);
     if (!analysisStates.includes(inferredState)) return false;
   }
   if (query.dateFrom && new Date(item.startTime || item.updatedAt || 0) < new Date(`${query.dateFrom}T00:00:00`)) return false;
@@ -1029,16 +1103,12 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
   const analysisState = isJobActive
     ? jobStatus
     : isFailureCurrent || isJobError
-    ? "error"
-    : !analysis
-    ? "pending"
-    : analysis.sourceUpdatedAt !== activity.updatedAt
-      ? "outdated"
-      : analysis.summary || analysis.overview || analysis.recommendations?.length
-        ? "ready"
-        : analysis.transcriptText
-          ? "partial"
-          : "technical";
+      ? "error"
+      : !analysis
+        ? "pending"
+        : analysis.sourceUpdatedAt !== activity.updatedAt
+          ? "outdated"
+          : deriveAnalysisResultState(analysis);
 
   return {
     id: activity.id,
@@ -1079,6 +1149,7 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
           nextStep: analysis.nextStep || "",
           transcriptMeta: analysis.transcriptMeta || null,
           tokenUsage: analysis.tokenUsage || null,
+          processingNotes: analysis.processingNotes || null,
           ownerId: activity.ownerId,
           ownerTypeId: activity.ownerTypeId,
           ownerTypeLabel: ownerTypeLabel(activity.ownerTypeId),
@@ -1331,7 +1402,11 @@ async function analyzeTranscript({ transcriptText, scriptChecklist, customMetric
       model: AI_CHAT_MODEL,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "Ты строгий аналитик качества звонков. Возвращай только JSON и только на русском языке." },
+        {
+          role: "system",
+          content:
+            "Ты строгий аналитик качества звонков. Возвращай только JSON, без markdown. Все текстовые поля, статусы, выводы и рекомендации должны быть только на русском языке. Если данных недостаточно, заполняй строки на русском краткими пояснениями, но не переходи на английский.",
+        },
         { role: "user", content: analysisPrompt({ transcriptText, scriptChecklist, customMetrics, call }) },
       ],
     }),
@@ -1405,22 +1480,32 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
     const transcriptText = buildTranscriptText(transcriptSegments, transcriptPlainText);
     const transcriptionUsage = deriveTranscriptionTokenUsage(transcription);
 
-    const analysisResult = await analyzeTranscript({
-      transcriptText,
-      scriptChecklist: effectiveScriptChecklist,
-      customMetrics: effectiveCustomMetrics,
-      call,
-    });
-    const normalizedAnalysis = analysisNeedsRussianLocalization(analysisResult.analysis)
-      ? await localizeAnalysisToRussian(analysisResult.analysis)
-      : analysisResult.analysis;
+    let analysisResult = { analysis: emptyStructuredAnalysis(), usage: null, model: null };
+    let structuredAnalysisErrorMessage = "";
+    try {
+      analysisResult = await analyzeTranscript({
+        transcriptText,
+        scriptChecklist: effectiveScriptChecklist,
+        customMetrics: effectiveCustomMetrics,
+        call,
+      });
+    } catch (analysisStageError) {
+      structuredAnalysisErrorMessage = String(analysisStageError?.message || "Ошибка структурированного AI-разбора");
+      console.warn("Structured analysis failed, keeping transcript result", analysisStageError);
+    }
 
-    if (!analysisHasMeaningfulContent(normalizedAnalysis)) {
-      const error = new Error(
-        "AI-разбор вернул пустой структурированный ответ: транскрибация получена, но резюме, рекомендации и оценка сценария не заполнены.",
-      );
-      error.statusCode = 502;
-      throw error;
+    let normalizedAnalysis = analysisResult.analysis;
+    if (analysisNeedsRussianLocalization(normalizedAnalysis)) {
+      try {
+        normalizedAnalysis = await localizeAnalysisToRussian(normalizedAnalysis);
+      } catch (localizationError) {
+        console.warn("Failed to localize analysis to Russian", localizationError);
+      }
+    }
+
+    const hasMeaningfulStructuredResult = analysisHasMeaningfulContent(normalizedAnalysis);
+    if (!hasMeaningfulStructuredResult) {
+      normalizedAnalysis = emptyStructuredAnalysis();
     }
 
     const record = {
@@ -1444,18 +1529,15 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
         model: AI_TRANSCRIPTION_MODEL,
       },
       tokenUsage: mergeTokenUsage(transcriptionUsage, analysisResult.usage),
+      processingNotes: {
+        hasMeaningfulStructuredResult,
+        structuredResultEmpty: !hasMeaningfulStructuredResult,
+        structuredAnalysisErrorMessage,
+      },
       ...normalizedAnalysis,
     };
 
-    await mutateAnalysisStore(async (latestStore) => {
-      latestStore.analyses = latestStore.analyses.filter(
-        (item) => !(String(item.activityId) === String(activityId) && item.signature === signature),
-      );
-      latestStore.failures = (latestStore.failures || []).filter(
-        (item) => !(String(item.activityId) === String(activityId) && item.signature === signature),
-      );
-      latestStore.analyses.unshift(record);
-    });
+    await upsertAnalysisRecord(record);
 
     return { cached: false, analysis: record };
   } catch (error) {

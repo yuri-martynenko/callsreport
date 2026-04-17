@@ -74,6 +74,35 @@
    - `/api/scenarios`
    - `/api/calls`
 
+## Корректный Vibe Deploy
+
+Для этого проекта рабочая схема Deploy API использует официальный endpoint `POST /v1/infra/servers/:id/deploy?stream=false`, но с запуском из каталога распакованного архива репозитория:
+
+```text
+source.url = https://github.com/yuri-martynenko/callsreport/archive/refs/heads/main.tar.gz
+runtime = node20
+install = cd /opt/app/callsreport-main && npm install --omit=dev
+start = cd /opt/app/callsreport-main && node server.js
+port = 3000
+```
+
+Важно:
+
+- для этого репозитория код после deploy находится не в `/opt/app`, а в `/opt/app/callsreport-main`;
+- попытка запускать `npm install` из `/opt/app` приводит к ошибке `ENOENT: no such file or directory, open '/opt/app/package.json'`;
+- успешный deploy должен завершаться статусами `install = ok`, `start = ok`, `healthcheck = ok`.
+
+## Текущий внешний риск
+
+На 2026-04-18 подтверждено следующее поведение:
+
+- `deploy` завершается успешно;
+- локальный healthcheck на сервере проходит;
+- приложение стартует и слушает `PORT=3000`;
+- внешний `appUrl` сервера в некоторых случаях продолжает отдавать платформенную страницу Black Hole вместо проксирования в приложение.
+
+Это означает, что после deploy нужно проверять не только локальный healthcheck, но и внешний маршрут приложения через `appUrl`. Если `appUrl` отдает HTML-страницу Black Hole вместо приложения, проблема находится на уровне Black Hole routing / gateway, а не в Node.js процессе приложения.
+
 ## Что нужно проверять после деплоя
 
 - приложение поднимается без ошибок;
