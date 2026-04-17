@@ -200,6 +200,14 @@ function analysisOverride(activityId) {
   return state.analysisOverrides[String(activityId)] || null;
 }
 
+function isActiveAnalysisState(value) {
+  return ["queued", "processing"].includes(String(value || ""));
+}
+
+function isTerminalAnalysisState(value) {
+  return ["ready", "partial", "technical", "outdated", "error", "missing", "pending"].includes(String(value || ""));
+}
+
 function effectiveAnalysis(call) {
   return analysisOverride(call.id) || call.analysis || null;
 }
@@ -216,12 +224,52 @@ function clearAnalysisOverride(activityId) {
   delete state.analysisOverrides[String(activityId)];
 }
 
+function callById(activityId) {
+  return state.calls.find((item) => String(item.id) === String(activityId)) || null;
+}
+
+function resolvedAnalysisForCall(activityId) {
+  const call = callById(activityId);
+  return call ? effectiveAnalysis(call) : analysisOverride(activityId);
+}
+
+function syncAnalysisOverride(call) {
+  const override = analysisOverride(call.id);
+  if (!override) return;
+
+  const serverAnalysis = call.analysis || null;
+  if (!serverAnalysis) {
+    if (!isActiveAnalysisState(override.state)) {
+      clearAnalysisOverride(call.id);
+    }
+    return;
+  }
+
+  const serverUpdatedAt = String(serverAnalysis.updatedAt || "");
+  const overrideUpdatedAt = String(override.updatedAt || "");
+  const serverState = String(serverAnalysis.state || "");
+  const overrideState = String(override.state || "");
+
+  if (
+    isTerminalAnalysisState(serverState) ||
+    serverUpdatedAt && serverUpdatedAt !== overrideUpdatedAt ||
+    serverState !== overrideState
+  ) {
+    clearAnalysisOverride(call.id);
+  }
+}
+
 function defaultScenario() {
   return state.scenarios.find((scenario) => scenario.isDefault) || state.scenarios[0] || null;
 }
 
 function selectedScenarioIdForCall(call) {
   return effectiveAnalysis(call)?.selectedScenarioId || defaultScenario()?.id || "";
+}
+
+function selectedScenarioForCall(call) {
+  const scenarioId = call ? selectedScenarioIdForCall(call) : "";
+  return state.scenarios.find((item) => String(item.id) === String(scenarioId)) || defaultScenario();
 }
 
 function formatDate(value) {
@@ -650,8 +698,7 @@ function analysisStatus(call) {
 
 function hydrateSelectedAnalysis() {
   if (!state.selectedAnalysis?.activityId) return;
-  const call = state.calls.find((item) => String(item.id) === String(state.selectedAnalysis.activityId));
-  const actual = call ? effectiveAnalysis(call) : analysisOverride(state.selectedAnalysis.activityId);
+  const actual = resolvedAnalysisForCall(state.selectedAnalysis.activityId);
   if (actual) state.selectedAnalysis = actual;
 }
 
@@ -777,13 +824,14 @@ function renderCalls() {
   }
   renderReportMeta();
   el.callsTable.innerHTML = pagedCalls()
-    .map((call) => {
-      const analysis = effectiveAnalysis(call);
-      const status = analysisStatus({ ...call, analysis });
-      const currentScenarioId = selectedScenarioIdForCall(call);
-      const scenarioOptions = [
-        `<option value="">Автосценарий</option>`,
-        ...state.scenarios.map(
+      .map((call) => {
+        const analysis = effectiveAnalysis(call);
+        const status = analysisStatus({ ...call, analysis });
+        const currentScenarioId = selectedScenarioIdForCall(call);
+        const isAnalysisActive = isActiveAnalysisState(status.key);
+        const scenarioOptions = [
+          `<option value="">Автосценарий</option>`,
+          ...state.scenarios.map(
           (scenario) =>
             `<option value="${escapeHtml(scenario.id)}" ${String(currentScenarioId) === String(scenario.id) ? "selected" : ""}>${escapeHtml(scenario.name)}</option>`,
         ),
@@ -800,15 +848,15 @@ function renderCalls() {
             ${call.managerPosition ? `<div class="call-meta">${escapeHtml(call.managerPosition)}</div>` : ""}
           </td>
           <td>${localizeDirection(call.direction)}</td>
-          <td>${formatDuration(call.durationSeconds)}</td>
-          <td><span class="status-pill ${status.className}">${status.label}</span></td>
-          <td class="compliance-cell">${escapeHtml(compliancePercent)}</td>
-          <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}">${scenarioOptions}</select></td>
-          <td class="token-cell">${escapeHtml(totalTokens)}</td>
-          <td class="actions-cell"><div class="action-stack"><button class="call-action call-action-icon primary-action" title="${call.hasRecording ? "Анализировать звонок" : "Нет записи"}" aria-label="${call.hasRecording ? "Анализировать звонок" : "Нет записи"}" data-action="analyze" data-id="${call.id}" ${!call.hasRecording ? "disabled" : ""}>${call.hasRecording ? "▶" : "×"}</button></div></td>
-        </tr>`;
-    })
-    .join("");
+            <td>${formatDuration(call.durationSeconds)}</td>
+            <td><span class="status-pill ${status.className}">${status.label}</span></td>
+            <td class="compliance-cell">${escapeHtml(compliancePercent)}</td>
+            <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}" ${isAnalysisActive ? "disabled" : ""}>${scenarioOptions}</select></td>
+            <td class="token-cell">${escapeHtml(totalTokens)}</td>
+            <td class="actions-cell"><div class="action-stack"><button class="call-action call-action-icon primary-action" title="${!call.hasRecording ? "Нет записи" : isAnalysisActive ? "Анализ уже запущен" : "Анализировать звонок"}" aria-label="${!call.hasRecording ? "Нет записи" : isAnalysisActive ? "Анализ уже запущен" : "Анализировать звонок"}" data-action="analyze" data-id="${call.id}" ${!call.hasRecording || isAnalysisActive ? "disabled" : ""}>${!call.hasRecording ? "×" : isAnalysisActive ? "…" : "▶"}</button></div></td>
+          </tr>`;
+      })
+      .join("");
   renderPagination();
 }
 
@@ -854,8 +902,18 @@ function renderAnalysis(analysis) {
     (analysis.scriptAnalysis?.checkpoints && analysis.scriptAnalysis.checkpoints.length) ||
     (analysis.customMetrics && analysis.customMetrics.length);
 
-  el.analysisState.textContent = hasDetailedResult ? "Готово" : "Неполный результат";
-  el.analysisState.className = `badge ${hasDetailedResult ? "success" : "warning"}`;
+  const detailStateLabel =
+    analysis.state === "partial"
+      ? "Частично"
+      : analysis.state === "technical"
+        ? "Тех. результат"
+        : analysis.state === "outdated"
+          ? "Нужен повтор"
+          : hasDetailedResult
+            ? "Готово"
+            : "Неполный результат";
+  el.analysisState.textContent = detailStateLabel;
+  el.analysisState.className = `badge ${hasDetailedResult && analysis.state !== "outdated" ? "success" : "warning"}`;
   el.analysisDetail.className = "analysis-detail";
   const resultExplanation = analysis.summary
     ? analysis.summary
@@ -1179,11 +1237,7 @@ async function loadCalls() {
   const data = await api(`/api/calls?${filtersQuery()}`);
   state.calls = data.calls;
   for (const call of state.calls) {
-    const override = analysisOverride(call.id);
-    if (!override) continue;
-    if (call.analysis?.state && call.analysis.state !== override.state) {
-      clearAnalysisOverride(call.id);
-    }
+    syncAnalysisOverride(call);
   }
   renderCalls();
   if (state.selectedCallId) {
@@ -1204,10 +1258,9 @@ async function loadSummary() {
 }
 
 function hasActiveAnalysisWork() {
-  return state.calls.some((call) => {
-    const analysis = effectiveAnalysis(call);
-    return ["queued", "processing"].includes(String(analysis?.state || ""));
-  });
+  const callHasActiveWork = state.calls.some((call) => isActiveAnalysisState(effectiveAnalysis(call)?.state));
+  if (callHasActiveWork) return true;
+  return Object.values(state.analysisOverrides).some((analysis) => isActiveAnalysisState(analysis?.state));
 }
 
 function stopAnalysisPolling() {
@@ -1235,10 +1288,11 @@ function ensureAnalysisPolling() {
 }
 
 function selectAnalysisByCallId(activityId) {
-  const call = state.calls.find((item) => String(item.id) === String(activityId));
-  const analysis = call ? effectiveAnalysis(call) : analysisOverride(activityId);
+  const call = callById(activityId);
+  const analysis = resolvedAnalysisForCall(activityId);
   state.selectedCallId = activityId;
   if (!analysis) {
+    const selectedScenario = selectedScenarioForCall(call);
     state.selectedAnalysis = null;
     renderCalls();
     el.analysisState.textContent = "Не готов";
@@ -1246,14 +1300,14 @@ function selectAnalysisByCallId(activityId) {
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
       <section class="detail-block">
-        <h3>${escapeHtml(call?.subject || "Звонок")}</h3>
-        <div class="muted">${escapeHtml(callMetaLine(call || {}))}</div>
-        <p>Для этого звонка результат анализа пока отсутствует.</p>
-        <p class="muted">Статус: ${escapeHtml(analysisStatus(call || {}).label || "Ожидает анализа")}</p>
-        <p class="muted">Сценарий: ${escapeHtml(defaultScenario()?.name || "Автосценарий")}</p>
-      </section>`;
-    return;
-  }
+          <h3>${escapeHtml(call?.subject || "Звонок")}</h3>
+          <div class="muted">${escapeHtml(callMetaLine(call || {}))}</div>
+          <p>Для этого звонка результат анализа пока отсутствует.</p>
+          <p class="muted">Статус: ${escapeHtml(analysisStatus(call || {}).label || "Ожидает анализа")}</p>
+          <p class="muted">Сценарий: ${escapeHtml(selectedScenario?.name || "Автосценарий")}</p>
+        </section>`;
+      return;
+    }
   state.selectedAnalysis = analysis;
   renderCalls();
   renderAnalysis(analysis);

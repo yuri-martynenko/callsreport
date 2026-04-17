@@ -32,7 +32,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 30;
-  padding: 28px 32px;
+  padding: 16px 28px;
   background: rgba(255, 245, 233, 0.84);
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(14px);
@@ -41,20 +41,21 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
   width: 100%;
 }
 .topbar-copy {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .topbar-nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-wrap: nowrap;
+  gap: 8px;
   align-items: center;
   justify-content: flex-end;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .workspace {
   display: block;
@@ -65,15 +66,24 @@ body {
   min-width: 0;
   width: 100%;
 }
-.menu-link { width: auto; text-align: left; background: rgba(29, 26, 22, 0.06); white-space: nowrap; }
+.menu-link {
+  width: auto;
+  text-align: left;
+  background: rgba(29, 26, 22, 0.06);
+  white-space: nowrap;
+  padding: 10px 14px;
+}
 .view-shell { display: none; }
 .view-shell.active { display: block; }
 .view-stack { display: flex; flex-direction: column; gap: 18px; }
 .dashboard-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; }
 .chart-panel-wide { grid-column: 1 / -1; }
-.eyebrow { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
 h1, h2, h3 { margin: 0; font-family: var(--font-display); }
-h1 { font-size: 36px; line-height: 1.05; }
+h1 {
+  font-size: 30px;
+  line-height: 1.05;
+  white-space: nowrap;
+}
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
 .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .summary-card { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 20px; padding: 18px; }
@@ -254,6 +264,7 @@ ul.flat { margin: 10px 0 0; padding-left: 18px; }
   .table-footer, .section-head, .transcript-meta-line { flex-direction: column; align-items: stretch; }
   .action-stack, .topbar-nav { flex-direction: column; align-items: stretch; }
   .topbar-copy { width: 100%; }
+  h1 { white-space: normal; }
   .menu-link { width: 100%; }
   .bar-value { justify-content: flex-start; }
 }
