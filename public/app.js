@@ -208,6 +208,11 @@ function isTerminalAnalysisState(value) {
   return ["ready", "partial", "technical", "outdated", "error", "missing", "pending"].includes(String(value || ""));
 }
 
+function normalizeDisplayAnalysisState(value) {
+  const normalized = String(value || "").trim();
+  return normalized === "technical" ? "partial" : normalized;
+}
+
 function effectiveAnalysis(call) {
   return analysisOverride(call.id) || call.analysis || null;
 }
@@ -676,7 +681,7 @@ function analysisStateKey(call) {
 function analysisStatus(call) {
   if (!call.hasRecording) return { key: "missing", label: "Нет записи", className: "status-missing" };
 
-  switch (call.analysis?.state) {
+  switch (normalizeDisplayAnalysisState(call.analysis?.state)) {
     case "queued":
       return { key: "queued", label: "В очереди", className: "status-pending" };
     case "processing":
@@ -685,8 +690,6 @@ function analysisStatus(call) {
       return { key: "ready", label: "Готово", className: "status-ready" };
     case "partial":
       return { key: "partial", label: "Частично", className: "status-partial" };
-    case "technical":
-      return { key: "technical", label: "Тех. результат", className: "status-partial" };
     case "outdated":
       return { key: "outdated", label: "Нужен повтор", className: "status-warning" };
     case "error":
@@ -747,12 +750,12 @@ function localizedStatusCountLabel(state) {
     processing: "В работе",
     ready: "Готово",
     partial: "Частично",
-    technical: "Технический результат",
     outdated: "Нужен повтор",
     error: "Ошибка",
     missing: "Нет записи",
   };
-  return map[String(state || "").trim()] || String(state || "").trim();
+  const normalized = normalizeDisplayAnalysisState(state);
+  return map[normalized] || normalized;
 }
 
 function statusToneClass(state) {
@@ -762,20 +765,19 @@ function statusToneClass(state) {
     processing: "status-processing",
     ready: "status-ready",
     partial: "status-partial",
-    technical: "status-partial",
     outdated: "status-warning",
     error: "status-error",
     missing: "status-missing",
   };
-  return map[String(state || "").trim()] || "status-pending";
+  return map[normalizeDisplayAnalysisState(state)] || "status-pending";
 }
 
 function callsStatusCounts(calls = []) {
-  const order = ["pending", "queued", "processing", "ready", "partial", "technical", "outdated", "error", "missing"];
+  const order = ["pending", "queued", "processing", "ready", "partial", "outdated", "error", "missing"];
   const counts = new Map(order.map((key) => [key, 0]));
   for (const call of calls) {
     const analysis = effectiveAnalysis(call);
-    const state = String(analysis?.state || (!call.hasRecording ? "missing" : "pending"));
+    const state = normalizeDisplayAnalysisState(analysis?.state || (!call.hasRecording ? "missing" : "pending"));
     counts.set(state, (counts.get(state) || 0) + 1);
   }
   return order
@@ -902,11 +904,9 @@ function renderAnalysis(analysis) {
     (analysis.customMetrics && analysis.customMetrics.length);
 
   const detailStateLabel =
-    analysis.state === "partial"
+    normalizeDisplayAnalysisState(analysis.state) === "partial"
       ? "Частично"
-      : analysis.state === "technical"
-        ? "Тех. результат"
-        : analysis.state === "outdated"
+      : analysis.state === "outdated"
           ? "Нужен повтор"
           : hasDetailedResult
             ? "Готово"

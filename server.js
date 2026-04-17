@@ -993,7 +993,9 @@ function applyClientSideCallFilters(calls, query) {
   if (analysisStates.length) {
     filtered = filtered.filter((call) => {
       const state = !call.hasRecording ? "missing" : String(call.analysis?.state || "pending");
-      return analysisStates.includes(state);
+      if (analysisStates.includes(state)) return true;
+      if (state === "technical" && analysisStates.includes("partial")) return true;
+      return false;
     });
   }
   if (scenarioIds.length) {
@@ -1026,7 +1028,9 @@ function matchesSummaryFilters(item, query) {
   if (scenarioIds.length && !scenarioIds.includes(String(item.selectedScenarioId || ""))) return false;
   if (analysisStates.length) {
     const inferredState = deriveAnalysisResultState(item);
-    if (!analysisStates.includes(inferredState)) return false;
+    if (!analysisStates.includes(inferredState) && !(inferredState === "technical" && analysisStates.includes("partial"))) {
+      return false;
+    }
   }
   if (query.dateFrom && new Date(item.startTime || item.updatedAt || 0) < new Date(`${query.dateFrom}T00:00:00`)) return false;
   if (query.dateTo && new Date(item.startTime || item.updatedAt || 0) > new Date(`${query.dateTo}T23:59:59`)) return false;
@@ -1727,7 +1731,6 @@ async function autoEnqueuePendingCalls() {
 
   while (queued < ANALYSIS_AUTO_SCAN_BATCH) {
     const callsData = await fetchCalls({
-      onlyRecorded: "true",
       limit: pageSize,
       offset,
     });
