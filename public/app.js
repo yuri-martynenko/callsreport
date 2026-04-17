@@ -742,15 +742,15 @@ function autoModeLabel(mode) {
 
 function localizedStatusCountLabel(state) {
   const map = {
-    pending: "ожидает анализа",
-    queued: "в очереди",
-    processing: "в работе",
-    ready: "готово",
-    partial: "частично",
-    technical: "технический результат",
-    outdated: "нужен повтор",
-    error: "ошибка",
-    missing: "нет записи",
+    pending: "Ожидает анализа",
+    queued: "В очереди",
+    processing: "В работе",
+    ready: "Готово",
+    partial: "Частично",
+    technical: "Технический результат",
+    outdated: "Нужен повтор",
+    error: "Ошибка",
+    missing: "Нет записи",
   };
   return map[String(state || "").trim()] || String(state || "").trim();
 }
@@ -779,8 +779,7 @@ function callsStatusCounts(calls = []) {
     counts.set(state, (counts.get(state) || 0) + 1);
   }
   return order
-    .map((key) => ({ key, count: counts.get(key) || 0 }))
-    .filter((item) => item.count > 0);
+    .map((key) => ({ key, count: counts.get(key) || 0 }));
 }
 
 function renderReportMeta() {
@@ -799,13 +798,13 @@ function renderReportMeta() {
                 <span class="badge status-breakdown-badge ${statusToneClass(item.key)}">${escapeHtml(item.count)}</span>
               </span>
             `,
-          )
-          .join("")}
-          <span class="status-breakdown-item status-breakdown-tokens">
-            <span class="status-breakdown-label">токены</span>
-            <span class="badge status-breakdown-badge">${escapeHtml(totalTokens)}</span>
-          </span>
-        </div>`
+            )
+            .join("")}
+            <span class="status-breakdown-item status-breakdown-tokens">
+              <span class="status-breakdown-label">Токены</span>
+              <span class="badge status-breakdown-badge">${escapeHtml(totalTokens)}</span>
+            </span>
+          </div>`
       : '<div class="status-breakdown muted">Статусы звонков будут показаны после загрузки.</div>';
   }
 }

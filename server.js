@@ -42,6 +42,7 @@ const TERMINAL_ANALYSIS_JOB_STATUSES = new Set(["ready", "partial", "technical",
 let queueLoopActive = false;
 let queueRunningCount = 0;
 let queueScanTimer = null;
+let autoScanInFlight = false;
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -1718,31 +1719,54 @@ async function autoEnqueuePendingCalls() {
   const settingsStore = await readSettingsStore();
   const mode = String(settingsStore.settings?.autoTranscriptionMode || "disabled");
   if (mode === "disabled") return { queued: 0 };
-
-  const callsData = await fetchCalls({
-    onlyRecorded: "true",
-    limit: Math.max(ANALYSIS_AUTO_SCAN_BATCH * 5, 50),
-    offset: 0,
-  });
-
   let queued = 0;
-  for (const call of callsData.calls) {
-    if (!matchesAutoAnalyzeMode(call, mode)) continue;
-    const state = String(call.analysis?.state || "");
-    if (!["", "pending", "outdated"].includes(state)) continue;
-    if (!call.hasRecording || !call.recordingFileId) continue;
-    await enqueueAnalysisJob({ activityId: call.id, source: "auto" });
-    queued += 1;
-    if (queued >= ANALYSIS_AUTO_SCAN_BATCH) break;
+  let scanned = 0;
+  let offset = 0;
+  const pageSize = Math.max(ANALYSIS_AUTO_SCAN_BATCH * 5, 50);
+  const seenActivityIds = new Set();
+
+  while (queued < ANALYSIS_AUTO_SCAN_BATCH) {
+    const callsData = await fetchCalls({
+      onlyRecorded: "true",
+      limit: pageSize,
+      offset,
+    });
+    const pageCalls = Array.isArray(callsData.calls) ? callsData.calls : [];
+    if (!pageCalls.length) break;
+
+    for (const call of pageCalls) {
+      if (seenActivityIds.has(String(call.id))) continue;
+      seenActivityIds.add(String(call.id));
+      scanned += 1;
+      if (!matchesAutoAnalyzeMode(call, mode)) continue;
+      const state = String(call.analysis?.state || "");
+      if (!["", "pending", "outdated"].includes(state)) continue;
+      if (!call.hasRecording || !call.recordingFileId) continue;
+
+      const queueResult = await enqueueAnalysisJob({ activityId: call.id, source: "auto" });
+      if (queueResult.queued) {
+        queued += 1;
+      }
+      if (queued >= ANALYSIS_AUTO_SCAN_BATCH) break;
+    }
+
+    if (pageCalls.length < pageSize) break;
+    offset += pageCalls.length;
   }
 
-  return { queued };
+  return { queued, scanned };
 }
 
 async function refreshAutomaticAnalysis() {
-  const autoScan = await autoEnqueuePendingCalls();
-  await processAnalysisQueue();
-  return autoScan;
+  if (autoScanInFlight) return { queued: 0, scanned: 0, skipped: true };
+  autoScanInFlight = true;
+  try {
+    const autoScan = await autoEnqueuePendingCalls();
+    await processAnalysisQueue();
+    return autoScan;
+  } finally {
+    autoScanInFlight = false;
+  }
 }
 
 function startAnalysisQueueScheduler() {

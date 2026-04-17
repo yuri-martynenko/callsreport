@@ -185,8 +185,8 @@ tbody tr.is-clickable { cursor: pointer; }
 .analysis-detail.empty { color: var(--muted); min-height: 220px; justify-content: center; }
 .detail-block { background: rgba(255, 255, 255, 0.5); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
 .next-step-block {
-  background: linear-gradient(135deg, rgba(31, 107, 95, 0.12), rgba(255, 255, 255, 0.72));
-  border-color: rgba(31, 107, 95, 0.2);
+  background: transparent;
+  border-color: var(--line);
 }
 .next-step-block p { margin: 8px 0 0; font-size: 16px; line-height: 1.5; }
 .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
