@@ -9,12 +9,17 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div class="topbar-copy">
-          <p class="eyebrow">VibeCode + Bitrix24</p>
-          <h1>Речевая аналитика звонков и отчёты</h1>
-          <p class="lede">
-            Whisper Large v3 Turbo для транскрибации, AI-анализ по сценарию, рекомендации и сводная аналитика.
-          </p>
+        <div class="topbar-inner">
+          <div class="topbar-copy">
+            <p class="eyebrow">VibeCode + Bitrix24</p>
+            <h1>Речевая аналитика звонков</h1>
+          </div>
+          <nav class="topbar-nav" aria-label="Основное меню">
+            <button id="showDashboardView" class="menu-link primary-action" type="button">Дашборд</button>
+            <button id="showReportView" class="menu-link" type="button">Отчет по звонкам</button>
+            <button id="showScenariosView" class="menu-link" type="button">Сценарии анализа</button>
+            <button id="showSettingsView" class="menu-link" type="button">Настройки</button>
+          </nav>
         </div>
       </header>
 
@@ -313,24 +318,6 @@
             </div>
           </section>
         </main>
-
-        <aside class="service-menu">
-          <div class="panel service-menu-panel">
-            <div class="section-head">
-              <div class="section-head-main">
-                <h2>Меню сервиса</h2>
-                <span class="muted">Основные разделы приложения.</span>
-              </div>
-            </div>
-
-            <nav class="menu-nav" aria-label="Основное меню">
-              <button id="showDashboardView" class="menu-link primary-action" type="button">Дашборд</button>
-              <button id="showReportView" class="menu-link" type="button">Отчет по звонкам</button>
-              <button id="showScenariosView" class="menu-link" type="button">Сценарии анализа</button>
-              <button id="showSettingsView" class="menu-link" type="button">Настройки</button>
-            </nav>
-          </div>
-        </aside>
       </div>
     </div>
 
