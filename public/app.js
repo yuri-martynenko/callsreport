@@ -745,9 +745,9 @@ function autoModeLabel(mode) {
 
 function localizedStatusCountLabel(state) {
   const map = {
+    total: "Всего",
     pending: "Ожидает анализа",
     queued: "В очереди",
-    processing: "В работе",
     ready: "Готово",
     partial: "Частично",
     outdated: "Нужен повтор",
@@ -760,9 +760,9 @@ function localizedStatusCountLabel(state) {
 
 function statusToneClass(state) {
   const map = {
+    total: "",
     pending: "status-pending",
     queued: "status-pending",
-    processing: "status-processing",
     ready: "status-ready",
     partial: "status-partial",
     outdated: "status-warning",
@@ -773,12 +773,15 @@ function statusToneClass(state) {
 }
 
 function callsStatusCounts(calls = []) {
-  const order = ["pending", "queued", "processing", "ready", "partial", "outdated", "error", "missing"];
+  const order = ["total", "ready", "pending", "queued", "partial", "outdated", "error", "missing"];
   const counts = new Map(order.map((key) => [key, 0]));
+  counts.set("total", calls.length);
   for (const call of calls) {
     const analysis = effectiveAnalysis(call);
     const state = normalizeDisplayAnalysisState(analysis?.state || (!call.hasRecording ? "missing" : "pending"));
-    counts.set(state, (counts.get(state) || 0) + 1);
+    if (counts.has(state)) {
+      counts.set(state, (counts.get(state) || 0) + 1);
+    }
   }
   return order
     .map((key) => ({ key, count: counts.get(key) || 0 }));
@@ -795,11 +798,11 @@ function renderReportMeta() {
       ? `<div class="status-breakdown">${items
           .map(
             (item) => `
-              <span class="status-breakdown-item">
-                <span class="status-breakdown-label">${escapeHtml(localizedStatusCountLabel(item.key))}</span>
-                <span class="badge status-breakdown-badge ${statusToneClass(item.key)}">${escapeHtml(item.count)}</span>
-              </span>
-            `,
+                <span class="status-breakdown-item">
+                  <span class="status-breakdown-label">${escapeHtml(localizedStatusCountLabel(item.key))}</span>
+                  <span class="badge status-breakdown-badge ${statusToneClass(item.key)}">${escapeHtml(item.count)}</span>
+                </span>
+              `,
             )
             .join("")}
             <span class="status-breakdown-item status-breakdown-tokens">
@@ -1203,10 +1206,13 @@ async function saveSettings() {
   await Promise.all([loadCalls(), loadSummary()]);
   if (el.statusText) {
     const queued = Number(data.autoScan?.queued || 0);
+    const stopped = Number(data.autoScan?.stopped || 0);
     el.statusText.textContent =
-      queued > 0
-        ? `Настройки сохранены. В автоматическую обработку поставлено ${queued} звонков.`
-        : "Настройки сохранены. Новый режим автоматической обработки применён.";
+      stopped > 0
+        ? `Настройки сохранены. Автоматическая обработка отключена, из очереди снято ${stopped} звонков.`
+        : queued > 0
+          ? `Настройки сохранены. В автоматическую обработку поставлено ${queued} звонков.`
+          : "Настройки сохранены. Новый режим автоматической обработки применён.";
   }
 }
 

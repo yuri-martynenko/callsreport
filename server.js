@@ -365,6 +365,25 @@ function buildLatestActiveJobMap(jobs = []) {
   );
 }
 
+function countActiveAutoJobs(jobs = []) {
+  return (jobs || []).filter(
+    (job) =>
+      String(job.source || "") === "auto" &&
+      ACTIVE_ANALYSIS_JOB_STATUSES.has(String(job.status || "")),
+  ).length;
+}
+
+async function cancelQueuedAutoJobs() {
+  return mutateAnalysisStore(async (store) => {
+    const jobs = Array.isArray(store.jobs) ? store.jobs : [];
+    const beforeCount = jobs.length;
+    store.jobs = jobs.filter(
+      (job) => !(String(job.source || "") === "auto" && String(job.status || "") === "queued"),
+    );
+    return { removed: beforeCount - store.jobs.length };
+  });
+}
+
 function deriveAnalysisResultState(analysis = {}) {
   if (analysisHasMeaningfulContent(analysis)) return "ready";
   if (analysis?.transcriptText) return "partial";
@@ -1722,14 +1741,23 @@ function scheduleAnalysisQueue() {
 async function autoEnqueuePendingCalls() {
   const settingsStore = await readSettingsStore();
   const mode = String(settingsStore.settings?.autoTranscriptionMode || "disabled");
-  if (mode === "disabled") return { queued: 0 };
+  if (mode === "disabled") {
+    const cleanup = await cancelQueuedAutoJobs();
+    return { queued: 0, scanned: 0, stopped: cleanup?.removed || 0 };
+  }
+  const analysisStore = await readAnalysisStore();
+  const activeAutoJobs = countActiveAutoJobs(analysisStore.jobs || []);
+  const remainingCapacity = Math.max(0, ANALYSIS_AUTO_SCAN_BATCH - activeAutoJobs);
+  if (remainingCapacity <= 0) {
+    return { queued: 0, scanned: 0, activeAutoJobs };
+  }
   let queued = 0;
   let scanned = 0;
   let offset = 0;
   const pageSize = Math.max(ANALYSIS_AUTO_SCAN_BATCH * 5, 50);
   const seenActivityIds = new Set();
 
-  while (queued < ANALYSIS_AUTO_SCAN_BATCH) {
+  while (queued < remainingCapacity) {
     const callsData = await fetchCalls({
       limit: pageSize,
       offset,
@@ -1750,14 +1778,14 @@ async function autoEnqueuePendingCalls() {
       if (queueResult.queued) {
         queued += 1;
       }
-      if (queued >= ANALYSIS_AUTO_SCAN_BATCH) break;
+      if (queued >= remainingCapacity) break;
     }
 
     if (pageCalls.length < pageSize) break;
     offset += pageCalls.length;
   }
 
-  return { queued, scanned };
+  return { queued, scanned, activeAutoJobs };
 }
 
 async function refreshAutomaticAnalysis() {
