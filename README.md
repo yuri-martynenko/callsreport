@@ -78,6 +78,8 @@ APP_LEGACY_DATA_DIR=/var/lib/callsreport/bootstrap-data
 - `VIBE_REQUEST_TIMEOUT_MS`
 - `AI_TRANSCRIPTION_TIMEOUT_MS`
 
+В production при Vibe Deploy канонический env-файл должен лежать в `/opt/app/.env`. Backend при старте пытается подхватить `.env` из директории релиза и из `/opt/app/.env`, чтобы не терять конфигурацию при разворачивании в `/opt/app/callsreport-main`.
+
 ## Где читать документацию
 
 - [Архитектура](./docs/architecture.md)
