@@ -51,6 +51,7 @@ loadDotEnvFromPaths([
   path.join(__dirname, "..", ".env"),
   path.join(process.cwd(), ".env"),
   "/opt/app/.env",
+  "/var/lib/callsreport/.env",
 ]);
 
 function envValue(name, fallback = "") {
