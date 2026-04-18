@@ -368,12 +368,11 @@ function analysisHeaderMarkup(analysis, options = {}) {
   const navLinks = options.showNav
     ? `
       <div class="analysis-header-nav">
-        <a class="analysis-header-link" href="#analysisOverview">Звонок</a>
+        <a class="analysis-header-link" href="#analysisOverview">Резюме</a>
         <a class="analysis-header-link" href="#analysisResult">Результат</a>
         <a class="analysis-header-link" href="#analysisRecommendations">Рекомендации</a>
         <a class="analysis-header-link" href="#analysisScript">Проверка сценария</a>
         <a class="analysis-header-link" href="#analysisMetrics">Индивидуальные параметры</a>
-        <a class="analysis-header-link" href="#analysisNextStep">Следующий шаг</a>
         <a class="analysis-header-link" href="#analysisTranscript">Транскрипт</a>
         ${analysis?.crmEntityUrl
           ? `<span class="analysis-header-nav-spacer" aria-hidden="true"></span><a class="analysis-header-link analysis-header-link-external" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть в Bitrix24</a>`
@@ -710,7 +709,7 @@ function transcriptSegmentsMarkup(analysis) {
               data-segment-key="${escapeHtml(segmentKey)}"
               data-playable="${canPlaySegment ? "true" : "false"}"
               ${canPlaySegment ? "" : "disabled"}
-            >${isActiveSegment ? "Стоп" : "▶ Фрагмент"}</button>
+            >${isActiveSegment ? "■ Стоп" : "▶ Фрагмент"}</button>
           </div>
           <p class="transcript-text">${escapeHtml(segment.text || "")}</p>
         </article>`;
@@ -739,7 +738,7 @@ function updateTranscriptPlaybackButtons() {
       String(state.selectedAnalysis?.activityId || "") === String(state.playback.activityId || "");
     const isPlayable = button.dataset.playable === "true";
     button.classList.toggle("is-active", isActive);
-    button.textContent = isActive ? "Стоп" : "▶ Фрагмент";
+    button.textContent = isActive ? "■ Стоп" : "▶ Фрагмент";
     button.disabled = !isPlayable || Boolean(state.playback.loading && !isActive);
   });
 }
@@ -1264,10 +1263,9 @@ function renderAnalysis(analysis) {
 
   el.analysisDetail.innerHTML = `
     <section id="analysisOverview" class="detail-block">
-      <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
+      <h3>${escapeHtml(analysis.subject || "Резюме")}</h3>
       ${detailMetaMarkup(analysis)}
       <p>${escapeHtml(resultExplanation)}</p>
-      <p class="muted">Bitrix24 ID: #${escapeHtml(analysis.ownerId || "—")}</p>
     </section>
     <section id="analysisResult" class="detail-block">
       <h3>Результат</h3>
