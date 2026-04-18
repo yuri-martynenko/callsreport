@@ -3,6 +3,10 @@ const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
+const { ensureEnvLoaded, envValue, formatEnvBootstrapSummary } = require("./env");
+
+const envBootstrap = ensureEnvLoaded({ baseDir: __dirname });
+
 const {
   ensurePersistence,
   readAnalysisStore: persistenceReadAnalysisStore,
@@ -18,47 +22,6 @@ const {
 
 const app = express();
 const execFileAsync = promisify(execFile);
-
-function loadDotEnvFromPaths(paths) {
-  for (const filePath of paths) {
-    if (!filePath) continue;
-    try {
-      const content = fs.readFileSync(filePath, "utf8");
-      for (const rawLine of content.split(/\r?\n/)) {
-        const line = rawLine.trim();
-        if (!line || line.startsWith("#")) continue;
-        const separatorIndex = line.indexOf("=");
-        if (separatorIndex <= 0) continue;
-        const name = line.slice(0, separatorIndex).trim();
-        if (!name || process.env[name]) continue;
-        const value = line
-          .slice(separatorIndex + 1)
-          .trim()
-          .replace(/^"(.*)"$/, "$1")
-          .replace(/^'(.*)'$/, "$1");
-        process.env[name] = value;
-      }
-    } catch (error) {
-      if (error.code !== "ENOENT") {
-        console.warn(`Failed to read env file ${filePath}:`, error.message);
-      }
-    }
-  }
-}
-
-loadDotEnvFromPaths([
-  path.join(__dirname, ".env"),
-  path.join(__dirname, "..", ".env"),
-  path.join(process.cwd(), ".env"),
-  "/opt/app/.env",
-  "/var/lib/callsreport/.env",
-]);
-
-function envValue(name, fallback = "") {
-  const raw = process.env[name];
-  if (raw == null || raw === "") return fallback;
-  return String(raw).trim().replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1").trim();
-}
 
 const PORT = Number(envValue("PORT", "3000"));
 const VIBE_API_URL = envValue("VIBE_API_URL", "https://vibecode.bitrix24.tech");
@@ -84,6 +47,14 @@ let queueScanTimer = null;
 let autoScanInFlight = false;
 const crmEntityCache = new Map();
 const crmClientWarmupInFlight = new Set();
+
+console.log(formatEnvBootstrapSummary(envBootstrap));
+for (const error of envBootstrap.readErrors) {
+  console.warn(`Env bootstrap read error for ${error.filePath}: ${error.message}`);
+}
+if (envBootstrap.missingRequired.length) {
+  console.warn(`Required env missing at startup: ${envBootstrap.missingRequired.join(", ")}`);
+}
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));

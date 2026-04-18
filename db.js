@@ -1,12 +1,9 @@
 const fs = require("fs/promises");
 const path = require("path");
 const initSqlJs = require("sql.js");
+const { ensureEnvLoaded, envValue } = require("./env");
 
-function envValue(name, fallback = "") {
-  const raw = process.env[name];
-  if (raw == null || raw === "") return fallback;
-  return String(raw).trim().replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1").trim();
-}
+ensureEnvLoaded({ baseDir: __dirname });
 
 const DB_DIR = envValue("APP_DB_DIR", "/var/lib/callsreport");
 const DB_PATH = envValue("APP_DB_PATH", path.join(DB_DIR, "callsreport.sqlite"));
