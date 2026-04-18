@@ -16,6 +16,12 @@ const state = {
   filtersTimer: null,
   analysisOverrides: {},
   analysisPollingTimer: null,
+  playback: {
+    activityId: null,
+    segmentKey: "",
+    audioUrl: "",
+    loading: false,
+  },
 };
 
 const el = {
@@ -348,14 +354,15 @@ function analysisHeaderMarkup(analysis, options = {}) {
     ? `
       <div class="analysis-header-nav">
         <a class="analysis-header-link" href="#analysisOverview">Звонок</a>
-        ${analysis?.crmEntityUrl
-          ? `<a class="analysis-header-link" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть в Bitrix24</a>`
-          : ""}
+        <a class="analysis-header-link" href="#analysisResult">Результат</a>
         <a class="analysis-header-link" href="#analysisRecommendations">Рекомендации</a>
         <a class="analysis-header-link" href="#analysisScript">Проверка сценария</a>
         <a class="analysis-header-link" href="#analysisMetrics">Индивидуальные параметры</a>
         <a class="analysis-header-link" href="#analysisNextStep">Следующий шаг</a>
         <a class="analysis-header-link" href="#analysisTranscript">Транскрипт</a>
+        ${analysis?.crmEntityUrl
+          ? `<a class="analysis-header-link analysis-header-link-external" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть в Bitrix24</a>`
+          : ""}
       </div>`
     : "";
   const pills = [];
@@ -391,6 +398,16 @@ function formatTimestamp(seconds) {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
   }
   return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function parseTimestampLabel(label) {
+  const source = String(label || "").trim();
+  if (!source) return null;
+  const parts = source.split(":").map((item) => Number(item));
+  if (parts.some((item) => !Number.isFinite(item))) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
 }
 
 function escapeHtml(value) {
@@ -649,6 +666,19 @@ function transcriptSegmentsMarkup(analysis) {
     .map(
       (segment, index) => {
         const roleLabel = transcriptRoleLabel(segment, index);
+        const startSeconds = Number.isFinite(Number(segment.start))
+          ? Number(segment.start)
+          : parseTimestampLabel(segment.startLabel);
+        const endSeconds = Number.isFinite(Number(segment.end))
+          ? Number(segment.end)
+          : parseTimestampLabel(segment.endLabel);
+        const canPlaySegment =
+          Boolean(analysis?.recordingUrl) &&
+          Number.isFinite(startSeconds) &&
+          Number.isFinite(endSeconds) &&
+          endSeconds > startSeconds;
+        const segmentKey = `${analysis?.activityId || "call"}:${index}:${startSeconds ?? "na"}:${endSeconds ?? "na"}`;
+        const isActiveSegment = state.playback.activityId === analysis?.activityId && state.playback.segmentKey === segmentKey;
         return `
         <article class="transcript-row">
           <div class="transcript-meta-line">
@@ -656,12 +686,159 @@ function transcriptSegmentsMarkup(analysis) {
               <span class="transcript-role-badge ${participantBadgeClass(roleLabel)}">${escapeHtml(roleLabel)}</span>
               <span class="transcript-time">${escapeHtml(segment.startLabel || formatTimestamp(segment.start))} - ${escapeHtml(segment.endLabel || formatTimestamp(segment.end))}</span>
             </span>
+            <button
+              type="button"
+              class="transcript-play-button ${isActiveSegment ? "is-active" : ""}"
+              data-action="play-segment"
+              data-start="${escapeHtml(startSeconds ?? "")}"
+              data-end="${escapeHtml(endSeconds ?? "")}"
+              data-segment-key="${escapeHtml(segmentKey)}"
+              ${canPlaySegment ? "" : "disabled"}
+            >${isActiveSegment ? "Стоп" : "▶ Фрагмент"}</button>
           </div>
           <p class="transcript-text">${escapeHtml(segment.text || "")}</p>
         </article>`;
       },
     )
     .join("")}</div>`;
+}
+
+const transcriptPlayback = {
+  audio: typeof Audio !== "undefined" ? new Audio() : null,
+  objectUrl: "",
+  stopAt: null,
+  pendingSeek: null,
+};
+
+function revokePlaybackObjectUrl() {
+  if (!transcriptPlayback.objectUrl) return;
+  URL.revokeObjectURL(transcriptPlayback.objectUrl);
+  transcriptPlayback.objectUrl = "";
+}
+
+function updateTranscriptPlaybackButtons() {
+  document.querySelectorAll('[data-action="play-segment"]').forEach((button) => {
+    const isActive =
+      String(button.dataset.segmentKey || "") === String(state.playback.segmentKey || "") &&
+      String(state.selectedAnalysis?.activityId || "") === String(state.playback.activityId || "");
+    button.classList.toggle("is-active", isActive);
+    button.textContent = isActive ? "Стоп" : "▶ Фрагмент";
+    if (!button.disabled) {
+      button.disabled = Boolean(state.playback.loading && !isActive);
+    }
+  });
+}
+
+function stopTranscriptPlayback(resetState = true) {
+  if (transcriptPlayback.audio) {
+    transcriptPlayback.audio.pause();
+  }
+  transcriptPlayback.stopAt = null;
+  transcriptPlayback.pendingSeek = null;
+  if (resetState) {
+    state.playback.activityId = null;
+    state.playback.segmentKey = "";
+    state.playback.loading = false;
+    updateTranscriptPlaybackButtons();
+  }
+}
+
+async function ensureTranscriptAudioSource(analysis) {
+  if (!analysis?.recordingUrl) {
+    throw new Error("Для этого звонка запись недоступна.");
+  }
+  if (
+    transcriptPlayback.audio &&
+    transcriptPlayback.objectUrl &&
+    state.playback.activityId === analysis.activityId &&
+    state.playback.audioUrl === analysis.recordingUrl
+  ) {
+    return;
+  }
+
+  state.playback.loading = true;
+  updateTranscriptPlaybackButtons();
+  stopTranscriptPlayback(false);
+
+  const response = await fetch(analysis.recordingUrl);
+  if (!response.ok) {
+    throw new Error("Не удалось загрузить запись звонка.");
+  }
+
+  const audioBlob = await response.blob();
+  revokePlaybackObjectUrl();
+  transcriptPlayback.objectUrl = URL.createObjectURL(audioBlob);
+  transcriptPlayback.audio.src = transcriptPlayback.objectUrl;
+  state.playback.activityId = analysis.activityId;
+  state.playback.audioUrl = analysis.recordingUrl;
+  state.playback.loading = false;
+  updateTranscriptPlaybackButtons();
+}
+
+async function playTranscriptSegment(button) {
+  const analysis = state.selectedAnalysis;
+  if (!analysis) return;
+
+  const segmentKey = String(button.dataset.segmentKey || "");
+  const start = Number(button.dataset.start);
+  const end = Number(button.dataset.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+
+  if (state.playback.activityId === analysis.activityId && state.playback.segmentKey === segmentKey) {
+    stopTranscriptPlayback();
+    return;
+  }
+
+  await ensureTranscriptAudioSource(analysis);
+  state.playback.activityId = analysis.activityId;
+  state.playback.segmentKey = segmentKey;
+  transcriptPlayback.stopAt = end;
+  transcriptPlayback.pendingSeek = start;
+
+  const audio = transcriptPlayback.audio;
+  const startPlayback = async () => {
+    if (transcriptPlayback.pendingSeek != null) {
+      audio.currentTime = transcriptPlayback.pendingSeek;
+      transcriptPlayback.pendingSeek = null;
+    }
+    await audio.play();
+  };
+
+  if (audio.readyState >= 1) {
+    await startPlayback();
+  } else {
+    await new Promise((resolve, reject) => {
+      const onLoaded = () => {
+        audio.removeEventListener("loadedmetadata", onLoaded);
+        audio.removeEventListener("error", onError);
+        resolve();
+      };
+      const onError = () => {
+        audio.removeEventListener("loadedmetadata", onLoaded);
+        audio.removeEventListener("error", onError);
+        reject(new Error("Не удалось открыть запись звонка."));
+      };
+      audio.addEventListener("loadedmetadata", onLoaded, { once: true });
+      audio.addEventListener("error", onError, { once: true });
+      audio.load();
+    });
+    await startPlayback();
+  }
+
+  updateTranscriptPlaybackButtons();
+}
+
+if (transcriptPlayback.audio) {
+  transcriptPlayback.audio.preload = "auto";
+  transcriptPlayback.audio.addEventListener("timeupdate", () => {
+    if (transcriptPlayback.stopAt == null) return;
+    if (transcriptPlayback.audio.currentTime >= transcriptPlayback.stopAt) {
+      stopTranscriptPlayback();
+    }
+  });
+  transcriptPlayback.audio.addEventListener("ended", () => {
+    stopTranscriptPlayback();
+  });
 }
 
 function collectScenarioPayload() {
@@ -985,6 +1162,7 @@ function renderCalls() {
 
 function renderAnalysis(analysis) {
   if (!analysis) {
+    stopTranscriptPlayback();
     setAnalysisDrawerOpen(false);
     setAnalysisHeaderMeta("");
     el.analysisState.textContent = "Не выбран";
@@ -1064,7 +1242,10 @@ function renderAnalysis(analysis) {
       ${detailMetaMarkup(analysis)}
       <p>${escapeHtml(resultExplanation)}</p>
       <p class="muted">Bitrix24 ID: #${escapeHtml(analysis.ownerId || "—")}</p>
-      <p class="muted">Исход: ${escapeHtml(localizeFreeText(analysis.overview?.callOutcome))}</p>
+    </section>
+    <section id="analysisResult" class="detail-block">
+      <h3>Результат</h3>
+      <p>${escapeHtml(localizeFreeText(analysis.overview?.callOutcome || "Результат не определён"))}</p>
     </section>
     <section id="analysisClientNeed" class="detail-block">
       <h3>Потребность клиента</h3>
@@ -1414,6 +1595,9 @@ function ensureAnalysisPolling() {
 }
 
 function selectAnalysisByCallId(activityId) {
+  if (String(state.selectedCallId || "") !== String(activityId)) {
+    stopTranscriptPlayback();
+  }
   const call = callById(activityId);
   const analysis = resolvedAnalysisForCall(activityId);
   state.selectedCallId = activityId;
@@ -1482,6 +1666,9 @@ async function analyzeOne(activityId) {
       ownerTypeId: call.ownerTypeId,
       ownerTypeLabel: call.ownerTypeLabel,
       crmEntityUrl: call.crmEntityUrl,
+      hasRecording: call.hasRecording,
+      recordingFileId: call.recordingFileId,
+      recordingUrl: call.recordingUrl,
       selectedScenarioId: scenarioId || null,
       selectedScenarioName: selectedScenario?.name || "Автосценарий",
       state: "queued",
@@ -1535,6 +1722,9 @@ async function analyzeOne(activityId) {
       ownerTypeId: failedCall?.ownerTypeId || state.selectedAnalysis?.ownerTypeId || null,
       ownerTypeLabel: failedCall?.ownerTypeLabel || state.selectedAnalysis?.ownerTypeLabel || "",
       crmEntityUrl: failedCall?.crmEntityUrl || state.selectedAnalysis?.crmEntityUrl || "",
+      hasRecording: failedCall?.hasRecording || state.selectedAnalysis?.hasRecording || false,
+      recordingFileId: failedCall?.recordingFileId || state.selectedAnalysis?.recordingFileId || null,
+      recordingUrl: failedCall?.recordingUrl || state.selectedAnalysis?.recordingUrl || "",
       selectedScenarioName:
         analysisOverride(activityId)?.selectedScenarioName ||
         effectiveAnalysis(failedCall || {})?.selectedScenarioName ||
@@ -1588,6 +1778,7 @@ function resetFilters() {
 
 document.addEventListener("click", async (event) => {
   if (event.target === el.analysisDrawerBackdrop || event.target === el.closeAnalysisDrawer) {
+    stopTranscriptPlayback();
     state.selectedCallId = null;
     state.selectedAnalysis = null;
     setAnalysisDrawerOpen(false);
@@ -1620,7 +1811,17 @@ document.addEventListener("click", async (event) => {
   }
 
   const analyzeButton = event.target.closest("[data-action='analyze']");
-  if (!analyzeButton) return;
+  if (!analyzeButton) {
+    const playSegmentButton = event.target.closest("[data-action='play-segment']");
+    if (!playSegmentButton) return;
+    try {
+      await playTranscriptSegment(playSegmentButton);
+    } catch (error) {
+      stopTranscriptPlayback();
+      notifyLoadError(error);
+    }
+    return;
+  }
 
   analyzeButton.disabled = true;
   try {

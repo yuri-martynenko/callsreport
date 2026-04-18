@@ -277,7 +277,7 @@ tbody tr.is-clickable { cursor: pointer; }
 .analysis-header-rows {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 18px;
   width: 100%;
   align-items: stretch;
 }
@@ -300,6 +300,10 @@ tbody tr.is-clickable { cursor: pointer; }
   justify-content: flex-start;
   width: 100%;
   margin-left: -2px;
+  padding-top: 6px;
+}
+.analysis-header-link-external {
+  margin-left: auto;
 }
 .analysis-header-link {
   display: inline-flex;
@@ -334,6 +338,25 @@ tbody tr.is-clickable { cursor: pointer; }
 .transcript-list { display: flex; flex-direction: column; gap: 8px; }
 .transcript-row { padding: 10px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid var(--line); }
 .transcript-meta-line { display: flex; justify-content: flex-start; gap: 10px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.transcript-play-button {
+  margin-left: auto;
+  padding: 8px 12px;
+  border: 1px solid rgba(139, 61, 44, 0.18);
+  background: rgba(139, 61, 44, 0.08);
+  color: var(--primary);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.transcript-play-button.is-active {
+  background: rgba(31, 107, 95, 0.16);
+  border-color: rgba(31, 107, 95, 0.24);
+  color: var(--accent);
+}
+.transcript-play-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .transcript-role { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
 .transcript-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .transcript-role-badge { padding: 4px 8px; border-radius: 999px; background: rgba(139, 61, 44, 0.1); font-size: 12px; }

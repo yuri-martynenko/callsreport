@@ -1459,6 +1459,7 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
     missedCall: Boolean(activity.SETTINGS?.MISSED_CALL),
     hasRecording: files.length > 0,
     recordingFileId: files[0]?.id || null,
+    recordingUrl: files.length > 0 ? `/api/calls/${activity.id}/recording` : "",
     analysis: analysis
       ? {
           activityId: analysis.activityId,
@@ -1480,6 +1481,9 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
           ownerTypeId: activity.ownerTypeId,
           ownerTypeLabel: ownerTypeLabel(activity.ownerTypeId),
           crmEntityUrl: buildCrmEntityUrl(activity.ownerTypeId, activity.ownerId),
+          hasRecording: files.length > 0,
+          recordingFileId: files[0]?.id || null,
+          recordingUrl: files.length > 0 ? `/api/calls/${activity.id}/recording` : "",
           selectedScenarioId: latestJob?.selectedScenarioId || analysis.selectedScenarioId || null,
           selectedScenarioName: latestJob?.selectedScenarioName || analysis.selectedScenarioName || "",
           errorMessage: isFailureCurrent ? failure.errorMessage : isJobError ? latestJob?.errorMessage || "" : "",
@@ -1507,6 +1511,9 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
             ownerTypeId: activity.ownerTypeId,
             ownerTypeLabel: ownerTypeLabel(activity.ownerTypeId),
             crmEntityUrl: buildCrmEntityUrl(activity.ownerTypeId, activity.ownerId),
+            hasRecording: files.length > 0,
+            recordingFileId: files[0]?.id || null,
+            recordingUrl: files.length > 0 ? `/api/calls/${activity.id}/recording` : "",
             selectedScenarioId: latestJob?.selectedScenarioId || null,
             selectedScenarioName: latestJob?.selectedScenarioName || "",
             errorMessage: latestJob?.errorMessage || failure?.errorMessage || "",
@@ -2351,6 +2358,26 @@ app.delete("/api/scenarios/:id", async (req, res, next) => {
 app.get("/api/calls", async (req, res, next) => {
   try {
     res.json({ success: true, data: await fetchCalls(req.query) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/calls/:id/recording", async (req, res, next) => {
+  try {
+    const callsData = await fetchCalls({ onlyRecorded: "false" });
+    const call = (callsData.calls || []).find((item) => String(item.id) === String(req.params.id));
+    if (!call || !call.hasRecording || !call.recordingFileId) {
+      const error = new Error("Recording not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const audio = await downloadCallAudio(call.recordingFileId);
+    res.setHeader("Content-Type", audio.contentType || "audio/mpeg");
+    res.setHeader("Content-Disposition", `inline; filename="${audio.fileName || `call-${call.id}.mp3`}"`);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.send(audio.buffer);
   } catch (error) {
     next(error);
   }

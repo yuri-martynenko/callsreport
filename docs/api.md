@@ -138,3 +138,18 @@
 If a caller needs the full filtered analyses array, it must request it explicitly with:
 
 - `includeAnalyses=true`
+
+## 2026-04 Transcript Playback Note
+
+`GET /api/calls` may include an internal `recordingUrl` for calls that have an attached recording.
+
+### `GET /api/calls/:id/recording`
+
+This internal endpoint proxies the source call recording by `activityId`.
+
+Usage:
+
+- the call detail modal uses it to play individual transcript fragments;
+- the browser never receives `VIBE_API_KEY` directly;
+- if the call has no recording, the endpoint returns `404`;
+- on success it returns the original audio stream with the source content type.
