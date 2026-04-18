@@ -43,6 +43,7 @@ let queueLoopActive = false;
 let queueRunningCount = 0;
 let queueScanTimer = null;
 let autoScanInFlight = false;
+const crmEntityCache = new Map();
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -363,6 +364,32 @@ function buildLatestActiveJobMap(jobs = []) {
     listJobsNewestFirst(jobs).filter((job) => ACTIVE_ANALYSIS_JOB_STATUSES.has(String(job.status || ""))),
     (job) => job.activityId,
   );
+}
+
+function buildAnalysisSignature({
+  sourceUpdatedAt,
+  selectedScenarioId,
+  scriptChecklist,
+  customMetrics,
+}) {
+  return JSON.stringify({
+    sourceUpdatedAt,
+    scenarioId: selectedScenarioId || null,
+    scriptChecklist: String(scriptChecklist || "").trim(),
+    customMetrics: Array.isArray(customMetrics) ? customMetrics : [],
+    transcriptionModel: AI_TRANSCRIPTION_MODEL,
+    chatModel: AI_CHAT_MODEL,
+  });
+}
+
+function findReusableAnalysis(analyses = [], activityId, signature) {
+  return (analyses || []).find(
+    (item) =>
+      String(item.activityId) === String(activityId) &&
+      item.signature === signature &&
+      analysisHasMeaningfulContent(item) &&
+      (Number(item?.tokenUsage?.analysisTotalTokens || 0) > 0 || !item?.tokenUsage),
+  ) || null;
 }
 
 function countActiveAutoJobs(jobs = []) {
@@ -1089,6 +1116,61 @@ function extractPhoneNumber(text) {
   return match ? match[1].replace(/[^\d+]/g, "") : "";
 }
 
+function normalizePersonLikeName(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^\+?\d[\d\s\-()]+$/.test(text)) return "";
+  if (/^(incoming|outgoing|входящий|исходящий)$/i.test(text)) return "";
+  return text;
+}
+
+function extractClientName(activity = {}) {
+  const directCandidates = [
+    activity.clientName,
+    activity.CLIENT_NAME,
+    activity.contactName,
+    activity.CONTACT_NAME,
+    activity.companyName,
+    activity.COMPANY_NAME,
+    activity.ownerName,
+    activity.OWNER_NAME,
+    activity.ownerTitle,
+    activity.OWNER_TITLE,
+  ];
+
+  for (const candidate of directCandidates) {
+    const normalized = normalizePersonLikeName(candidate);
+    if (normalized) return normalized;
+  }
+
+  const communicationCollections = [
+    activity.communications,
+    activity.COMMUNICATIONS,
+    activity.communication,
+    activity.COMMUNICATION,
+  ];
+
+  for (const collection of communicationCollections) {
+    if (!Array.isArray(collection)) continue;
+    for (const item of collection) {
+      const candidates = [
+        item?.name,
+        item?.NAME,
+        item?.title,
+        item?.TITLE,
+        item?.entityTitle,
+        item?.ENTITY_TITLE,
+      ];
+      for (const candidate of candidates) {
+        const normalized = normalizePersonLikeName(candidate);
+        if (normalized) return normalized;
+      }
+    }
+  }
+
+  return "";
+}
+
 function ownerTypeLabel(ownerTypeId) {
   const mapping = {
     1: "Лид",
@@ -1116,6 +1198,108 @@ function buildCrmEntityUrl(ownerTypeId, ownerId) {
     default:
       return "";
   }
+}
+
+function composeContactName(contact = {}) {
+  return [contact.lastName, contact.name, contact.secondName]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim() || normalizePersonLikeName(contact.fullName) || normalizePersonLikeName(contact.shortName) || "";
+}
+
+function composeCompanyName(company = {}) {
+  return (
+    normalizePersonLikeName(company.title) ||
+    normalizePersonLikeName(company.companyTitle) ||
+    normalizePersonLikeName(company.name) ||
+    ""
+  );
+}
+
+function composeLeadName(lead = {}) {
+  return (
+    normalizePersonLikeName(lead.title) ||
+    [lead.lastName, lead.name, lead.secondName]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .join(" ")
+      .trim()
+  );
+}
+
+async function readCrmEntityCached(cacheKey, loader) {
+  if (crmEntityCache.has(cacheKey)) {
+    return crmEntityCache.get(cacheKey);
+  }
+  const promise = loader()
+    .catch(() => null);
+  crmEntityCache.set(cacheKey, promise);
+  return promise;
+}
+
+async function resolveClientNameForCall(call) {
+  if (call.clientName) return call.clientName;
+
+  const ownerTypeId = Number(call.ownerTypeId || 0);
+  const ownerId = Number(call.ownerId || 0);
+  if (!ownerTypeId || !ownerId) return "";
+
+  if (ownerTypeId === 3) {
+    const contact = await readCrmEntityCached(`contact:${ownerId}`, async () => {
+      const payload = await vibeJson(`/v1/contacts/${ownerId}`);
+      return payload?.data || null;
+    });
+    return composeContactName(contact || {});
+  }
+
+  if (ownerTypeId === 4) {
+    const company = await readCrmEntityCached(`company:${ownerId}`, async () => {
+      const payload = await vibeJson(`/v1/companies/${ownerId}`);
+      return payload?.data || null;
+    });
+    return composeCompanyName(company || {});
+  }
+
+  if (ownerTypeId === 1) {
+    const lead = await readCrmEntityCached(`lead:${ownerId}`, async () => {
+      const payload = await vibeJson(`/v1/leads/${ownerId}`);
+      return payload?.data || null;
+    });
+    return composeLeadName(lead || {});
+  }
+
+  if (ownerTypeId === 2) {
+    const deal = await readCrmEntityCached(`deal:${ownerId}`, async () => {
+      const payload = await vibeJson(`/v1/deals/${ownerId}`);
+      return payload?.data || null;
+    });
+    if (!deal) return "";
+
+    const contactId = Number(deal.contactId || 0);
+    if (contactId) {
+      const contact = await readCrmEntityCached(`contact:${contactId}`, async () => {
+        const payload = await vibeJson(`/v1/contacts/${contactId}`);
+        return payload?.data || null;
+      });
+      const contactName = composeContactName(contact || {});
+      if (contactName) return contactName;
+    }
+
+    const companyId = Number(deal.companyId || 0);
+    if (companyId) {
+      const company = await readCrmEntityCached(`company:${companyId}`, async () => {
+        const payload = await vibeJson(`/v1/companies/${companyId}`);
+        return payload?.data || null;
+      });
+      const companyName = composeCompanyName(company || {});
+      if (companyName) return companyName;
+    }
+
+    return normalizePersonLikeName(deal.title) || "";
+  }
+
+  return "";
 }
 
 function normalizeCall(activity, managersById, analysis, failure, latestJob = null) {
@@ -1149,6 +1333,7 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
     id: activity.id,
     subject: activity.subject,
     clientPhone: extractPhoneNumber(activity.subject || ""),
+    clientName: extractClientName(activity),
     managerId: activity.responsibleId,
     managerName: manager?.fullName || `User #${activity.responsibleId}`,
     managerPosition: manager?.position || "",
@@ -1297,6 +1482,14 @@ async function fetchCalls(query) {
   }
 
   calls = applyClientSideCallFilters(calls, query);
+  await Promise.all(
+    calls.map(async (call) => {
+      const clientName = await resolveClientNameForCall(call);
+      if (clientName) {
+        call.clientName = clientName;
+      }
+    }),
+  );
 
   return { managers, calls, total: calls.length };
 }
@@ -1517,23 +1710,15 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
     throw error;
   }
 
-  const signature = JSON.stringify({
+  const signature = buildAnalysisSignature({
     sourceUpdatedAt: rawCall.updatedAt,
-    scenarioId: selectedScenario?.id || null,
+    selectedScenarioId: selectedScenario?.id || null,
     scriptChecklist: effectiveScriptChecklist,
     customMetrics: effectiveCustomMetrics,
-    transcriptionModel: AI_TRANSCRIPTION_MODEL,
-    chatModel: AI_CHAT_MODEL,
   });
 
-  const existing = store.analyses.find(
-    (item) => String(item.activityId) === String(activityId) && item.signature === signature,
-  );
-  if (
-    existing &&
-    analysisHasMeaningfulContent(existing) &&
-    (Number(existing?.tokenUsage?.analysisTotalTokens || 0) > 0 || !existing?.tokenUsage)
-  ) {
+  const existing = findReusableAnalysis(store.analyses, activityId, signature);
+  if (existing) {
     return { cached: true, analysis: existing };
   }
 
@@ -1711,6 +1896,30 @@ async function enqueueAnalysisJob({
   );
   if (activeJob) {
     return { queued: false, existing: true, job: activeJob };
+  }
+
+  const signature = buildAnalysisSignature({
+    sourceUpdatedAt: rawCall.updatedAt,
+    selectedScenarioId: selectedScenario?.id || null,
+    scriptChecklist: effectiveScriptChecklist,
+    customMetrics: effectiveCustomMetrics,
+  });
+  const existingAnalysis = findReusableAnalysis(analysisStore.analyses, activityId, signature);
+  if (existingAnalysis) {
+    return {
+      queued: false,
+      existing: true,
+      reason: "up_to_date",
+      analysis: existingAnalysis,
+      job: {
+        id: null,
+        activityId: call.id,
+        status: "ready",
+        selectedScenarioId: selectedScenario?.id || null,
+        selectedScenarioName: selectedScenario?.name || "",
+        analysisUpdatedAt: existingAnalysis.updatedAt || null,
+      },
+    };
   }
 
   const job = {

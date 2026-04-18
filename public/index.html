@@ -165,6 +165,7 @@
                     <thead>
                       <tr>
                         <th class="call-column">Звонок</th>
+                        <th class="datetime-column">Дата и время</th>
                         <th>Менеджер</th>
                         <th>Направление</th>
                         <th>Длительность</th>
@@ -185,15 +186,6 @@
                   <button id="nextPage" type="button">Вперёд</button>
                 </div>
 
-                <div class="detail-shell">
-                  <div class="section-head">
-                    <h2>Детализация звонка</h2>
-                    <span id="analysisState" class="badge neutral">Не выбран</span>
-                  </div>
-                  <div id="analysisDetail" class="analysis-detail empty">
-                    Выберите звонок со статусом «Готово» или нажмите «Анализировать», чтобы здесь появились резюме, рекомендации и проверка по сценарию.
-                  </div>
-                </div>
               </section>
             </div>
           </section>
@@ -314,6 +306,24 @@
           </section>
         </main>
       </div>
+    </div>
+
+    <div id="analysisDrawer" class="analysis-drawer">
+      <button id="analysisDrawerBackdrop" class="analysis-drawer-backdrop" type="button" aria-label="Закрыть детализацию"></button>
+      <aside class="analysis-drawer-panel" aria-label="Детализация звонка">
+        <div class="analysis-drawer-head">
+          <div class="section-head">
+            <h2>Детализация звонка</h2>
+            <div class="analysis-drawer-head-actions">
+              <span id="analysisState" class="badge neutral">Не выбран</span>
+              <button id="closeAnalysisDrawer" class="analysis-drawer-close" type="button" aria-label="Закрыть">×</button>
+            </div>
+          </div>
+        </div>
+        <div id="analysisDetail" class="analysis-detail empty">
+          Выберите звонок со статусом «Готово» или нажмите «Анализировать», чтобы здесь появились резюме, рекомендации и проверка по сценарию.
+        </div>
+      </aside>
     </div>
 
     <script src="/app.js"></script>

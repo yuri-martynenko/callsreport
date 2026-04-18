@@ -72,6 +72,9 @@ const el = {
   statusText: document.getElementById("statusText"),
   analysisDetail: document.getElementById("analysisDetail"),
   analysisState: document.getElementById("analysisState"),
+  analysisDrawer: document.getElementById("analysisDrawer"),
+  analysisDrawerBackdrop: document.getElementById("analysisDrawerBackdrop"),
+  closeAnalysisDrawer: document.getElementById("closeAnalysisDrawer"),
   prevPage: document.getElementById("prevPage"),
   nextPage: document.getElementById("nextPage"),
   pageInfo: document.getElementById("pageInfo"),
@@ -296,6 +299,30 @@ function formatDate(value) {
 
 function formatDay(value) {
   return value ? new Date(value).toLocaleDateString("ru-RU") : "—";
+}
+
+function formatCallDateTime(value) {
+  return value
+    ? new Date(value).toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "—";
+}
+
+function callClientTitle(call = {}) {
+  if (call.clientName) return call.clientName;
+  if (call.ownerTypeLabel && call.ownerId) return `${call.ownerTypeLabel} #${call.ownerId}`;
+  return "Клиент не определён";
+}
+
+function setAnalysisDrawerOpen(open) {
+  if (!el.analysisDrawer) return;
+  el.analysisDrawer.classList.toggle("open", Boolean(open));
+  document.body.classList.toggle("drawer-open", Boolean(open));
 }
 
 function formatTimestamp(seconds) {
@@ -684,6 +711,9 @@ function setCurrentView(view) {
   el.showReportView.classList.toggle("primary-action", view === "report");
   el.showScenariosView.classList.toggle("primary-action", view === "scenarios");
   el.showSettingsView.classList.toggle("primary-action", view === "settings");
+  if (view !== "report") {
+    setAnalysisDrawerOpen(false);
+  }
 }
 
 function analysisStateKey(call) {
@@ -859,7 +889,12 @@ function renderCalls() {
         : "—";
       return `
         <tr class="${String(state.selectedCallId || state.selectedAnalysis?.activityId || "") === String(call.id) ? "is-selected" : ""} is-clickable" data-action="select-call" data-id="${call.id}">
-          <td class="call-column"><div class="call-subject">${escapeHtml(call.subject)}</div><div class="call-meta">${formatDate(call.startTime)}</div></td>
+          <td class="call-column">
+            <div class="call-subject">${escapeHtml(callClientTitle(call))}</div>
+            <div class="call-meta">${escapeHtml(call.clientPhone || "Без номера")}</div>
+            <div class="call-meta">${escapeHtml(call.subject || "—")}</div>
+          </td>
+          <td class="datetime-column">${escapeHtml(formatCallDateTime(call.startTime))}</td>
           <td>
             <div>${escapeHtml(call.managerName || "—")}</div>
             ${call.managerPosition ? `<div class="call-meta">${escapeHtml(call.managerPosition)}</div>` : ""}
@@ -879,6 +914,7 @@ function renderCalls() {
 
 function renderAnalysis(analysis) {
   if (!analysis) {
+    setAnalysisDrawerOpen(false);
     el.analysisState.textContent = "Не выбран";
     el.analysisState.className = "badge neutral";
     el.analysisDetail.className = "analysis-detail empty";
@@ -1309,6 +1345,7 @@ function selectAnalysisByCallId(activityId) {
   const call = callById(activityId);
   const analysis = resolvedAnalysisForCall(activityId);
   state.selectedCallId = activityId;
+  setAnalysisDrawerOpen(true);
   if (!analysis) {
     const selectedScenario = selectedScenarioForCall(call);
     state.selectedAnalysis = null;
@@ -1336,6 +1373,27 @@ async function analyzeOne(activityId) {
   const scenarioSelect = document.querySelector(`[data-scenario-select="${activityId}"]`);
   const scenarioId = scenarioSelect?.value || "";
   const selectedScenario = state.scenarios.find((item) => String(item.id) === String(scenarioId)) || null;
+  const requestedScenarioName = selectedScenario?.name || "Автосценарий";
+
+  if (call) {
+    const currentAnalysis = effectiveAnalysis(call);
+    const currentScenarioId = String(currentAnalysis?.selectedScenarioId || "");
+    const requestedScenarioId = String(scenarioId || "");
+    const sameScenario = currentScenarioId === requestedScenarioId;
+    const isReadyAndCurrent =
+      normalizeDisplayAnalysisState(currentAnalysis?.state) === "ready" &&
+      Boolean(currentAnalysis?.isCurrent);
+
+    if (sameScenario && isReadyAndCurrent) {
+      if (el.statusText) {
+        el.statusText.textContent = `Повторный запуск не нужен: для звонка уже есть актуальный анализ по сценарию «${requestedScenarioName}».`;
+      }
+      state.selectedCallId = call.id;
+      selectAnalysisByCallId(call.id);
+      return;
+    }
+  }
+
   if (call) {
     state.selectedCallId = call.id;
     const processingAnalysis = {
@@ -1370,6 +1428,16 @@ async function analyzeOne(activityId) {
         customMetrics: parsedCustomMetrics(),
       }),
     });
+
+    if (result.existing && result.reason === "up_to_date") {
+      clearAnalysisOverride(activityId);
+      if (el.statusText) {
+        el.statusText.textContent = `Актуальный анализ уже существует. Повторный запуск для звонка не потребовался.`;
+      }
+      await Promise.all([loadCalls(), loadSummary()]);
+      selectAnalysisByCallId(activityId);
+      return;
+    }
 
     setAnalysisOverride(activityId, {
       ...(analysisOverride(activityId) || {}),
@@ -1446,6 +1514,15 @@ function resetFilters() {
 }
 
 document.addEventListener("click", async (event) => {
+  if (event.target === el.analysisDrawerBackdrop || event.target === el.closeAnalysisDrawer) {
+    state.selectedCallId = null;
+    state.selectedAnalysis = null;
+    setAnalysisDrawerOpen(false);
+    renderCalls();
+    renderAnalysis(null);
+    return;
+  }
+
   if (!event.target.closest(".multi-select")) {
     closeFilterDropdowns();
   }
