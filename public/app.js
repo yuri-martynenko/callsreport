@@ -348,6 +348,9 @@ function analysisHeaderMarkup(analysis, options = {}) {
     ? `
       <div class="analysis-header-nav">
         <a class="analysis-header-link" href="#analysisOverview">Звонок</a>
+        ${analysis?.crmEntityUrl
+          ? `<a class="analysis-header-link" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть в Bitrix24</a>`
+          : ""}
         <a class="analysis-header-link" href="#analysisRecommendations">Рекомендации</a>
         <a class="analysis-header-link" href="#analysisScript">Проверка сценария</a>
         <a class="analysis-header-link" href="#analysisMetrics">Индивидуальные параметры</a>
@@ -367,11 +370,6 @@ function analysisHeaderMarkup(analysis, options = {}) {
     );
   } else if (options.showScenarioPill) {
     pills.push(`<span class="pill">Сценарий: ${escapeHtml(scenarioName)}</span>`);
-  }
-  if (analysis?.crmEntityUrl) {
-    pills.push(
-      `<a class="analysis-header-link" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть в Bitrix24</a>`,
-    );
   }
 
   return `
@@ -998,7 +996,7 @@ function renderAnalysis(analysis) {
 
   if (analysis.state === "queued" || analysis.state === "processing") {
     setAnalysisHeaderMeta(analysisHeaderMarkup(analysis));
-    el.analysisState.textContent = analysis.state === "queued" ? "В очереди" : "В работе";
+    el.analysisState.textContent = `Статус: ${analysis.state === "queued" ? "В очереди" : "В работе"}`;
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
@@ -1012,7 +1010,7 @@ function renderAnalysis(analysis) {
 
   if (analysis.state === "error") {
     setAnalysisHeaderMeta(analysisHeaderMarkup(analysis));
-    el.analysisState.textContent = "Ошибка";
+    el.analysisState.textContent = "Статус: Ошибка";
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
@@ -1039,7 +1037,7 @@ function renderAnalysis(analysis) {
           : hasDetailedResult
             ? "Готово"
             : "Неполный результат";
-  el.analysisState.textContent = detailStateLabel;
+  el.analysisState.textContent = `Статус: ${detailStateLabel}`;
   el.analysisState.className = `badge ${hasDetailedResult && analysis.state !== "outdated" ? "success" : "warning"}`;
   el.analysisDetail.className = "analysis-detail";
   const resultExplanation = analysis.summary
@@ -1067,7 +1065,14 @@ function renderAnalysis(analysis) {
       <p>${escapeHtml(resultExplanation)}</p>
       <p class="muted">Bitrix24 ID: #${escapeHtml(analysis.ownerId || "—")}</p>
       <p class="muted">Исход: ${escapeHtml(localizeFreeText(analysis.overview?.callOutcome))}</p>
-      <p class="muted">Потребность клиента: ${escapeHtml(localizeFreeText(analysis.overview?.clientNeed))}</p>
+    </section>
+    <section id="analysisClientNeed" class="detail-block">
+      <h3>Потребность клиента</h3>
+      <p>${escapeHtml(localizeFreeText(analysis.overview?.clientNeed || "Потребность клиента не определена"))}</p>
+    </section>
+    <section id="analysisNextStep" class="detail-block next-step-block">
+      <h3>Следующий шаг</h3>
+      <p>${escapeHtml(localizeFreeText(analysis.nextStep || "Следующий шаг не определён"))}</p>
     </section>
     <section id="analysisRecommendations" class="detail-block">
       <h3>Рекомендации</h3>
@@ -1080,10 +1085,6 @@ function renderAnalysis(analysis) {
     <section id="analysisMetrics" class="detail-block">
       <h3>Индивидуальные параметры</h3>
       <ul class="flat">${(analysis.customMetrics || []).map((item) => `<li><strong>${escapeHtml(localizeFreeText(item.name))}</strong>: ${escapeHtml(item.score)} (${escapeHtml(localizeCheckpointStatus(item.status))}) — ${escapeHtml(localizeFreeText(item.comment))}</li>`).join("") || "<li>Индивидуальные параметры ещё не заполнены</li>"}</ul>
-    </section>
-    <section id="analysisNextStep" class="detail-block next-step-block">
-      <h3>Следующий шаг</h3>
-      <p>${escapeHtml(localizeFreeText(analysis.nextStep || "Следующий шаг не определён"))}</p>
     </section>
     <section id="analysisTranscript" class="detail-block">
       <h3>Транскрипт</h3>

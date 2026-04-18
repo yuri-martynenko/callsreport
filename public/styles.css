@@ -240,10 +240,10 @@ tbody tr.is-clickable { cursor: pointer; }
 .analysis-drawer-head .section-head-main,
 .analysis-drawer-heading {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
+  justify-content: flex-start;
+  gap: 12px;
   flex: 1 1 auto;
 }
 .analysis-drawer-section-head {
@@ -255,6 +255,7 @@ tbody tr.is-clickable { cursor: pointer; }
   align-items: flex-start;
   gap: 10px;
   min-width: 0;
+  width: 100%;
 }
 .analysis-drawer-head .section-head-main h2 {
   flex: 0 0 auto;
@@ -263,13 +264,14 @@ tbody tr.is-clickable { cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 0 0 auto;
 }
 .analysis-header-meta {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-width: 0;
-  flex: 1 1 auto;
+  width: 100%;
   align-items: stretch;
 }
 .analysis-header-rows {
@@ -281,7 +283,7 @@ tbody tr.is-clickable { cursor: pointer; }
 }
 .analysis-header-top {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: flex-start;
   width: 100%;
 }
@@ -289,7 +291,7 @@ tbody tr.is-clickable { cursor: pointer; }
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 .analysis-header-nav {
   display: flex;
@@ -297,6 +299,7 @@ tbody tr.is-clickable { cursor: pointer; }
   flex-wrap: wrap;
   justify-content: flex-start;
   width: 100%;
+  margin-left: -2px;
 }
 .analysis-header-link {
   display: inline-flex;
