@@ -139,12 +139,14 @@ button.accent { background: var(--accent); color: white; }
 .table-wrap { overflow-x: auto; padding-bottom: 4px; }
 table { width: 100%; min-width: 1300px; border-collapse: collapse; table-layout: fixed; }
 th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow: hidden; }
+th, td, .call-subject, .call-meta { user-select: text; }
 th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
-th:nth-child(3), td:nth-child(3) { width: 120px; }
-th:nth-child(4), td:nth-child(4) { width: 116px; }
+th:nth-child(2), td:nth-child(2) { width: 150px; }
+th:nth-child(3), td:nth-child(3) { width: 112px; }
+th:nth-child(4), td:nth-child(4) { width: 132px; }
 th:nth-child(5), td:nth-child(5) { width: 96px; }
 th:nth-child(6), td:nth-child(6) { width: 108px; }
-.call-column { width: 25%; min-width: 280px; }
+.call-column { width: 27%; min-width: 320px; }
 .datetime-column { width: 132px; min-width: 132px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 tbody tr:hover, tbody tr.is-selected { background: rgba(255, 255, 255, 0.4); }
 tbody tr.is-clickable { cursor: pointer; }
@@ -207,7 +209,7 @@ tbody tr.is-clickable { cursor: pointer; }
   top: 16px;
   right: 16px;
   bottom: 16px;
-  width: min(760px, calc(100vw - 32px));
+  width: min(1140px, calc(100vw - 32px));
   padding: 18px;
   overflow: auto;
   background: var(--panel);

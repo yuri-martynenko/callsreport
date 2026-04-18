@@ -33,6 +33,7 @@ const MAX_CALLS_PER_BATCH = Number(envValue("MAX_CALLS_PER_BATCH", "20"));
 const ANALYSIS_QUEUE_CONCURRENCY = Math.max(1, Number(envValue("ANALYSIS_QUEUE_CONCURRENCY", "1")));
 const ANALYSIS_AUTO_SCAN_INTERVAL_MS = Math.max(15000, Number(envValue("ANALYSIS_AUTO_SCAN_INTERVAL_MS", "30000")));
 const ANALYSIS_AUTO_SCAN_BATCH = Math.max(1, Number(envValue("ANALYSIS_AUTO_SCAN_BATCH", "10")));
+const ANALYSIS_ACTIVE_JOB_STALE_MS = Math.max(300000, Number(envValue("ANALYSIS_ACTIVE_JOB_STALE_MS", "900000")));
 const VIBE_REQUEST_TIMEOUT_MS = Math.max(5000, Number(envValue("VIBE_REQUEST_TIMEOUT_MS", "60000")));
 const AI_TRANSCRIPTION_TIMEOUT_MS = Math.max(15000, Number(envValue("AI_TRANSCRIPTION_TIMEOUT_MS", "180000")));
 
@@ -423,6 +424,33 @@ function updateJobRecord(job, patch = {}) {
     ...patch,
     updatedAt: new Date().toISOString(),
   };
+}
+
+function isStaleActiveJob(job) {
+  const status = String(job?.status || "");
+  if (!ACTIVE_ANALYSIS_JOB_STATUSES.has(status)) return false;
+  const referenceTime = new Date(job?.startedAt || job?.updatedAt || job?.createdAt || 0).getTime();
+  if (!Number.isFinite(referenceTime) || referenceTime <= 0) return false;
+  return Date.now() - referenceTime > ANALYSIS_ACTIVE_JOB_STALE_MS;
+}
+
+async function cleanupStaleActiveJobs() {
+  return mutateAnalysisStore(async (store) => {
+    let updated = 0;
+    store.jobs = (store.jobs || []).map((job) => {
+      if (!isStaleActiveJob(job)) return job;
+      updated += 1;
+      return updateJobRecord(job, {
+        status: "error",
+        finishedAt: new Date().toISOString(),
+        errorMessage:
+          job.status === "processing"
+            ? "Фоновая обработка была остановлена по таймауту. Запустите анализ повторно."
+            : "Задача анализа слишком долго оставалась в очереди и была сброшена. Запустите анализ повторно.",
+      });
+    });
+    return { updated };
+  });
 }
 
 function deriveTranscriptionTokenUsage(transcriptionPayload) {
@@ -1413,6 +1441,7 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
 }
 
 async function fetchCalls(query) {
+  await cleanupStaleActiveJobs();
   const [managers, analysisStore, scenarioStore] = await Promise.all([
     listManagers(),
     readAnalysisStore(),
@@ -2037,6 +2066,7 @@ function scheduleAnalysisQueue() {
 }
 
 async function autoEnqueuePendingCalls() {
+  await cleanupStaleActiveJobs();
   const settingsStore = await readSettingsStore();
   const mode = String(settingsStore.settings?.autoTranscriptionMode || "disabled");
   if (mode === "disabled") {

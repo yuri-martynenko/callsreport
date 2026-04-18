@@ -75,8 +75,10 @@ const el = {
   analysisDrawer: document.getElementById("analysisDrawer"),
   analysisDrawerBackdrop: document.getElementById("analysisDrawerBackdrop"),
   closeAnalysisDrawer: document.getElementById("closeAnalysisDrawer"),
+  firstPage: document.getElementById("firstPage"),
   prevPage: document.getElementById("prevPage"),
   nextPage: document.getElementById("nextPage"),
+  lastPage: document.getElementById("lastPage"),
   pageInfo: document.getElementById("pageInfo"),
   managerScoreChart: document.getElementById("managerScoreChart"),
   sentimentChart: document.getElementById("sentimentChart"),
@@ -861,8 +863,10 @@ function renderPagination() {
   const totalPages = Math.max(1, Math.ceil(state.calls.length / PAGE_SIZE));
   if (state.page > totalPages) state.page = totalPages;
   if (el.pageInfo) el.pageInfo.textContent = `Страница ${state.page} из ${totalPages}`;
+  if (el.firstPage) el.firstPage.disabled = state.page <= 1;
   if (el.prevPage) el.prevPage.disabled = state.page <= 1;
   if (el.nextPage) el.nextPage.disabled = state.page >= totalPages;
+  if (el.lastPage) el.lastPage.disabled = state.page >= totalPages;
 }
 function renderCalls() {
   hydrateSelectedAnalysis();
@@ -892,20 +896,19 @@ function renderCalls() {
           <td class="call-column">
             <div class="call-subject">${escapeHtml(callClientTitle(call))}</div>
             <div class="call-meta">${escapeHtml(call.clientPhone || "Без номера")}</div>
-            <div class="call-meta">${escapeHtml(call.subject || "—")}</div>
           </td>
-          <td class="datetime-column">${escapeHtml(formatCallDateTime(call.startTime))}</td>
           <td>
             <div>${escapeHtml(call.managerName || "—")}</div>
             ${call.managerPosition ? `<div class="call-meta">${escapeHtml(call.managerPosition)}</div>` : ""}
           </td>
           <td>${localizeDirection(call.direction)}</td>
-            <td>${formatDuration(call.durationSeconds)}</td>
-            <td><span class="status-pill ${status.className}">${status.label}</span></td>
-            <td class="compliance-cell">${escapeHtml(compliancePercent)}</td>
-            <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}" ${isAnalysisActive ? "disabled" : ""}>${scenarioOptions}</select></td>
-            <td class="token-cell">${escapeHtml(totalTokens)}</td>
-            <td class="actions-cell"><div class="action-stack"><button class="call-action call-action-icon primary-action" title="${!call.hasRecording ? "Нет записи" : isAnalysisActive ? "Анализ уже запущен" : "Анализировать звонок"}" aria-label="${!call.hasRecording ? "Нет записи" : isAnalysisActive ? "Анализ уже запущен" : "Анализировать звонок"}" data-action="analyze" data-id="${call.id}" ${!call.hasRecording || isAnalysisActive ? "disabled" : ""}>${!call.hasRecording ? "×" : isAnalysisActive ? "…" : "▶"}</button></div></td>
+          <td class="datetime-column">${escapeHtml(formatCallDateTime(call.startTime))}</td>
+          <td>${formatDuration(call.durationSeconds)}</td>
+          <td><span class="status-pill ${status.className}">${status.label}</span></td>
+          <td class="compliance-cell">${escapeHtml(compliancePercent)}</td>
+          <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}" ${isAnalysisActive ? "disabled" : ""}>${scenarioOptions}</select></td>
+          <td class="token-cell">${escapeHtml(totalTokens)}</td>
+          <td class="actions-cell"><div class="action-stack"><button class="call-action call-action-icon primary-action" title="${!call.hasRecording ? "Нет записи" : isAnalysisActive ? "Анализ уже запущен" : "Анализировать звонок"}" aria-label="${!call.hasRecording ? "Нет записи" : isAnalysisActive ? "Анализ уже запущен" : "Анализировать звонок"}" data-action="analyze" data-id="${call.id}" ${!call.hasRecording || isAnalysisActive ? "disabled" : ""}>${!call.hasRecording ? "×" : isAnalysisActive ? "…" : "▶"}</button></div></td>
           </tr>`;
       })
       .join("");
@@ -1388,14 +1391,12 @@ async function analyzeOne(activityId) {
       if (el.statusText) {
         el.statusText.textContent = `Повторный запуск не нужен: для звонка уже есть актуальный анализ по сценарию «${requestedScenarioName}».`;
       }
-      state.selectedCallId = call.id;
-      selectAnalysisByCallId(call.id);
+      renderCalls();
       return;
     }
   }
 
   if (call) {
-    state.selectedCallId = call.id;
     const processingAnalysis = {
       ...(effectiveAnalysis(call) || {}),
       activityId: call.id,
@@ -1412,9 +1413,9 @@ async function analyzeOne(activityId) {
       state: "queued",
     };
     setAnalysisOverride(call.id, processingAnalysis);
-    state.selectedAnalysis = processingAnalysis;
+    state.selectedAnalysis =
+      String(state.selectedAnalysis?.activityId || "") === String(call.id) ? processingAnalysis : state.selectedAnalysis;
     renderCalls();
-    renderAnalysis(processingAnalysis);
   }
 
   try {
@@ -1435,7 +1436,6 @@ async function analyzeOne(activityId) {
         el.statusText.textContent = `Актуальный анализ уже существует. Повторный запуск для звонка не потребовался.`;
       }
       await Promise.all([loadCalls(), loadSummary()]);
-      selectAnalysisByCallId(activityId);
       return;
     }
 
@@ -1448,7 +1448,6 @@ async function analyzeOne(activityId) {
       errorMessage: "",
     });
     await Promise.all([loadCalls(), loadSummary()]);
-    selectAnalysisByCallId(activityId);
   } catch (error) {
     const failedCall = state.calls.find((item) => String(item.id) === String(activityId));
     const errorAnalysis = {
@@ -1536,8 +1535,10 @@ document.addEventListener("click", async (event) => {
   }
 
   const selectCallRow = event.target.closest("[data-action='select-call']");
+  const hasTextSelection = Boolean(window.getSelection && window.getSelection()?.toString().trim());
   if (
     selectCallRow &&
+    !hasTextSelection &&
     !event.target.closest("button, a, select, option, input, label, summary, details")
   ) {
     selectAnalysisByCallId(selectCallRow.getAttribute("data-id"));
@@ -1553,7 +1554,6 @@ document.addEventListener("click", async (event) => {
   } catch (error) {
     try {
       await Promise.all([loadCalls(), loadSummary()]);
-      selectAnalysisByCallId(analyzeButton.getAttribute("data-id"));
     } catch (refreshError) {
       notifyLoadError(refreshError);
     }
@@ -1667,11 +1667,28 @@ if (el.prevPage) {
   });
 }
 
+if (el.firstPage) {
+  el.firstPage.addEventListener("click", () => {
+    if (state.page <= 1) return;
+    state.page = 1;
+    renderCalls();
+  });
+}
+
 if (el.nextPage) {
   el.nextPage.addEventListener("click", () => {
     const totalPages = Math.max(1, Math.ceil(state.calls.length / PAGE_SIZE));
     if (state.page >= totalPages) return;
     state.page += 1;
+    renderCalls();
+  });
+}
+
+if (el.lastPage) {
+  el.lastPage.addEventListener("click", () => {
+    const totalPages = Math.max(1, Math.ceil(state.calls.length / PAGE_SIZE));
+    if (state.page >= totalPages) return;
+    state.page = totalPages;
     renderCalls();
   });
 }
