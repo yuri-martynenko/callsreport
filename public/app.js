@@ -21,6 +21,7 @@ const state = {
     segmentKey: "",
     audioUrl: "",
     loading: false,
+    mode: "",
   },
 };
 
@@ -79,6 +80,7 @@ const el = {
   analysisState: document.getElementById("analysisState"),
   analysisHeaderMeta: document.getElementById("analysisHeaderMeta"),
   analysisDrawer: document.getElementById("analysisDrawer"),
+  analysisDrawerPanel: document.querySelector(".analysis-drawer-panel"),
   analysisDrawerBackdrop: document.getElementById("analysisDrawerBackdrop"),
   closeAnalysisDrawer: document.getElementById("closeAnalysisDrawer"),
   firstPage: document.getElementById("firstPage"),
@@ -369,13 +371,12 @@ function analysisHeaderMarkup(analysis, options = {}) {
     ? `
       <div class="analysis-header-nav">
         <a class="analysis-header-link" href="#analysisOverview">Резюме</a>
-        <a class="analysis-header-link" href="#analysisResult">Результат</a>
         <a class="analysis-header-link" href="#analysisRecommendations">Рекомендации</a>
         <a class="analysis-header-link" href="#analysisScript">Проверка сценария</a>
         <a class="analysis-header-link" href="#analysisMetrics">Индивидуальные параметры</a>
         <a class="analysis-header-link" href="#analysisTranscript">Транскрипт</a>
         ${analysis?.crmEntityUrl
-          ? `<span class="analysis-header-nav-spacer" aria-hidden="true"></span><a class="analysis-header-link analysis-header-link-external" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть в Bitrix24</a>`
+          ? `<a class="analysis-header-link" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть в Bitrix24</a>`
           : ""}
       </div>`
     : "";
@@ -391,6 +392,14 @@ function analysisHeaderMarkup(analysis, options = {}) {
     );
   } else if (options.showScenarioPill) {
     pills.push(`<span class="pill">Сценарий: ${escapeHtml(scenarioName)}</span>`);
+  }
+  if (analysis?.recordingUrl) {
+    const isPlayingFullCall =
+      state.playback.activityId === analysis.activityId &&
+      state.playback.mode === "full-call";
+    pills.push(
+      `<button type="button" class="analysis-audio-button ${isPlayingFullCall ? "is-active" : ""}" data-action="toggle-full-call-audio">${isPlayingFullCall ? "■ Остановить разговор" : "▶ Прослушать разговор"}</button>`,
+    );
   }
 
   return `
@@ -741,6 +750,15 @@ function updateTranscriptPlaybackButtons() {
     button.textContent = isActive ? "■ Стоп" : "▶ Фрагмент";
     button.disabled = !isPlayable || Boolean(state.playback.loading && !isActive);
   });
+  const fullCallButton = document.querySelector('[data-action="toggle-full-call-audio"]');
+  if (fullCallButton) {
+    const isActive =
+      state.playback.mode === "full-call" &&
+      String(state.selectedAnalysis?.activityId || "") === String(state.playback.activityId || "");
+    fullCallButton.classList.toggle("is-active", isActive);
+    fullCallButton.textContent = isActive ? "■ Остановить разговор" : "▶ Прослушать разговор";
+    fullCallButton.disabled = Boolean(state.playback.loading);
+  }
 }
 
 function stopTranscriptPlayback(resetState = true) {
@@ -753,6 +771,7 @@ function stopTranscriptPlayback(resetState = true) {
     state.playback.activityId = null;
     state.playback.segmentKey = "";
     state.playback.loading = false;
+    state.playback.mode = "";
     updateTranscriptPlaybackButtons();
   }
 }
@@ -806,8 +825,61 @@ async function playTranscriptSegment(button) {
   await ensureTranscriptAudioSource(analysis);
   state.playback.activityId = analysis.activityId;
   state.playback.segmentKey = segmentKey;
+  state.playback.mode = "segment";
   transcriptPlayback.stopAt = end;
   transcriptPlayback.pendingSeek = start;
+
+  const audio = transcriptPlayback.audio;
+  const startPlayback = async () => {
+    if (transcriptPlayback.pendingSeek != null) {
+      audio.currentTime = transcriptPlayback.pendingSeek;
+      transcriptPlayback.pendingSeek = null;
+    }
+    await audio.play();
+  };
+
+  if (audio.readyState >= 1) {
+    await startPlayback();
+  } else {
+    await new Promise((resolve, reject) => {
+      const onLoaded = () => {
+        audio.removeEventListener("loadedmetadata", onLoaded);
+        audio.removeEventListener("error", onError);
+        resolve();
+      };
+      const onError = () => {
+        audio.removeEventListener("loadedmetadata", onLoaded);
+        audio.removeEventListener("error", onError);
+        reject(new Error("Не удалось открыть запись звонка."));
+      };
+      audio.addEventListener("loadedmetadata", onLoaded, { once: true });
+      audio.addEventListener("error", onError, { once: true });
+      audio.load();
+    });
+    await startPlayback();
+  }
+
+  updateTranscriptPlaybackButtons();
+}
+
+async function toggleFullCallPlayback() {
+  const analysis = state.selectedAnalysis;
+  if (!analysis?.recordingUrl) return;
+
+  const isPlayingFullCall =
+    state.playback.activityId === analysis.activityId &&
+    state.playback.mode === "full-call";
+  if (isPlayingFullCall) {
+    stopTranscriptPlayback();
+    return;
+  }
+
+  await ensureTranscriptAudioSource(analysis);
+  state.playback.activityId = analysis.activityId;
+  state.playback.segmentKey = "";
+  state.playback.mode = "full-call";
+  transcriptPlayback.stopAt = null;
+  transcriptPlayback.pendingSeek = 0;
 
   const audio = transcriptPlayback.audio;
   const startPlayback = async () => {
@@ -1266,18 +1338,11 @@ function renderAnalysis(analysis) {
       <h3>${escapeHtml(analysis.subject || "Резюме")}</h3>
       ${detailMetaMarkup(analysis)}
       <p>${escapeHtml(resultExplanation)}</p>
-    </section>
-    <section id="analysisResult" class="detail-block">
-      <h3>Результат</h3>
-      <p>${escapeHtml(localizeFreeText(analysis.overview?.callOutcome || "Результат не определён"))}</p>
-    </section>
-    <section id="analysisClientNeed" class="detail-block">
-      <h3>Потребность клиента</h3>
-      <p>${escapeHtml(localizeFreeText(analysis.overview?.clientNeed || "Потребность клиента не определена"))}</p>
-    </section>
-    <section id="analysisNextStep" class="detail-block next-step-block">
-      <h3>Следующий шаг</h3>
-      <p>${escapeHtml(localizeFreeText(analysis.nextStep || "Следующий шаг не определён"))}</p>
+      <ul class="flat">
+        <li><strong>Результат</strong>: ${escapeHtml(localizeFreeText(analysis.overview?.callOutcome || "Результат не определён"))}</li>
+        <li><strong>Потребность клиента</strong>: ${escapeHtml(localizeFreeText(analysis.overview?.clientNeed || "Потребность клиента не определена"))}</li>
+        <li><strong>Следующий шаг</strong>: ${escapeHtml(localizeFreeText(analysis.nextStep || "Следующий шаг не определён"))}</li>
+      </ul>
     </section>
     <section id="analysisRecommendations" class="detail-block">
       <h3>Рекомендации</h3>
@@ -1811,6 +1876,23 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const internalAnalysisLink = event.target.closest('.analysis-header-link[href^="#"]');
+  if (internalAnalysisLink) {
+    event.preventDefault();
+    const targetId = internalAnalysisLink.getAttribute("href")?.slice(1);
+    const target = targetId ? document.getElementById(targetId) : null;
+    const panel = el.analysisDrawerPanel;
+    if (target && panel) {
+      const head = document.querySelector(".analysis-drawer-head");
+      const headHeight = head ? head.getBoundingClientRect().height : 0;
+      const panelRect = panel.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const desiredTop = panel.scrollTop + (targetRect.top - panelRect.top) - headHeight - 16;
+      panel.scrollTo({ top: Math.max(0, desiredTop), behavior: "smooth" });
+    }
+    return;
+  }
+
   if (!event.target.closest(".multi-select")) {
     closeFilterDropdowns();
   }
@@ -1836,6 +1918,16 @@ document.addEventListener("click", async (event) => {
 
   const analyzeButton = event.target.closest("[data-action='analyze']");
   if (!analyzeButton) {
+    const fullCallButton = event.target.closest("[data-action='toggle-full-call-audio']");
+    if (fullCallButton) {
+      try {
+        await toggleFullCallPlayback();
+      } catch (error) {
+        stopTranscriptPlayback();
+        notifyLoadError(error);
+      }
+      return;
+    }
     const playSegmentButton = event.target.closest("[data-action='play-segment']");
     if (!playSegmentButton) return;
     try {
