@@ -343,6 +343,21 @@ function detailMetaMarkup(source = {}) {
   return metaLine ? `<div class="muted">${escapeHtml(metaLine)}</div>` : "";
 }
 
+function analysisHeaderStatusMarkup(label, source = {}, tone = "neutral") {
+  const parts = [
+    `Клиент: ${callClientTitle(source)}`,
+    `Телефон: ${source.clientPhone || "—"}`,
+    `Направление: ${localizeDirection(source.direction)}`,
+    `Дата и время: ${formatCallDateTime(source.startTime)}`,
+    `Длительность: ${formatDuration(source.durationSeconds)}`,
+  ];
+
+  return `
+    <span class="analysis-status-badge ${escapeHtml(tone)}">${escapeHtml(`Статус: ${label}`)}</span>
+    <span class="analysis-status-meta">${parts.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</span>
+  `;
+}
+
 function analysisHeaderMarkup(analysis, options = {}) {
   const scoreValue = analysis?.scriptAnalysis?.overallScore ?? "—";
   const complianceValue = analysis?.scriptAnalysis?.compliancePercent ?? "—";
@@ -361,7 +376,7 @@ function analysisHeaderMarkup(analysis, options = {}) {
         <a class="analysis-header-link" href="#analysisNextStep">Следующий шаг</a>
         <a class="analysis-header-link" href="#analysisTranscript">Транскрипт</a>
         ${analysis?.crmEntityUrl
-          ? `<a class="analysis-header-link analysis-header-link-external" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть в Bitrix24</a>`
+          ? `<span class="analysis-header-nav-spacer" aria-hidden="true"></span><a class="analysis-header-link analysis-header-link-external" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть в Bitrix24</a>`
           : ""}
       </div>`
     : "";
@@ -693,6 +708,7 @@ function transcriptSegmentsMarkup(analysis) {
               data-start="${escapeHtml(startSeconds ?? "")}"
               data-end="${escapeHtml(endSeconds ?? "")}"
               data-segment-key="${escapeHtml(segmentKey)}"
+              data-playable="${canPlaySegment ? "true" : "false"}"
               ${canPlaySegment ? "" : "disabled"}
             >${isActiveSegment ? "Стоп" : "▶ Фрагмент"}</button>
           </div>
@@ -721,11 +737,10 @@ function updateTranscriptPlaybackButtons() {
     const isActive =
       String(button.dataset.segmentKey || "") === String(state.playback.segmentKey || "") &&
       String(state.selectedAnalysis?.activityId || "") === String(state.playback.activityId || "");
+    const isPlayable = button.dataset.playable === "true";
     button.classList.toggle("is-active", isActive);
     button.textContent = isActive ? "Стоп" : "▶ Фрагмент";
-    if (!button.disabled) {
-      button.disabled = Boolean(state.playback.loading && !isActive);
-    }
+    button.disabled = !isPlayable || Boolean(state.playback.loading && !isActive);
   });
 }
 
@@ -1165,17 +1180,22 @@ function renderAnalysis(analysis) {
     stopTranscriptPlayback();
     setAnalysisDrawerOpen(false);
     setAnalysisHeaderMeta("");
-    el.analysisState.textContent = "Не выбран";
-    el.analysisState.className = "badge neutral";
+    el.analysisState.innerHTML = analysisHeaderStatusMarkup("Не выбран");
+    el.analysisState.className = "analysis-status-line";
     el.analysisDetail.className = "analysis-detail empty";
     el.analysisDetail.textContent = "Выберите звонок со статусом «Готово» или нажмите «Анализировать», чтобы здесь появились резюме, рекомендации и проверка по сценарию.";
     return;
   }
 
   if (analysis.state === "queued" || analysis.state === "processing") {
+    const source = callById(state.selectedCallId) || analysis;
     setAnalysisHeaderMeta(analysisHeaderMarkup(analysis));
-    el.analysisState.textContent = `Статус: ${analysis.state === "queued" ? "В очереди" : "В работе"}`;
-    el.analysisState.className = "badge warning";
+    el.analysisState.innerHTML = analysisHeaderStatusMarkup(
+      analysis.state === "queued" ? "В очереди" : "В работе",
+      source,
+      "warning",
+    );
+    el.analysisState.className = "analysis-status-line";
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
       <section class="detail-block">
@@ -1187,9 +1207,10 @@ function renderAnalysis(analysis) {
   }
 
   if (analysis.state === "error") {
+    const source = callById(state.selectedCallId) || analysis;
     setAnalysisHeaderMeta(analysisHeaderMarkup(analysis));
-    el.analysisState.textContent = "Статус: Ошибка";
-    el.analysisState.className = "badge warning";
+    el.analysisState.innerHTML = analysisHeaderStatusMarkup("Ошибка", source, "warning");
+    el.analysisState.className = "analysis-status-line";
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
       <section class="detail-block">
@@ -1215,8 +1236,13 @@ function renderAnalysis(analysis) {
           : hasDetailedResult
             ? "Готово"
             : "Неполный результат";
-  el.analysisState.textContent = `Статус: ${detailStateLabel}`;
-  el.analysisState.className = `badge ${hasDetailedResult && analysis.state !== "outdated" ? "success" : "warning"}`;
+  const source = callById(state.selectedCallId) || analysis;
+  el.analysisState.innerHTML = analysisHeaderStatusMarkup(
+    detailStateLabel,
+    source,
+    hasDetailedResult && analysis.state !== "outdated" ? "success" : "warning",
+  );
+  el.analysisState.className = "analysis-status-line";
   el.analysisDetail.className = "analysis-detail";
   const resultExplanation = analysis.summary
     ? analysis.summary
@@ -1612,8 +1638,8 @@ function selectAnalysisByCallId(activityId) {
         scenarioName: selectedScenario?.name || "Автосценарий",
       }),
     );
-    el.analysisState.textContent = "Не готов";
-    el.analysisState.className = "badge neutral";
+    el.analysisState.innerHTML = analysisHeaderStatusMarkup("Не готов", call || {}, "neutral");
+    el.analysisState.className = "analysis-status-line";
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
       <section class="detail-block">

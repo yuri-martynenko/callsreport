@@ -253,9 +253,51 @@ tbody tr.is-clickable { cursor: pointer; }
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   width: 100%;
+}
+.analysis-status-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.analysis-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(29, 26, 22, 0.08);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.analysis-status-badge.success {
+  background: rgba(31, 107, 95, 0.14);
+  color: var(--success);
+}
+.analysis-status-badge.warning {
+  background: rgba(183, 121, 31, 0.14);
+  color: var(--warning);
+}
+.analysis-status-badge.neutral {
+  background: rgba(31, 107, 95, 0.1);
+  color: var(--text);
+}
+.analysis-status-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .analysis-drawer-head .section-head-main h2 {
   flex: 0 0 auto;
@@ -296,18 +338,25 @@ tbody tr.is-clickable { cursor: pointer; }
 .analysis-header-nav {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-start;
   width: 100%;
   margin-left: -2px;
   padding-top: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.analysis-header-nav-spacer {
+  flex: 1 0 32px;
 }
 .analysis-header-link-external {
-  margin-left: auto;
+  flex: 0 0 auto;
 }
 .analysis-header-link {
   display: inline-flex;
   align-items: center;
+  white-space: nowrap;
   min-height: 34px;
   padding: 8px 12px;
   border-radius: 999px;
@@ -440,6 +489,17 @@ ul.flat { margin: 10px 0 0; padding-left: 18px; }
   .analysis-header-pills,
   .analysis-header-top,
   .analysis-header-nav { align-items: flex-start; justify-content: flex-start; }
+  .analysis-header-nav {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+  .analysis-header-nav-spacer {
+    display: none;
+  }
+  .analysis-status-line,
+  .analysis-status-meta {
+    align-items: flex-start;
+  }
   .analysis-drawer-head .section-head-main,
   .analysis-drawer-heading {
     flex-direction: column;
