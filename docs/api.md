@@ -115,7 +115,6 @@
 
 - summary KPI;
 - суммарное количество использованных токенов по отфильтрованным анализам;
-- список analyses;
 - значения для графиков и карточек.
 
 ## Что не является публичным API
@@ -131,3 +130,11 @@
 - в этом файле;
 - в `docs/logic.md`, если меняется поведение;
 - в ADR, если меняется архитектурный подход.
+
+## Summary Response Notes
+
+`GET /api/reports/summary` now returns only `data.summary` by default for dashboard and report rendering.
+
+If a caller needs the full filtered analyses array, it must request it explicitly with:
+
+- `includeAnalyses=true`

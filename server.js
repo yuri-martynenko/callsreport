@@ -2430,7 +2430,11 @@ app.get("/api/reports/summary", async (req, res, next) => {
     const store = await readAnalysisStore();
     let analyses = uniqueLatestAnalyses(store.analyses || []);
     analyses = analyses.filter((item) => matchesSummaryFilters(item, req.query));
-    res.json({ success: true, data: { summary: summarizeAnalyses(analyses), analyses } });
+    const includeAnalyses = String(req.query.includeAnalyses || "").toLowerCase() === "true";
+    res.json({
+      success: true,
+      data: includeAnalyses ? { summary: summarizeAnalyses(analyses), analyses } : { summary: summarizeAnalyses(analyses) },
+    });
   } catch (error) {
     next(error);
   }

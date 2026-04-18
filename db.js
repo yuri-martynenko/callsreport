@@ -28,6 +28,9 @@ const DEFAULT_SCENARIO = {
 let sqlPromise = null;
 let dbPromise = null;
 let writeChain = Promise.resolve();
+let analysisStoreCache = null;
+let scenarioStoreCache = null;
+let settingsStoreCache = null;
 
 const DEFAULT_SCENARIO_FIXED = {
   id: "default-sales",
@@ -400,8 +403,10 @@ async function ensurePersistence() {
 }
 
 async function readAnalysisStore() {
+  if (analysisStoreCache) return analysisStoreCache;
   const db = await ensureDatabase();
-  return readAnalysisStoreFromDb(db);
+  analysisStoreCache = readAnalysisStoreFromDb(db);
+  return analysisStoreCache;
 }
 
 async function writeAnalysisStore(store) {
@@ -409,6 +414,7 @@ async function writeAnalysisStore(store) {
     const db = await ensureDatabase();
     const normalized = writeAnalysisStoreToDb(db, store);
     await persistDatabase(db);
+    analysisStoreCache = normalized;
     return normalized;
   });
 }
@@ -416,17 +422,20 @@ async function writeAnalysisStore(store) {
 async function mutateAnalysisStore(mutator) {
   return queueWrite(async () => {
     const db = await ensureDatabase();
-    const store = readAnalysisStoreFromDb(db);
+    const store = analysisStoreCache || readAnalysisStoreFromDb(db);
     const result = await mutator(store);
-    writeAnalysisStoreToDb(db, store);
+    const normalized = writeAnalysisStoreToDb(db, store);
     await persistDatabase(db);
+    analysisStoreCache = normalized;
     return result;
   });
 }
 
 async function readScenarioStore() {
+  if (scenarioStoreCache) return scenarioStoreCache;
   const db = await ensureDatabase();
-  return readScenarioStoreFromDb(db);
+  scenarioStoreCache = readScenarioStoreFromDb(db);
+  return scenarioStoreCache;
 }
 
 async function writeScenarioStore(store) {
@@ -434,13 +443,16 @@ async function writeScenarioStore(store) {
     const db = await ensureDatabase();
     const normalized = writeScenarioStoreToDb(db, store);
     await persistDatabase(db);
+    scenarioStoreCache = normalized;
     return normalized;
   });
 }
 
 async function readSettingsStore() {
+  if (settingsStoreCache) return settingsStoreCache;
   const db = await ensureDatabase();
-  return readSettingsStoreFromDb(db);
+  settingsStoreCache = readSettingsStoreFromDb(db);
+  return settingsStoreCache;
 }
 
 async function writeSettingsStore(store) {
@@ -448,6 +460,7 @@ async function writeSettingsStore(store) {
     const db = await ensureDatabase();
     const normalized = writeSettingsStoreToDb(db, store);
     await persistDatabase(db);
+    settingsStoreCache = normalized;
     return normalized;
   });
 }

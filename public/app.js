@@ -3,7 +3,6 @@
 const state = {
   calls: [],
   summary: null,
-  analyses: [],
   scenarios: [],
   settings: {
     autoTranscriptionMode: "disabled",
@@ -1353,7 +1352,6 @@ async function loadCalls() {
 async function loadSummary() {
   const data = await api(`/api/reports/summary?${filtersQuery()}`);
   state.summary = data.summary;
-  state.analyses = data.analyses;
   renderSummary();
   renderDashboard();
 }
@@ -1743,10 +1741,7 @@ if (el.lastPage) {
 (async function init() {
   try {
     setCurrentView("dashboard");
-    await loadManagers();
-    await loadSettings();
-    await loadScenarios();
-    await Promise.all([loadCalls(), loadSummary()]);
+    await Promise.all([loadManagers(), loadSettings(), loadScenarios(), loadCalls(), loadSummary()]);
     renderAnalysis(null);
   } catch (error) {
     if (el.statusText) el.statusText.textContent = error.message;
