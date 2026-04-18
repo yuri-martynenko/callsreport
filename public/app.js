@@ -194,11 +194,11 @@ function formatDuration(seconds) {
 }
 
 function callMetaLine(source = {}) {
-  return [
-    source.managerName || "—",
-    localizeDirection(source.direction),
-    formatDuration(source.durationSeconds),
-  ].join(" • ");
+  const parts = [];
+  if (source.managerName) parts.push(source.managerName);
+  if (source.direction) parts.push(localizeDirection(source.direction));
+  if (Number(source.durationSeconds) > 0) parts.push(formatDuration(source.durationSeconds));
+  return parts.join(" • ");
 }
 
 function analysisOverride(activityId) {
@@ -330,6 +330,58 @@ function setAnalysisDrawerOpen(open) {
 function setAnalysisHeaderMeta(html = "") {
   if (!el.analysisHeaderMeta) return;
   el.analysisHeaderMeta.innerHTML = html;
+}
+
+function detailMetaMarkup(source = {}) {
+  const metaLine = callMetaLine(source);
+  return metaLine ? `<div class="muted">${escapeHtml(metaLine)}</div>` : "";
+}
+
+function analysisHeaderMarkup(analysis, options = {}) {
+  const scoreValue = analysis?.scriptAnalysis?.overallScore ?? "—";
+  const complianceValue = analysis?.scriptAnalysis?.compliancePercent ?? "—";
+  const totalTokens = analysis?.tokenUsage?.totalTokens ?? "—";
+  const transcriptionTokens = analysis?.tokenUsage?.transcriptionTokens ?? "—";
+  const analysisTokens = analysis?.tokenUsage?.analysisTotalTokens ?? "—";
+  const scenarioName = options.scenarioName || analysis?.selectedScenarioName || "Автосценарий";
+  const navLinks = options.showNav
+    ? `
+      <div class="analysis-header-nav">
+        <a class="analysis-header-link" href="#analysisOverview">Звонок</a>
+        <a class="analysis-header-link" href="#analysisRecommendations">Рекомендации</a>
+        <a class="analysis-header-link" href="#analysisScript">Проверка сценария</a>
+        <a class="analysis-header-link" href="#analysisMetrics">Индивидуальные параметры</a>
+        <a class="analysis-header-link" href="#analysisNextStep">Следующий шаг</a>
+        <a class="analysis-header-link" href="#analysisTranscript">Транскрипт</a>
+      </div>`
+    : "";
+  const pills = [];
+  if (options.showDetailPills) {
+    pills.push(`<span class="pill">Сентимент: ${escapeHtml(localizeSentiment(analysis?.overview?.sentiment))}</span>`);
+    pills.push(`<span class="pill">Риск: ${escapeHtml(localizeRisk(analysis?.overview?.riskLevel))}</span>`);
+    pills.push(`<span class="pill">Score: ${escapeHtml(scoreValue)}</span>`);
+    pills.push(`<span class="pill">Сценарий: ${escapeHtml(scenarioName)}</span>`);
+    pills.push(`<span class="pill">Скрипт: ${escapeHtml(complianceValue)}%</span>`);
+    pills.push(
+      `<span class="pill">Токены: ${escapeHtml(totalTokens)} (транскрибация ${escapeHtml(transcriptionTokens)}, анализ ${escapeHtml(analysisTokens)})</span>`,
+    );
+  } else if (options.showScenarioPill) {
+    pills.push(`<span class="pill">Сценарий: ${escapeHtml(scenarioName)}</span>`);
+  }
+  if (analysis?.crmEntityUrl) {
+    pills.push(
+      `<a class="analysis-header-link" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть в Bitrix24</a>`,
+    );
+  }
+
+  return `
+    <div class="analysis-header-rows">
+      <div class="analysis-header-top">
+        <div class="analysis-header-pills">${pills.join("")}</div>
+      </div>
+      ${navLinks}
+    </div>
+  `;
 }
 
 function formatTimestamp(seconds) {
@@ -945,28 +997,28 @@ function renderAnalysis(analysis) {
   }
 
   if (analysis.state === "queued" || analysis.state === "processing") {
-    setAnalysisHeaderMeta("");
+    setAnalysisHeaderMeta(analysisHeaderMarkup(analysis));
     el.analysisState.textContent = analysis.state === "queued" ? "В очереди" : "В работе";
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
       <section class="detail-block">
         <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
-        <div class="muted">${escapeHtml(callMetaLine(analysis))}</div>
+        ${detailMetaMarkup(analysis)}
         <p>${analysis.state === "queued" ? "Звонок поставлен в очередь на анализ. Статус и детализация обновятся автоматически." : "Анализ выполняется. После завершения статус и детализация обновятся автоматически."}</p>
       </section>`;
     return;
   }
 
   if (analysis.state === "error") {
-    setAnalysisHeaderMeta("");
+    setAnalysisHeaderMeta(analysisHeaderMarkup(analysis));
     el.analysisState.textContent = "Ошибка";
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
       <section class="detail-block">
         <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
-        <div class="muted">${escapeHtml(callMetaLine(analysis))}</div>
+        ${detailMetaMarkup(analysis)}
         <p>${escapeHtml(analysis.errorMessage || "Ошибка анализа")}</p>
       </section>`;
     return;
@@ -1000,46 +1052,20 @@ function renderAnalysis(analysis) {
       ? "Полный AI-разбор пока не сформирован: сохранилась транскрибация, но резюме и оценка сценария не были получены. Обычно помогает повторный анализ звонка."
       : "Результат анализа пока не заполнен. Попробуйте повторно запустить анализ звонка.";
 
-  const scoreValue = analysis.scriptAnalysis?.overallScore ?? "—";
-  const complianceValue = analysis.scriptAnalysis?.compliancePercent ?? "—";
-  const totalTokens = analysis.tokenUsage?.totalTokens ?? "—";
-  const transcriptionTokens = analysis.tokenUsage?.transcriptionTokens ?? "—";
-  const analysisTokens = analysis.tokenUsage?.analysisTotalTokens ?? "—";
-  setAnalysisHeaderMeta(`
-    <div class="analysis-header-rows">
-      <div class="analysis-header-pills">
-        <span class="pill">Сентимент: ${escapeHtml(localizeSentiment(analysis.overview?.sentiment))}</span>
-        <span class="pill">Риск: ${escapeHtml(localizeRisk(analysis.overview?.riskLevel))}</span>
-        <span class="pill">Score: ${escapeHtml(scoreValue)}</span>
-      </div>
-      <div class="analysis-header-pills script-row">
-        <span class="pill">Сценарий: ${escapeHtml(analysis.selectedScenarioName || "Автоподбор / ручной ввод")}</span>
-        <span class="pill">Соблюдение скрипта: ${escapeHtml(complianceValue)}%</span>
-      </div>
-      <div class="analysis-header-pills">
-        <span class="pill">Токены: ${escapeHtml(totalTokens)} (транскрибация ${escapeHtml(transcriptionTokens)}, анализ ${escapeHtml(analysisTokens)})</span>
-      </div>
-      <div class="analysis-header-nav">
-        <a class="analysis-header-link" href="#analysisOverview">Общий срез</a>
-        <a class="analysis-header-link" href="#analysisRecommendations">Рекомендации</a>
-        <a class="analysis-header-link" href="#analysisScript">Проверка сценария</a>
-        <a class="analysis-header-link" href="#analysisMetrics">Индивидуальные параметры</a>
-        <a class="analysis-header-link" href="#analysisNextStep">Следующий шаг</a>
-        <a class="analysis-header-link" href="#analysisTranscript">Транскрипт</a>
-      </div>
-    </div>
-  `);
+  setAnalysisHeaderMeta(
+    analysisHeaderMarkup(analysis, {
+      showDetailPills: true,
+      showNav: true,
+      scenarioName: analysis.selectedScenarioName || "Автоподбор / ручной ввод",
+    }),
+  );
 
   el.analysisDetail.innerHTML = `
-    <section class="detail-block">
-      <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
-      <div class="muted">${escapeHtml(callMetaLine(analysis))}</div>
-      <p>${escapeHtml(resultExplanation)}</p>
-      <p class="muted">CRM: ${escapeHtml(analysis.ownerTypeLabel || "—")} #${escapeHtml(analysis.ownerId || "—")}</p>
-      ${analysis.crmEntityUrl ? `<p><a class="crm-link" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть карточку в Bitrix24</a></p>` : ""}
-    </section>
     <section id="analysisOverview" class="detail-block">
-      <h3>Общий срез</h3>
+      <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
+      ${detailMetaMarkup(analysis)}
+      <p>${escapeHtml(resultExplanation)}</p>
+      <p class="muted">Bitrix24 ID: #${escapeHtml(analysis.ownerId || "—")}</p>
       <p class="muted">Исход: ${escapeHtml(localizeFreeText(analysis.overview?.callOutcome))}</p>
       <p class="muted">Потребность клиента: ${escapeHtml(localizeFreeText(analysis.overview?.clientNeed))}</p>
     </section>
@@ -1395,18 +1421,20 @@ function selectAnalysisByCallId(activityId) {
     const selectedScenario = selectedScenarioForCall(call);
     state.selectedAnalysis = null;
     renderCalls();
-    setAnalysisHeaderMeta(`
-      <div class="analysis-header-topline">${escapeHtml(call?.subject || "Звонок")} • ${escapeHtml(callMetaLine(call || {}))}</div>
-    `);
+    setAnalysisHeaderMeta(
+      analysisHeaderMarkup(call || {}, {
+        showScenarioPill: true,
+        scenarioName: selectedScenario?.name || "Автосценарий",
+      }),
+    );
     el.analysisState.textContent = "Не готов";
     el.analysisState.className = "badge neutral";
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
       <section class="detail-block">
           <h3>${escapeHtml(call?.subject || "Звонок")}</h3>
-          <div class="muted">${escapeHtml(callMetaLine(call || {}))}</div>
+          ${detailMetaMarkup(call || {})}
           <p>Для этого звонка результат анализа пока отсутствует.</p>
-          <p class="muted">Статус: ${escapeHtml(analysisStatus(call || {}).label || "Ожидает анализа")}</p>
           <p class="muted">Сценарий: ${escapeHtml(selectedScenario?.name || "Автосценарий")}</p>
         </section>`;
       return;

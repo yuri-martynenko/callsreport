@@ -314,13 +314,15 @@
       <button id="analysisDrawerBackdrop" class="analysis-drawer-backdrop" type="button" aria-label="Закрыть детализацию"></button>
       <aside class="analysis-drawer-panel" aria-label="Детализация звонка">
         <div class="analysis-drawer-head">
-          <div class="section-head">
-            <div class="section-head-main">
-              <h2>Детализация звонка</h2>
+          <div class="section-head analysis-drawer-section-head">
+            <div class="section-head-main analysis-drawer-heading">
+              <div class="analysis-title-stack">
+                <h2>Детализация звонка</h2>
+                <span id="analysisState" class="badge neutral">Не выбран</span>
+              </div>
               <div id="analysisHeaderMeta" class="analysis-header-meta"></div>
             </div>
             <div class="analysis-drawer-head-actions">
-              <span id="analysisState" class="badge neutral">Не выбран</span>
               <button id="closeAnalysisDrawer" class="analysis-drawer-close" type="button" aria-label="Закрыть">×</button>
             </div>
           </div>
