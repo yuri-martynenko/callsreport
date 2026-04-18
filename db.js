@@ -175,6 +175,14 @@ function createSchema(db) {
       updated_at TEXT NOT NULL,
       payload TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS crm_client_cache (
+      owner_type_id TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      PRIMARY KEY (owner_type_id, owner_id)
+    );
   `);
 }
 
@@ -444,6 +452,60 @@ async function writeSettingsStore(store) {
   });
 }
 
+async function readCrmClientCache(entries = []) {
+  const db = await ensureDatabase();
+  const result = new Map();
+
+  for (const entry of entries) {
+    const ownerTypeId = String(entry?.ownerTypeId || "");
+    const ownerId = String(entry?.ownerId || "");
+    if (!ownerTypeId || !ownerId) continue;
+
+    const statement = db.prepare(
+      "SELECT payload FROM crm_client_cache WHERE owner_type_id = ? AND owner_id = ?",
+    );
+    try {
+      statement.bind([ownerTypeId, ownerId]);
+      if (!statement.step()) continue;
+      const row = statement.getAsObject();
+      const payload = JSON.parse(String(row.payload || "{}"));
+      result.set(`${ownerTypeId}:${ownerId}`, payload);
+    } finally {
+      statement.free();
+    }
+  }
+
+  return result;
+}
+
+async function upsertCrmClientCache(entry) {
+  return queueWrite(async () => {
+    const db = await ensureDatabase();
+    const ownerTypeId = String(entry?.ownerTypeId || "");
+    const ownerId = String(entry?.ownerId || "");
+    if (!ownerTypeId || !ownerId) return null;
+
+    const normalized = {
+      ownerTypeId,
+      ownerId,
+      clientName: String(entry?.clientName || "").trim(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    db.run(
+      "INSERT INTO crm_client_cache (owner_type_id, owner_id, updated_at, payload) VALUES (?, ?, ?, ?) ON CONFLICT(owner_type_id, owner_id) DO UPDATE SET updated_at = excluded.updated_at, payload = excluded.payload",
+      [
+        normalized.ownerTypeId,
+        normalized.ownerId,
+        normalized.updatedAt,
+        JSON.stringify(normalized),
+      ],
+    );
+    await persistDatabase(db);
+    return normalized;
+  });
+}
+
 module.exports = {
   DB_PATH,
   ensurePersistence,
@@ -454,4 +516,6 @@ module.exports = {
   writeScenarioStore,
   readSettingsStore,
   writeSettingsStore,
+  readCrmClientCache,
+  upsertCrmClientCache,
 };

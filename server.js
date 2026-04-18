@@ -11,6 +11,8 @@ const {
   writeScenarioStore: persistenceWriteScenarioStore,
   readSettingsStore: persistenceReadSettingsStore,
   writeSettingsStore: persistenceWriteSettingsStore,
+  readCrmClientCache: persistenceReadCrmClientCache,
+  upsertCrmClientCache: persistenceUpsertCrmClientCache,
 } = require("./db");
 
 const app = express();
@@ -45,6 +47,7 @@ let queueRunningCount = 0;
 let queueScanTimer = null;
 let autoScanInFlight = false;
 const crmEntityCache = new Map();
+const crmClientWarmupInFlight = new Set();
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -202,6 +205,14 @@ async function readSettingsStore() {
 
 async function writeSettingsStore(store) {
   return persistenceWriteSettingsStore(store);
+}
+
+async function readCrmClientCache(entries) {
+  return persistenceReadCrmClientCache(entries);
+}
+
+async function upsertCrmClientCache(entry) {
+  return persistenceUpsertCrmClientCache(entry);
 }
 
 function createId(prefix = "id") {
@@ -1330,6 +1341,66 @@ async function resolveClientNameForCall(call) {
   return "";
 }
 
+function crmClientCacheKey(ownerTypeId, ownerId) {
+  return `${Number(ownerTypeId || 0)}:${Number(ownerId || 0)}`;
+}
+
+async function hydrateCachedClientNames(calls = []) {
+  const unresolved = calls.filter(
+    (call) => !call.clientName && Number(call.ownerTypeId || 0) > 0 && Number(call.ownerId || 0) > 0,
+  );
+  if (!unresolved.length) return;
+
+  const persisted = await readCrmClientCache(
+    unresolved.map((call) => ({
+      ownerTypeId: call.ownerTypeId,
+      ownerId: call.ownerId,
+    })),
+  );
+
+  for (const call of unresolved) {
+    const key = crmClientCacheKey(call.ownerTypeId, call.ownerId);
+    const memoryValue = crmEntityCache.get(`client-name:${key}`);
+    const persistedValue = persisted.get(key);
+    const cachedName =
+      (typeof memoryValue === "string" && memoryValue.trim()) ||
+      (persistedValue?.clientName ? String(persistedValue.clientName).trim() : "");
+    if (cachedName) {
+      call.clientName = cachedName;
+      crmEntityCache.set(`client-name:${key}`, cachedName);
+    }
+  }
+}
+
+function warmClientNamesInBackground(calls = []) {
+  const missing = calls
+    .filter((call) => !call.clientName && Number(call.ownerTypeId || 0) > 0 && Number(call.ownerId || 0) > 0)
+    .slice(0, 20);
+
+  for (const call of missing) {
+    const key = crmClientCacheKey(call.ownerTypeId, call.ownerId);
+    if (crmClientWarmupInFlight.has(key)) continue;
+    crmClientWarmupInFlight.add(key);
+
+    void (async () => {
+      try {
+        const clientName = (await resolveClientNameForCall(call)) || "";
+        if (!clientName) return;
+        crmEntityCache.set(`client-name:${key}`, clientName);
+        await upsertCrmClientCache({
+          ownerTypeId: call.ownerTypeId,
+          ownerId: call.ownerId,
+          clientName,
+        });
+      } catch {
+        // Ignore best-effort CRM cache warmup failures.
+      } finally {
+        crmClientWarmupInFlight.delete(key);
+      }
+    })();
+  }
+}
+
 function normalizeCall(activity, managersById, analysis, failure, latestJob = null) {
   const manager = managersById.get(activity.responsibleId) || null;
   const rawFiles = activity?.FILES ?? activity?.files ?? activity?.recordings ?? [];
@@ -1511,14 +1582,8 @@ async function fetchCalls(query) {
   }
 
   calls = applyClientSideCallFilters(calls, query);
-  await Promise.all(
-    calls.map(async (call) => {
-      const clientName = await resolveClientNameForCall(call);
-      if (clientName) {
-        call.clientName = clientName;
-      }
-    }),
-  );
+  await hydrateCachedClientNames(calls);
+  warmClientNamesInBackground(calls);
 
   return { managers, calls, total: calls.length };
 }
