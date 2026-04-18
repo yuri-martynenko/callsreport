@@ -168,7 +168,7 @@
                         <th>Сотрудник</th>
                         <th>Направление</th>
                         <th class="datetime-column">Дата и время</th>
-                        <th>Длительность</th>
+                        <th class="duration-column">Длительность</th>
                         <th>Статус анализа</th>
                         <th>% Скрипт</th>
                         <th>Сценарий</th>
@@ -315,7 +315,10 @@
       <aside class="analysis-drawer-panel" aria-label="Детализация звонка">
         <div class="analysis-drawer-head">
           <div class="section-head">
-            <h2>Детализация звонка</h2>
+            <div class="section-head-main">
+              <h2>Детализация звонка</h2>
+              <div id="analysisHeaderMeta" class="analysis-header-meta"></div>
+            </div>
             <div class="analysis-drawer-head-actions">
               <span id="analysisState" class="badge neutral">Не выбран</span>
               <button id="closeAnalysisDrawer" class="analysis-drawer-close" type="button" aria-label="Закрыть">×</button>

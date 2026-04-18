@@ -144,10 +144,11 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 th:nth-child(2), td:nth-child(2) { width: 150px; }
 th:nth-child(3), td:nth-child(3) { width: 112px; }
 th:nth-child(4), td:nth-child(4) { width: 132px; }
-th:nth-child(5), td:nth-child(5) { width: 96px; }
+th:nth-child(5), td:nth-child(5) { width: 112px; }
 th:nth-child(6), td:nth-child(6) { width: 108px; }
 .call-column { width: 27%; min-width: 320px; }
 .datetime-column { width: 132px; min-width: 132px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.duration-column { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 tbody tr:hover, tbody tr.is-selected { background: rgba(255, 255, 255, 0.4); }
 tbody tr.is-clickable { cursor: pointer; }
 .call-subject { font-weight: 600; }
@@ -206,10 +207,11 @@ tbody tr.is-clickable { cursor: pointer; }
 }
 .analysis-drawer-panel {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  bottom: 16px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: min(1140px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
   padding: 18px;
   overflow: auto;
   background: var(--panel);
@@ -231,6 +233,36 @@ tbody tr.is-clickable { cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.analysis-header-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+.analysis-header-topline {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.analysis-header-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.analysis-header-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.analysis-header-link {
+  color: var(--primary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+.analysis-header-link:hover {
+  text-decoration: underline;
 }
 .analysis-drawer-close {
   width: 40px;
@@ -321,9 +353,10 @@ ul.flat { margin: 10px 0 0; padding-left: 18px; }
   .table-footer, .section-head, .transcript-meta-line { flex-direction: column; align-items: stretch; }
   .analysis-drawer-panel {
     top: 0;
-    right: 0;
-    bottom: 0;
+    left: 0;
+    transform: none;
     width: 100vw;
+    max-height: 100vh;
     border-radius: 0;
   }
   .analysis-drawer-head {

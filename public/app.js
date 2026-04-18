@@ -72,6 +72,7 @@ const el = {
   statusText: document.getElementById("statusText"),
   analysisDetail: document.getElementById("analysisDetail"),
   analysisState: document.getElementById("analysisState"),
+  analysisHeaderMeta: document.getElementById("analysisHeaderMeta"),
   analysisDrawer: document.getElementById("analysisDrawer"),
   analysisDrawerBackdrop: document.getElementById("analysisDrawerBackdrop"),
   closeAnalysisDrawer: document.getElementById("closeAnalysisDrawer"),
@@ -325,6 +326,11 @@ function setAnalysisDrawerOpen(open) {
   if (!el.analysisDrawer) return;
   el.analysisDrawer.classList.toggle("open", Boolean(open));
   document.body.classList.toggle("drawer-open", Boolean(open));
+}
+
+function setAnalysisHeaderMeta(html = "") {
+  if (!el.analysisHeaderMeta) return;
+  el.analysisHeaderMeta.innerHTML = html;
 }
 
 function formatTimestamp(seconds) {
@@ -823,7 +829,8 @@ function callsStatusCounts(calls = []) {
   counts.set("total", calls.length);
   for (const call of calls) {
     const analysis = effectiveAnalysis(call);
-    const state = normalizeDisplayAnalysisState(analysis?.state || (!call.hasRecording ? "missing" : "pending"));
+    const normalizedState = normalizeDisplayAnalysisState(analysis?.state || (!call.hasRecording ? "missing" : "pending"));
+    const state = normalizedState === "processing" ? "queued" : normalizedState;
     if (counts.has(state)) {
       counts.set(state, (counts.get(state) || 0) + 1);
     }
@@ -891,6 +898,18 @@ function renderCalls() {
       const compliancePercent = status.key === "ready" && Number.isFinite(Number(analysis?.scriptAnalysis?.compliancePercent))
         ? `${analysis.scriptAnalysis.compliancePercent}%`
         : "—";
+      const sameScenario = String(analysis?.selectedScenarioId || "") === String(currentScenarioId || "");
+      const isReadyAndCurrent = normalizeDisplayAnalysisState(analysis?.state) === "ready" && Boolean(analysis?.isCurrent);
+      const isUpToDateReady = sameScenario && isReadyAndCurrent;
+      const actionDisabled = !call.hasRecording || isAnalysisActive || isUpToDateReady;
+      const actionTitle = !call.hasRecording
+        ? "Нет записи"
+        : isUpToDateReady
+          ? "Повторный анализ не требуется"
+          : isAnalysisActive
+            ? "Анализ уже запущен"
+            : "Анализировать звонок";
+      const actionIcon = !call.hasRecording ? "×" : isAnalysisActive ? "…" : isUpToDateReady ? "✓" : "▶";
       return `
         <tr class="${String(state.selectedCallId || state.selectedAnalysis?.activityId || "") === String(call.id) ? "is-selected" : ""} is-clickable" data-action="select-call" data-id="${call.id}">
           <td class="call-column">
@@ -903,12 +922,12 @@ function renderCalls() {
           </td>
           <td>${localizeDirection(call.direction)}</td>
           <td class="datetime-column">${escapeHtml(formatCallDateTime(call.startTime))}</td>
-          <td>${formatDuration(call.durationSeconds)}</td>
+          <td class="duration-column">${formatDuration(call.durationSeconds)}</td>
           <td><span class="status-pill ${status.className}">${status.label}</span></td>
           <td class="compliance-cell">${escapeHtml(compliancePercent)}</td>
           <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}" ${isAnalysisActive ? "disabled" : ""}>${scenarioOptions}</select></td>
           <td class="token-cell">${escapeHtml(totalTokens)}</td>
-          <td class="actions-cell"><div class="action-stack"><button class="call-action call-action-icon primary-action" title="${!call.hasRecording ? "Нет записи" : isAnalysisActive ? "Анализ уже запущен" : "Анализировать звонок"}" aria-label="${!call.hasRecording ? "Нет записи" : isAnalysisActive ? "Анализ уже запущен" : "Анализировать звонок"}" data-action="analyze" data-id="${call.id}" ${!call.hasRecording || isAnalysisActive ? "disabled" : ""}>${!call.hasRecording ? "×" : isAnalysisActive ? "…" : "▶"}</button></div></td>
+          <td class="actions-cell"><div class="action-stack"><button class="call-action call-action-icon primary-action" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" data-action="analyze" data-id="${call.id}" ${actionDisabled ? "disabled" : ""}>${actionIcon}</button></div></td>
           </tr>`;
       })
       .join("");
@@ -918,6 +937,7 @@ function renderCalls() {
 function renderAnalysis(analysis) {
   if (!analysis) {
     setAnalysisDrawerOpen(false);
+    setAnalysisHeaderMeta("");
     el.analysisState.textContent = "Не выбран";
     el.analysisState.className = "badge neutral";
     el.analysisDetail.className = "analysis-detail empty";
@@ -926,6 +946,9 @@ function renderAnalysis(analysis) {
   }
 
   if (analysis.state === "queued" || analysis.state === "processing") {
+    setAnalysisHeaderMeta(`
+      <div class="analysis-header-topline">${escapeHtml(analysis.subject || "Звонок")} • ${escapeHtml(callMetaLine(analysis))}</div>
+    `);
     el.analysisState.textContent = analysis.state === "queued" ? "В очереди" : "В работе";
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
@@ -939,6 +962,9 @@ function renderAnalysis(analysis) {
   }
 
   if (analysis.state === "error") {
+    setAnalysisHeaderMeta(`
+      <div class="analysis-header-topline">${escapeHtml(analysis.subject || "Звонок")} • ${escapeHtml(callMetaLine(analysis))}</div>
+    `);
     el.analysisState.textContent = "Ошибка";
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
@@ -979,44 +1005,61 @@ function renderAnalysis(analysis) {
       ? "Полный AI-разбор пока не сформирован: сохранилась транскрибация, но резюме и оценка сценария не были получены. Обычно помогает повторный анализ звонка."
       : "Результат анализа пока не заполнен. Попробуйте повторно запустить анализ звонка.";
 
+  const scoreValue = analysis.scriptAnalysis?.overallScore ?? "—";
+  const complianceValue = analysis.scriptAnalysis?.compliancePercent ?? "—";
+  const totalTokens = analysis.tokenUsage?.totalTokens ?? "—";
+  const transcriptionTokens = analysis.tokenUsage?.transcriptionTokens ?? "—";
+  const analysisTokens = analysis.tokenUsage?.analysisTotalTokens ?? "—";
+  setAnalysisHeaderMeta(`
+    <div class="analysis-header-topline">${escapeHtml(analysis.subject || "Звонок")} • ${escapeHtml(callMetaLine(analysis))}</div>
+    <div class="analysis-header-pills">
+      <span class="pill">Сентимент: ${escapeHtml(localizeSentiment(analysis.overview?.sentiment))}</span>
+      <span class="pill">Риск: ${escapeHtml(localizeRisk(analysis.overview?.riskLevel))}</span>
+      <span class="pill">Score: ${escapeHtml(scoreValue)}</span>
+      <span class="pill">Сценарий: ${escapeHtml(analysis.selectedScenarioName || "Автоподбор / ручной ввод")}</span>
+      <span class="pill">Соблюдение скрипта: ${escapeHtml(complianceValue)}%</span>
+      <span class="pill">Токены: ${escapeHtml(totalTokens)} (транскрибация ${escapeHtml(transcriptionTokens)}, анализ ${escapeHtml(analysisTokens)})</span>
+    </div>
+    <div class="analysis-header-nav">
+      <a class="analysis-header-link" href="#analysisOverview">Общий срез</a>
+      <a class="analysis-header-link" href="#analysisRecommendations">Рекомендации</a>
+      <a class="analysis-header-link" href="#analysisScript">Проверка сценария</a>
+      <a class="analysis-header-link" href="#analysisMetrics">Индивидуальные параметры</a>
+      <a class="analysis-header-link" href="#analysisNextStep">Следующий шаг</a>
+      <a class="analysis-header-link" href="#analysisTranscript">Транскрипт</a>
+    </div>
+  `);
+
   el.analysisDetail.innerHTML = `
     <section class="detail-block">
       <h3>${escapeHtml(analysis.subject || "Звонок")}</h3>
       <div class="muted">${escapeHtml(callMetaLine(analysis))}</div>
       <p>${escapeHtml(resultExplanation)}</p>
-      <p class="muted">Сценарий: ${escapeHtml(analysis.selectedScenarioName || "Автоподбор / ручной ввод")}</p>
       <p class="muted">CRM: ${escapeHtml(analysis.ownerTypeLabel || "—")} #${escapeHtml(analysis.ownerId || "—")}</p>
-      <p class="muted">Токены: ${escapeHtml(analysis.tokenUsage?.totalTokens ?? "—")} (транскрибация ${escapeHtml(analysis.tokenUsage?.transcriptionTokens ?? "—")}, анализ ${escapeHtml(analysis.tokenUsage?.analysisTotalTokens ?? "—")})</p>
       ${analysis.crmEntityUrl ? `<p><a class="crm-link" href="${escapeHtml(analysis.crmEntityUrl)}" target="_blank" rel="noopener noreferrer">Открыть карточку в Bitrix24</a></p>` : ""}
     </section>
-    <section class="detail-block">
+    <section id="analysisOverview" class="detail-block">
       <h3>Общий срез</h3>
-      <div class="pill-row">
-        <span class="pill">Сентимент: ${escapeHtml(localizeSentiment(analysis.overview?.sentiment))}</span>
-        <span class="pill">Риск: ${escapeHtml(localizeRisk(analysis.overview?.riskLevel))}</span>
-        <span class="pill">Score: ${escapeHtml(analysis.scriptAnalysis?.overallScore ?? "—")}</span>
-        <span class="pill">Соблюдение скрипта: ${escapeHtml(analysis.scriptAnalysis?.compliancePercent ?? "—")}%</span>
-      </div>
       <p class="muted">Исход: ${escapeHtml(localizeFreeText(analysis.overview?.callOutcome))}</p>
       <p class="muted">Потребность клиента: ${escapeHtml(localizeFreeText(analysis.overview?.clientNeed))}</p>
     </section>
-    <section class="detail-block">
+    <section id="analysisRecommendations" class="detail-block">
       <h3>Рекомендации</h3>
       <ul class="flat">${(analysis.recommendations || []).map((item) => `<li>${escapeHtml(localizeFreeText(item))}</li>`).join("") || "<li>Рекомендации отсутствуют</li>"}</ul>
     </section>
-    <section class="detail-block">
+    <section id="analysisScript" class="detail-block">
       <h3>Проверка сценария</h3>
       <ul class="flat">${(analysis.scriptAnalysis?.checkpoints || []).map((item) => `<li><strong>${escapeHtml(localizeFreeText(item.name))}</strong>: ${escapeHtml(localizeCheckpointStatus(item.status))} — ${escapeHtml(localizeFreeText(item.comment))}</li>`).join("") || "<li>Пункты сценария ещё не заполнены</li>"}</ul>
     </section>
-    <section class="detail-block">
+    <section id="analysisMetrics" class="detail-block">
       <h3>Индивидуальные параметры</h3>
       <ul class="flat">${(analysis.customMetrics || []).map((item) => `<li><strong>${escapeHtml(localizeFreeText(item.name))}</strong>: ${escapeHtml(item.score)} (${escapeHtml(localizeCheckpointStatus(item.status))}) — ${escapeHtml(localizeFreeText(item.comment))}</li>`).join("") || "<li>Индивидуальные параметры ещё не заполнены</li>"}</ul>
     </section>
-    <section class="detail-block next-step-block">
+    <section id="analysisNextStep" class="detail-block next-step-block">
       <h3>Следующий шаг</h3>
       <p>${escapeHtml(localizeFreeText(analysis.nextStep || "Следующий шаг не определён"))}</p>
     </section>
-    <section class="detail-block">
+    <section id="analysisTranscript" class="detail-block">
       <h3>Транскрипт</h3>
       ${transcriptSegmentsMarkup(analysis)}
     </section>`;
@@ -1353,6 +1396,9 @@ function selectAnalysisByCallId(activityId) {
     const selectedScenario = selectedScenarioForCall(call);
     state.selectedAnalysis = null;
     renderCalls();
+    setAnalysisHeaderMeta(`
+      <div class="analysis-header-topline">${escapeHtml(call?.subject || "Звонок")} • ${escapeHtml(callMetaLine(call || {}))}</div>
+    `);
     el.analysisState.textContent = "Не готов";
     el.analysisState.className = "badge neutral";
     el.analysisDetail.className = "analysis-detail";
