@@ -946,9 +946,7 @@ function renderAnalysis(analysis) {
   }
 
   if (analysis.state === "queued" || analysis.state === "processing") {
-    setAnalysisHeaderMeta(`
-      <div class="analysis-header-topline">${escapeHtml(analysis.subject || "Звонок")} • ${escapeHtml(callMetaLine(analysis))}</div>
-    `);
+    setAnalysisHeaderMeta("");
     el.analysisState.textContent = analysis.state === "queued" ? "В очереди" : "В работе";
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
@@ -962,9 +960,7 @@ function renderAnalysis(analysis) {
   }
 
   if (analysis.state === "error") {
-    setAnalysisHeaderMeta(`
-      <div class="analysis-header-topline">${escapeHtml(analysis.subject || "Звонок")} • ${escapeHtml(callMetaLine(analysis))}</div>
-    `);
+    setAnalysisHeaderMeta("");
     el.analysisState.textContent = "Ошибка";
     el.analysisState.className = "badge warning";
     el.analysisDetail.className = "analysis-detail";
@@ -1011,22 +1007,27 @@ function renderAnalysis(analysis) {
   const transcriptionTokens = analysis.tokenUsage?.transcriptionTokens ?? "—";
   const analysisTokens = analysis.tokenUsage?.analysisTotalTokens ?? "—";
   setAnalysisHeaderMeta(`
-    <div class="analysis-header-topline">${escapeHtml(analysis.subject || "Звонок")} • ${escapeHtml(callMetaLine(analysis))}</div>
-    <div class="analysis-header-pills">
-      <span class="pill">Сентимент: ${escapeHtml(localizeSentiment(analysis.overview?.sentiment))}</span>
-      <span class="pill">Риск: ${escapeHtml(localizeRisk(analysis.overview?.riskLevel))}</span>
-      <span class="pill">Score: ${escapeHtml(scoreValue)}</span>
-      <span class="pill">Сценарий: ${escapeHtml(analysis.selectedScenarioName || "Автоподбор / ручной ввод")}</span>
-      <span class="pill">Соблюдение скрипта: ${escapeHtml(complianceValue)}%</span>
-      <span class="pill">Токены: ${escapeHtml(totalTokens)} (транскрибация ${escapeHtml(transcriptionTokens)}, анализ ${escapeHtml(analysisTokens)})</span>
-    </div>
-    <div class="analysis-header-nav">
-      <a class="analysis-header-link" href="#analysisOverview">Общий срез</a>
-      <a class="analysis-header-link" href="#analysisRecommendations">Рекомендации</a>
-      <a class="analysis-header-link" href="#analysisScript">Проверка сценария</a>
-      <a class="analysis-header-link" href="#analysisMetrics">Индивидуальные параметры</a>
-      <a class="analysis-header-link" href="#analysisNextStep">Следующий шаг</a>
-      <a class="analysis-header-link" href="#analysisTranscript">Транскрипт</a>
+    <div class="analysis-header-rows">
+      <div class="analysis-header-pills">
+        <span class="pill">Сентимент: ${escapeHtml(localizeSentiment(analysis.overview?.sentiment))}</span>
+        <span class="pill">Риск: ${escapeHtml(localizeRisk(analysis.overview?.riskLevel))}</span>
+        <span class="pill">Score: ${escapeHtml(scoreValue)}</span>
+      </div>
+      <div class="analysis-header-pills script-row">
+        <span class="pill">Сценарий: ${escapeHtml(analysis.selectedScenarioName || "Автоподбор / ручной ввод")}</span>
+        <span class="pill">Соблюдение скрипта: ${escapeHtml(complianceValue)}%</span>
+      </div>
+      <div class="analysis-header-pills">
+        <span class="pill">Токены: ${escapeHtml(totalTokens)} (транскрибация ${escapeHtml(transcriptionTokens)}, анализ ${escapeHtml(analysisTokens)})</span>
+      </div>
+      <div class="analysis-header-nav">
+        <a class="analysis-header-link" href="#analysisOverview">Общий срез</a>
+        <a class="analysis-header-link" href="#analysisRecommendations">Рекомендации</a>
+        <a class="analysis-header-link" href="#analysisScript">Проверка сценария</a>
+        <a class="analysis-header-link" href="#analysisMetrics">Индивидуальные параметры</a>
+        <a class="analysis-header-link" href="#analysisNextStep">Следующий шаг</a>
+        <a class="analysis-header-link" href="#analysisTranscript">Транскрипт</a>
+      </div>
     </div>
   `);
 
