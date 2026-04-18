@@ -582,10 +582,20 @@ function extractJsonObject(text) {
 
 function extractCompletionContent(payload) {
   const completion = payload?.data || payload || {};
-  const messageContent = completion?.choices?.[0]?.message?.content;
+  const message = completion?.choices?.[0]?.message || {};
+  const messageContent = message?.content;
+  const parsedContent = message?.parsed || completion?.parsed || payload?.parsed || null;
+
+  if (parsedContent && typeof parsedContent === "object") {
+    return { completion, content: JSON.stringify(parsedContent) };
+  }
 
   if (typeof messageContent === "string") {
     return { completion, content: messageContent };
+  }
+
+  if (messageContent && typeof messageContent === "object" && !Array.isArray(messageContent)) {
+    return { completion, content: JSON.stringify(messageContent) };
   }
 
   if (Array.isArray(messageContent)) {
@@ -593,6 +603,7 @@ function extractCompletionContent(payload) {
       .map((item) => {
         if (typeof item === "string") return item;
         if (item?.type === "text") return item.text || "";
+        if (item?.text && typeof item.text === "object") return JSON.stringify(item.text);
         return "";
       })
       .join("")
@@ -1445,6 +1456,41 @@ async function analyzeTranscript({ transcriptText, scriptChecklist, customMetric
   };
 }
 
+async function recoverStructuredAnalysis({ transcriptText, scriptChecklist, customMetrics, call, previousErrorMessage }) {
+  const payload = await vibeJson("/v1/ai/chat/completions", {
+    method: "POST",
+    body: JSON.stringify({
+      model: AI_CHAT_MODEL,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "Верни только валидный JSON без markdown. Все текстовые поля и статусы должны быть только на русском языке. Не возвращай пустой объект: если данных мало, заполни поля краткими русскими формулировками по смыслу разговора. Обязательно заполни overview, summary, recommendations, scriptAnalysis, customMetrics и nextStep.",
+        },
+        {
+          role: "user",
+          content: [
+            "Повтори structured AI-анализ звонка в строгом JSON-формате.",
+            previousErrorMessage ? `Причина повтора: ${previousErrorMessage}` : "",
+            "Если каких-то данных недостаточно, не переходи на английский и не возвращай пустой JSON.",
+            analysisPrompt({ transcriptText, scriptChecklist, customMetrics, call }),
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        },
+      ],
+    }),
+  });
+
+  const { completion, content } = extractCompletionContent(payload);
+  return {
+    analysis: normalizeAnalysisResult(extractJsonObject(content)),
+    usage: completion?.usage || null,
+    model: completion?.model || null,
+  };
+}
+
 async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioId) {
   const [callPayload, managers, store, scenarioStore] = await Promise.all([
     vibeJson(`/v1/activities/${activityId}`),
@@ -1506,7 +1552,10 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
 
     let analysisResult = { analysis: emptyStructuredAnalysis(), usage: null, model: null };
     let structuredAnalysisErrorMessage = "";
+    let structuredAnalysisRecovered = false;
+    let structuredAnalysisAttempts = 0;
     try {
+      structuredAnalysisAttempts += 1;
       analysisResult = await analyzeTranscript({
         transcriptText,
         scriptChecklist: effectiveScriptChecklist,
@@ -1515,10 +1564,35 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
       });
     } catch (analysisStageError) {
       structuredAnalysisErrorMessage = String(analysisStageError?.message || "Ошибка структурированного AI-разбора");
-      console.warn("Structured analysis failed, keeping transcript result", analysisStageError);
+      console.warn("Structured analysis failed, trying recovery attempt", analysisStageError);
     }
 
     let normalizedAnalysis = analysisResult.analysis;
+    let hasMeaningfulStructuredResult = analysisHasMeaningfulContent(normalizedAnalysis);
+    if (!hasMeaningfulStructuredResult) {
+      try {
+        structuredAnalysisAttempts += 1;
+        analysisResult = await recoverStructuredAnalysis({
+          transcriptText,
+          scriptChecklist: effectiveScriptChecklist,
+          customMetrics: effectiveCustomMetrics,
+          call,
+          previousErrorMessage: structuredAnalysisErrorMessage || "Structured AI-анализ вернулся пустым",
+        });
+        normalizedAnalysis = analysisResult.analysis;
+        hasMeaningfulStructuredResult = analysisHasMeaningfulContent(normalizedAnalysis);
+        structuredAnalysisRecovered = hasMeaningfulStructuredResult;
+        if (structuredAnalysisRecovered) {
+          structuredAnalysisErrorMessage = "";
+        }
+      } catch (recoveryError) {
+        if (!structuredAnalysisErrorMessage) {
+          structuredAnalysisErrorMessage = String(recoveryError?.message || "Structured AI recovery failed");
+        }
+        console.warn("Structured analysis recovery failed, keeping transcript result", recoveryError);
+      }
+    }
+
     if (analysisNeedsRussianLocalization(normalizedAnalysis)) {
       try {
         normalizedAnalysis = await localizeAnalysisToRussian(normalizedAnalysis);
@@ -1527,7 +1601,7 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
       }
     }
 
-    const hasMeaningfulStructuredResult = analysisHasMeaningfulContent(normalizedAnalysis);
+    hasMeaningfulStructuredResult = analysisHasMeaningfulContent(normalizedAnalysis);
     if (!hasMeaningfulStructuredResult) {
       normalizedAnalysis = emptyStructuredAnalysis();
     }
@@ -1557,6 +1631,8 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
         hasMeaningfulStructuredResult,
         structuredResultEmpty: !hasMeaningfulStructuredResult,
         structuredAnalysisErrorMessage,
+        structuredAnalysisRecovered,
+        structuredAnalysisAttempts,
       },
       ...normalizedAnalysis,
     };
@@ -1680,13 +1756,6 @@ async function finalizeAnalysisJob(jobId, patch) {
 }
 
 async function processQueuedAnalysisJob(job) {
-  await finalizeAnalysisJob(job.id, {
-    status: "processing",
-    startedAt: job.startedAt || new Date().toISOString(),
-    attempts: Number(job.attempts || 0) + 1,
-    errorMessage: "",
-  });
-
   try {
     const result = await analyzeCall(job.activityId, job.scriptChecklist, job.customMetrics, job.selectedScenarioId);
     const finalStatus = deriveAnalysisResultState(result.analysis);
@@ -1705,25 +1774,45 @@ async function processQueuedAnalysisJob(job) {
   }
 }
 
+async function claimNextQueuedAnalysisJob() {
+  return mutateAnalysisStore(async (store) => {
+    const queuedJobs = listJobsNewestFirst(store.jobs || [])
+      .filter((job) => String(job.status || "") === "queued")
+      .sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0));
+
+    const nextJob = queuedJobs[0] || null;
+    if (!nextJob) return null;
+
+    const claimedJob = updateJobRecord(nextJob, {
+      status: "processing",
+      startedAt: nextJob.startedAt || new Date().toISOString(),
+      attempts: Number(nextJob.attempts || 0) + 1,
+      errorMessage: "",
+    });
+
+    store.jobs = (store.jobs || []).map((job) => (String(job.id) === String(claimedJob.id) ? claimedJob : job));
+    return claimedJob;
+  });
+}
+
 async function processAnalysisQueue() {
   if (queueLoopActive || queueRunningCount >= ANALYSIS_QUEUE_CONCURRENCY) return;
   queueLoopActive = true;
 
   try {
     while (queueRunningCount < ANALYSIS_QUEUE_CONCURRENCY) {
-      const store = await readAnalysisStore();
-      const nextJob = listJobsNewestFirst(store.jobs || [])
-        .filter((job) => String(job.status || "") === "queued")
-        .sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0))[0];
-
+      const nextJob = await claimNextQueuedAnalysisJob();
       if (!nextJob) break;
 
       queueRunningCount += 1;
-      try {
-        await processQueuedAnalysisJob(nextJob);
-      } finally {
-        queueRunningCount = Math.max(0, queueRunningCount - 1);
-      }
+      void processQueuedAnalysisJob(nextJob)
+        .catch((error) => {
+          console.error("Failed to process claimed analysis job", error);
+        })
+        .finally(() => {
+          queueRunningCount = Math.max(0, queueRunningCount - 1);
+          scheduleAnalysisQueue();
+        });
     }
   } finally {
     queueLoopActive = false;

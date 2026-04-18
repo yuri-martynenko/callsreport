@@ -82,6 +82,8 @@ APP_LEGACY_DATA_DIR=/var/lib/callsreport/bootstrap-data
 
 - [Архитектура](./docs/architecture.md)
 - [Логика работы](./docs/logic.md)
+- [Модель оценки звонка](./docs/scoring.md)
+- [Памятка по заполнению сценария анализа](./docs/scenario-writing-guide.md)
 - [Модель данных и БД](./docs/database.md)
 - [Внутреннее API](./docs/api.md)
 - [Деплой](./docs/deployment.md)

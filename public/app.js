@@ -205,7 +205,7 @@ function isActiveAnalysisState(value) {
 }
 
 function isTerminalAnalysisState(value) {
-  return ["ready", "partial", "technical", "outdated", "error", "missing", "pending"].includes(String(value || ""));
+  return ["ready", "partial", "technical", "outdated", "error", "missing"].includes(String(value || ""));
 }
 
 function normalizeDisplayAnalysisState(value) {
@@ -255,11 +255,24 @@ function syncAnalysisOverride(call) {
   const serverState = String(serverAnalysis.state || "");
   const overrideState = String(override.state || "");
 
-  if (
-    isTerminalAnalysisState(serverState) ||
-    serverUpdatedAt && serverUpdatedAt !== overrideUpdatedAt ||
-    serverState !== overrideState
-  ) {
+  if (isTerminalAnalysisState(serverState)) {
+    clearAnalysisOverride(call.id);
+    return;
+  }
+
+  if (serverUpdatedAt && overrideUpdatedAt && serverUpdatedAt !== overrideUpdatedAt) {
+    clearAnalysisOverride(call.id);
+    return;
+  }
+
+  if (isActiveAnalysisState(overrideState)) {
+    if (isActiveAnalysisState(serverState) && serverState !== overrideState) {
+      clearAnalysisOverride(call.id);
+    }
+    return;
+  }
+
+  if (serverState !== overrideState) {
     clearAnalysisOverride(call.id);
   }
 }
