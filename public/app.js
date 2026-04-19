@@ -1624,12 +1624,15 @@ function buildLast7DaysSeries(metricResolver) {
 function renderSeriesChart(container, series, options = {}) {
   if (!container) return;
   const { emptyMessage = "Недостаточно данных за последние 7 дней." } = options;
-  const hasValues = series.some((item) => Number(item.value || 0) > 0);
-  if (!hasValues) {
+  if (!series.length) {
     renderEmptyChart(container, emptyMessage);
     return;
   }
-  container.innerHTML = lineSeriesSvg(series, options);
+  const hasValues = series.some((item) => Number(item.value || 0) > 0);
+  const note = hasValues
+    ? ""
+    : '<div class="chart-inline-note">За последние 7 дней значения равны 0.</div>';
+  container.innerHTML = `${note}${lineSeriesSvg(series, options)}`;
 }
 
 function renderRecognizedCallsChart() {

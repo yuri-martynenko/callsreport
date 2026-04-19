@@ -443,6 +443,15 @@ tbody tr.is-clickable { cursor: pointer; }
 .scenario-link:hover { transform: none; text-decoration: underline; }
 .chart-host { min-height: 260px; }
 .chart-host-compact { min-height: 232px; }
+.chart-inline-note {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(49, 39, 27, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.48);
+  color: var(--muted);
+  font-size: 12px;
+}
 .chart-empty { min-height: 220px; display: grid; place-items: center; text-align: center; color: var(--muted); border-radius: 18px; background: rgba(255, 255, 255, 0.42); border: 1px dashed var(--line); }
 .bars-vertical { display: flex; flex-direction: column; gap: 14px; }
 .bar-row { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 12px; align-items: center; }
