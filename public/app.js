@@ -1,6 +1,8 @@
 ﻿const PAGE_SIZE = 10;
 
 const CALLS_PAGE_CACHE_LIMIT = 20;
+const CALLS_VIRTUAL_ROW_HEIGHT = 88;
+const CALLS_VIRTUAL_OVERSCAN = 6;
 
 const state = {
   calls: [],
@@ -24,6 +26,12 @@ const state = {
   filtersDirty: false,
   analysisOverrides: {},
   analysisPollingTimer: null,
+  callsNextCursor: "",
+  callsCursorByPage: {},
+  callsVirtual: {
+    scrollTop: 0,
+    viewportHeight: 0,
+  },
   playback: {
     activityId: null,
     segmentKey: "",
@@ -84,6 +92,7 @@ const el = {
   summaryCards: document.getElementById("summaryCards"),
   dashboardSummaryCards: document.getElementById("dashboardSummaryCards"),
   callsTable: document.getElementById("callsTable"),
+  callsTableWrap: document.getElementById("callsTableWrap"),
   callsCount: document.getElementById("callsCount"),
   callsBreakdown: document.getElementById("callsBreakdown"),
   reportAutoMode: document.getElementById("reportAutoMode"),
@@ -278,6 +287,61 @@ function cacheCallsPage(key, data) {
 function clearCallsPageCache() {
   callsPageCache.clear();
   callsPagePrefetchInFlight.clear();
+  state.callsNextCursor = "";
+  state.callsCursorByPage = {};
+}
+
+function virtualCallsEnabled() {
+  return state.calls.length > 30;
+}
+
+function visibleCallsWindow() {
+  const calls = pagedCalls();
+  if (!virtualCallsEnabled()) {
+    return {
+      items: calls,
+      topSpacer: 0,
+      bottomSpacer: 0,
+    };
+  }
+
+  const viewportHeight = Math.max(Number(state.callsVirtual.viewportHeight || 0), CALLS_VIRTUAL_ROW_HEIGHT * 6);
+  const scrollTop = Math.max(0, Number(state.callsVirtual.scrollTop || 0));
+  const startIndex = Math.max(0, Math.floor(scrollTop / CALLS_VIRTUAL_ROW_HEIGHT) - CALLS_VIRTUAL_OVERSCAN);
+  const visibleCount = Math.ceil(viewportHeight / CALLS_VIRTUAL_ROW_HEIGHT) + CALLS_VIRTUAL_OVERSCAN * 2;
+  const endIndex = Math.min(calls.length, startIndex + visibleCount);
+
+  return {
+    items: calls.slice(startIndex, endIndex),
+    topSpacer: startIndex * CALLS_VIRTUAL_ROW_HEIGHT,
+    bottomSpacer: Math.max(0, (calls.length - endIndex) * CALLS_VIRTUAL_ROW_HEIGHT),
+  };
+}
+
+function updateCallsViewportMetrics() {
+  if (!el.callsTableWrap) return;
+  state.callsVirtual.viewportHeight = el.callsTableWrap.clientHeight || 0;
+}
+
+function pageCursorFor(page) {
+  return state.callsCursorByPage[String(Math.max(1, Number(page || 1)))] || null;
+}
+
+function rememberPageCursor(page, data, requestCursor = "") {
+  const normalizedPage = Math.max(1, Number(page || 1));
+  state.callsCursorByPage[String(normalizedPage)] = {
+    cursorUsed: requestCursor || "",
+    nextCursor: String(data.nextCursor || ""),
+  };
+  if (normalizedPage === 1 && !requestCursor) {
+    state.callsCursorByPage["1"].cursorUsed = "";
+  }
+}
+
+function prefetchCursorForPage(page) {
+  if (page <= 1) return "";
+  const previousPage = pageCursorFor(page - 1);
+  return String(previousPage?.nextCursor || "");
 }
 
 function formatDuration(seconds) {
@@ -1291,62 +1355,69 @@ function renderPagination() {
   if (el.nextPage) el.nextPage.disabled = state.page >= totalPages;
   if (el.lastPage) el.lastPage.disabled = state.page >= totalPages;
 }
+
+function renderCallRow(call) {
+  const analysis = effectiveAnalysis(call);
+  const status = analysisStatus({ ...call, analysis });
+  const currentScenarioId = selectedScenarioIdForCall(call);
+  const isAnalysisActive = isActiveAnalysisState(status.key);
+  const scenarioOptions = [
+    `<option value="">Автосценарий</option>`,
+    ...state.scenarios.map(
+      (scenario) =>
+        `<option value="${escapeHtml(scenario.id)}" ${String(currentScenarioId) === String(scenario.id) ? "selected" : ""}>${escapeHtml(scenario.name)}</option>`,
+    ),
+  ].join("");
+  const totalTokens = analysis?.tokenUsage?.totalTokens ?? "—";
+  const compliancePercent = status.key === "ready" && Number.isFinite(Number(analysis?.scriptAnalysis?.compliancePercent))
+    ? `${analysis.scriptAnalysis.compliancePercent}%`
+    : "—";
+  const sameScenario = String(analysis?.selectedScenarioId || "") === String(currentScenarioId || "");
+  const isReadyAndCurrent = normalizeDisplayAnalysisState(analysis?.state) === "ready" && Boolean(analysis?.isCurrent);
+  const isUpToDateReady = sameScenario && isReadyAndCurrent;
+  const actionDisabled = !call.hasRecording || isAnalysisActive || isUpToDateReady;
+  const actionTitle = !call.hasRecording
+    ? "Нет записи"
+    : isUpToDateReady
+      ? "Повторный анализ не требуется"
+      : isAnalysisActive
+        ? "Анализ уже запущен"
+        : "Анализировать звонок";
+  const actionIcon = !call.hasRecording ? "×" : isAnalysisActive ? "…" : isUpToDateReady ? "✓" : "▶";
+
+  return `
+    <tr class="${String(state.selectedCallId || state.selectedAnalysis?.activityId || "") === String(call.id) ? "is-selected" : ""} is-clickable" data-action="select-call" data-id="${call.id}">
+      <td class="call-column">
+        <div class="call-subject">${escapeHtml(callClientTitle(call))}</div>
+        <div class="call-meta">${escapeHtml(call.clientPhone || "Без номера")}</div>
+      </td>
+      <td>
+        <div>${escapeHtml(call.managerName || "—")}</div>
+        ${call.managerPosition ? `<div class="call-meta">${escapeHtml(call.managerPosition)}</div>` : ""}
+      </td>
+      <td>${localizeDirection(call.direction)}</td>
+      <td class="datetime-column">${escapeHtml(formatCallDateTime(call.startTime))}</td>
+      <td class="duration-column">${formatDuration(call.durationSeconds)}</td>
+      <td><span class="status-pill ${status.className}">${status.label}</span></td>
+      <td class="compliance-cell">${escapeHtml(compliancePercent)}</td>
+      <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}" ${isAnalysisActive ? "disabled" : ""}>${scenarioOptions}</select></td>
+      <td class="token-cell">${escapeHtml(totalTokens)}</td>
+      <td class="actions-cell"><div class="action-stack"><button class="call-action call-action-icon primary-action" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" data-action="analyze" data-id="${call.id}" ${actionDisabled ? "disabled" : ""}>${actionIcon}</button></div></td>
+    </tr>`;
+}
+
 function renderCalls() {
   hydrateSelectedAnalysis();
   if (el.callsCount) {
     el.callsCount.textContent = String(state.callsTotal);
   }
   renderReportMeta();
-  el.callsTable.innerHTML = pagedCalls()
-      .map((call) => {
-        const analysis = effectiveAnalysis(call);
-        const status = analysisStatus({ ...call, analysis });
-        const currentScenarioId = selectedScenarioIdForCall(call);
-        const isAnalysisActive = isActiveAnalysisState(status.key);
-        const scenarioOptions = [
-          `<option value="">Автосценарий</option>`,
-          ...state.scenarios.map(
-          (scenario) =>
-            `<option value="${escapeHtml(scenario.id)}" ${String(currentScenarioId) === String(scenario.id) ? "selected" : ""}>${escapeHtml(scenario.name)}</option>`,
-        ),
-      ].join("");
-      const totalTokens = analysis?.tokenUsage?.totalTokens ?? "—";
-      const compliancePercent = status.key === "ready" && Number.isFinite(Number(analysis?.scriptAnalysis?.compliancePercent))
-        ? `${analysis.scriptAnalysis.compliancePercent}%`
-        : "—";
-      const sameScenario = String(analysis?.selectedScenarioId || "") === String(currentScenarioId || "");
-      const isReadyAndCurrent = normalizeDisplayAnalysisState(analysis?.state) === "ready" && Boolean(analysis?.isCurrent);
-      const isUpToDateReady = sameScenario && isReadyAndCurrent;
-      const actionDisabled = !call.hasRecording || isAnalysisActive || isUpToDateReady;
-      const actionTitle = !call.hasRecording
-        ? "Нет записи"
-        : isUpToDateReady
-          ? "Повторный анализ не требуется"
-          : isAnalysisActive
-            ? "Анализ уже запущен"
-            : "Анализировать звонок";
-      const actionIcon = !call.hasRecording ? "×" : isAnalysisActive ? "…" : isUpToDateReady ? "✓" : "▶";
-      return `
-        <tr class="${String(state.selectedCallId || state.selectedAnalysis?.activityId || "") === String(call.id) ? "is-selected" : ""} is-clickable" data-action="select-call" data-id="${call.id}">
-          <td class="call-column">
-            <div class="call-subject">${escapeHtml(callClientTitle(call))}</div>
-            <div class="call-meta">${escapeHtml(call.clientPhone || "Без номера")}</div>
-          </td>
-          <td>
-            <div>${escapeHtml(call.managerName || "—")}</div>
-            ${call.managerPosition ? `<div class="call-meta">${escapeHtml(call.managerPosition)}</div>` : ""}
-          </td>
-          <td>${localizeDirection(call.direction)}</td>
-          <td class="datetime-column">${escapeHtml(formatCallDateTime(call.startTime))}</td>
-          <td class="duration-column">${formatDuration(call.durationSeconds)}</td>
-          <td><span class="status-pill ${status.className}">${status.label}</span></td>
-          <td class="compliance-cell">${escapeHtml(compliancePercent)}</td>
-          <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}" ${isAnalysisActive ? "disabled" : ""}>${scenarioOptions}</select></td>
-          <td class="token-cell">${escapeHtml(totalTokens)}</td>
-          <td class="actions-cell"><div class="action-stack"><button class="call-action call-action-icon primary-action" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" data-action="analyze" data-id="${call.id}" ${actionDisabled ? "disabled" : ""}>${actionIcon}</button></div></td>
-          </tr>`;
-      })
-      .join("");
+  updateCallsViewportMetrics();
+  const window = visibleCallsWindow();
+  const rows = window.items.map((call) => renderCallRow(call)).join("");
+  const topSpacer = window.topSpacer > 0 ? `<tr class="virtual-spacer"><td colspan="10" style="height:${window.topSpacer}px"></td></tr>` : "";
+  const bottomSpacer = window.bottomSpacer > 0 ? `<tr class="virtual-spacer"><td colspan="10" style="height:${window.bottomSpacer}px"></td></tr>` : "";
+  el.callsTable.innerHTML = `${topSpacer}${rows}${bottomSpacer}`;
   renderPagination();
 }
 
@@ -1952,13 +2023,19 @@ async function deleteScenario() {
 
 function applyCallsPayload(data, options = {}) {
   const shouldRefreshDashboard = Boolean(options.refreshDashboard);
+  const resetScroll = options.resetScroll !== false;
   state.calls = data.calls;
   state.callsTotal = Number(data.total || 0);
   state.callsPageSize = Number(data.pageSize || PAGE_SIZE);
   state.callsTotalPages = Math.max(1, Number(data.totalPages || 1));
   state.callsHasMore = Boolean(data.hasMore);
   state.callsStatusBreakdown = Array.isArray(data.statusBreakdown) ? data.statusBreakdown : [];
+  state.callsNextCursor = String(data.nextCursor || "");
   state.page = Math.max(1, Number(data.page || state.page || 1));
+  if (resetScroll && el.callsTableWrap) {
+    el.callsTableWrap.scrollTop = 0;
+    state.callsVirtual.scrollTop = 0;
+  }
   for (const call of state.calls) {
     syncAnalysisOverride(call);
   }
@@ -1981,13 +2058,19 @@ function prefetchCallsPage(page, pageSize = state.callsPageSize || PAGE_SIZE) {
   const normalizedPage = Math.max(1, Number(page || 1));
   const totalPages = Math.max(1, Number(state.callsTotalPages || 1));
   if (normalizedPage > totalPages) return;
+  const cursor = prefetchCursorForPage(normalizedPage);
+  if (normalizedPage > 1 && !cursor) return;
 
   const key = callsPageCacheKey(normalizedPage, pageSize);
   if (callsPageCache.has(key) || callsPagePrefetchInFlight.has(key)) return;
 
-  const promise = api(`/api/calls?${callsPageQuery(normalizedPage, pageSize)}`)
+  const query = normalizedPage > 1
+    ? `${callsPageQuery(normalizedPage, pageSize)}&cursor=${encodeURIComponent(cursor)}`
+    : callsPageQuery(normalizedPage, pageSize);
+  const promise = api(`/api/calls?${query}`)
     .then((data) => {
       cacheCallsPage(key, data);
+      rememberPageCursor(normalizedPage, data, cursor);
       return data;
     })
     .catch(() => null)
@@ -2004,6 +2087,7 @@ async function loadCalls(options = {}) {
   const shouldRefreshDashboard = Boolean(options.refreshDashboard);
   const preferCache = Boolean(options.preferCache);
   const cacheKey = callsPageCacheKey(requestedPage, requestedPageSize);
+  const cursor = options.cursor !== undefined ? String(options.cursor || "") : prefetchCursorForPage(requestedPage);
   if (el.statusText) el.statusText.textContent = "Загружаю список звонков...";
   if (preferCache && callsPageCache.has(cacheKey)) {
     const cached = callsPageCache.get(cacheKey);
@@ -2012,8 +2096,12 @@ async function loadCalls(options = {}) {
     return cached;
   }
 
-  const data = await api(`/api/calls?${callsPageQuery(requestedPage, requestedPageSize)}`);
+  const query = requestedPage > 1 && cursor
+    ? `${callsPageQuery(requestedPage, requestedPageSize)}&cursor=${encodeURIComponent(cursor)}`
+    : callsPageQuery(requestedPage, requestedPageSize);
+  const data = await api(`/api/calls?${query}`);
   cacheCallsPage(cacheKey, data);
+  rememberPageCursor(requestedPage, data, cursor);
   applyCallsPayload(data, { refreshDashboard: shouldRefreshDashboard });
   prefetchCallsPage(requestedPage + 1, requestedPageSize);
   return data;
@@ -2509,6 +2597,22 @@ if (el.lastPage) {
     }
   });
 }
+
+if (el.callsTableWrap) {
+  el.callsTableWrap.addEventListener("scroll", () => {
+    state.callsVirtual.scrollTop = el.callsTableWrap.scrollTop || 0;
+    if (virtualCallsEnabled()) {
+      renderCalls();
+    }
+  });
+}
+
+window.addEventListener("resize", () => {
+  updateCallsViewportMetrics();
+  if (virtualCallsEnabled()) {
+    renderCalls();
+  }
+});
 
 (async function init() {
   try {

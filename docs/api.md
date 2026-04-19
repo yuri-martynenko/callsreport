@@ -85,6 +85,7 @@
 
 - `page` — номер страницы, начиная с `1`;
 - `pageSize` — размер страницы;
+- `cursor` — opaque token для следующей страницы в cursor-based режиме;
 - legacy-совместимые `limit` и `offset`, если вызывающая сторона еще не перешла на `page/pageSize`.
 
 Поведение endpoint:
@@ -104,6 +105,7 @@
 - `pageSize` — фактический размер страницы;
 - `totalPages` — общее число страниц;
 - `hasMore` — есть ли следующая страница.
+- `nextCursor` — token для запроса следующей страницы без `offset`, если вызывающая сторона использует cursor-based pagination.
 
 ### `GET /api/analyze/jobs`
 

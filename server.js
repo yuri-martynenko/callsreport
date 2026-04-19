@@ -460,6 +460,51 @@ function buildCallStatusBreakdown(calls = []) {
   return order.map((key) => ({ key, count: Number(counts.get(key) || 0) }));
 }
 
+function callSortTimestamp(call = {}) {
+  return new Date(call.startTime || call.createdAt || 0).getTime();
+}
+
+function compareCallsForReport(left = {}, right = {}) {
+  return callSortTimestamp(right) - callSortTimestamp(left) || Number(right.id || 0) - Number(left.id || 0);
+}
+
+function encodeCallsCursor(call) {
+  if (!call) return "";
+  return Buffer.from(
+    JSON.stringify({
+      startTime: String(call.startTime || call.createdAt || ""),
+      id: String(call.id || ""),
+    }),
+    "utf8",
+  ).toString("base64url");
+}
+
+function decodeCallsCursor(cursor) {
+  if (!cursor) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(String(cursor), "base64url").toString("utf8"));
+    if (!payload?.startTime || !payload?.id) return null;
+    return {
+      startTime: String(payload.startTime),
+      id: String(payload.id),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function findCallsCursorStartIndex(calls, cursor) {
+  if (!cursor) return 0;
+  const cursorTime = new Date(cursor.startTime || 0).getTime();
+  const cursorId = Number(cursor.id || 0);
+  const index = calls.findIndex((call) => {
+    const time = callSortTimestamp(call);
+    const id = Number(call.id || 0);
+    return cursorTime - time > 0 || (cursorTime === time && cursorId - id > 0);
+  });
+  return index >= 0 ? index : calls.length;
+}
+
 function buildAnalysisSignature({
   sourceUpdatedAt,
   selectedScenarioId,
@@ -1637,10 +1682,12 @@ async function fetchCalls(query) {
   await cleanupStaleActiveJobs();
   const requestedPageSize = Number(query.pageSize || query.limit || 50);
   const pageSize = Math.max(1, Math.min(requestedPageSize || 50, 200));
+  const cursor = decodeCallsCursor(query.cursor);
+  const useCursorPaging = Boolean(cursor);
   const explicitOffset = Math.max(0, Number(query.offset || 0));
   const requestedPage = Math.max(1, Number(query.page || 1));
-  const page = explicitOffset > 0 ? Math.floor(explicitOffset / pageSize) + 1 : requestedPage;
-  const offset = explicitOffset > 0 ? explicitOffset : (page - 1) * pageSize;
+  const page = useCursorPaging ? requestedPage : explicitOffset > 0 ? Math.floor(explicitOffset / pageSize) + 1 : requestedPage;
+  const offset = useCursorPaging ? 0 : explicitOffset > 0 ? explicitOffset : (page - 1) * pageSize;
   const cacheKey = buildFilteredCallsCacheKey(query);
   const cachedEntry = filteredCallsCache.get(cacheKey);
   const hasFreshCache = cachedEntry && cachedEntry.expiresAt > Date.now();
@@ -1716,11 +1763,7 @@ async function fetchCalls(query) {
     }
 
     calls = applyClientSideCallFilters(calls, query);
-    calls.sort(
-      (left, right) =>
-        new Date(right.startTime || right.createdAt || 0) - new Date(left.startTime || left.createdAt || 0) ||
-        Number(right.id || 0) - Number(left.id || 0),
-    );
+    calls.sort(compareCallsForReport);
 
     snapshot = {
       managers,
@@ -1735,7 +1778,9 @@ async function fetchCalls(query) {
 
   const total = snapshot.calls.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const pagedCalls = snapshot.calls.slice(offset, offset + pageSize);
+  const cursorStartIndex = useCursorPaging ? findCallsCursorStartIndex(snapshot.calls, cursor) : offset;
+  const pagedCalls = snapshot.calls.slice(cursorStartIndex, cursorStartIndex + pageSize);
+  const nextCursor = pagedCalls.length === pageSize ? encodeCallsCursor(pagedCalls[pagedCalls.length - 1]) : "";
 
   await hydrateCachedClientNames(pagedCalls);
   warmClientNamesInBackground(pagedCalls);
@@ -1748,7 +1793,8 @@ async function fetchCalls(query) {
     page,
     pageSize,
     totalPages,
-    hasMore: offset + pagedCalls.length < total,
+    hasMore: cursorStartIndex + pagedCalls.length < total,
+    nextCursor,
   };
 }
 
