@@ -82,6 +82,7 @@ const el = {
   callsCount: document.getElementById("callsCount"),
   callsBreakdown: document.getElementById("callsBreakdown"),
   reportAutoMode: document.getElementById("reportAutoMode"),
+  openAutoTranscriptionSettings: document.getElementById("openAutoTranscriptionSettings"),
   statusText: document.getElementById("statusText"),
   analysisDetail: document.getElementById("analysisDetail"),
   analysisState: document.getElementById("analysisState"),
@@ -90,6 +91,9 @@ const el = {
   analysisDrawerPanel: document.querySelector(".analysis-drawer-panel"),
   analysisDrawerBackdrop: document.getElementById("analysisDrawerBackdrop"),
   closeAnalysisDrawer: document.getElementById("closeAnalysisDrawer"),
+  autoTranscriptionModal: document.getElementById("autoTranscriptionModal"),
+  autoTranscriptionModalBackdrop: document.getElementById("autoTranscriptionModalBackdrop"),
+  closeAutoTranscriptionModal: document.getElementById("closeAutoTranscriptionModal"),
   firstPage: document.getElementById("firstPage"),
   prevPage: document.getElementById("prevPage"),
   nextPage: document.getElementById("nextPage"),
@@ -375,10 +379,23 @@ function callClientTitle(call = {}) {
   return "Клиент не определён";
 }
 
+function updateOverlayState() {
+  const hasOpenOverlay =
+    Boolean(el.analysisDrawer?.classList.contains("open")) ||
+    Boolean(el.autoTranscriptionModal?.classList.contains("open"));
+  document.body.classList.toggle("drawer-open", hasOpenOverlay);
+}
+
 function setAnalysisDrawerOpen(open) {
   if (!el.analysisDrawer) return;
   el.analysisDrawer.classList.toggle("open", Boolean(open));
-  document.body.classList.toggle("drawer-open", Boolean(open));
+  updateOverlayState();
+}
+
+function setAutoTranscriptionModalOpen(open) {
+  if (!el.autoTranscriptionModal) return;
+  el.autoTranscriptionModal.classList.toggle("open", Boolean(open));
+  updateOverlayState();
 }
 
 function setAnalysisHeaderMeta(html = "") {
@@ -1079,6 +1096,7 @@ function setCurrentView(view) {
   el.showSettingsView.classList.toggle("primary-action", view === "settings");
   if (view !== "report") {
     setAnalysisDrawerOpen(false);
+    setAutoTranscriptionModalOpen(false);
   }
 }
 
@@ -1850,6 +1868,7 @@ async function saveSettings() {
   });
   applySettings(data.settings || {});
   await reloadReportData();
+  setAutoTranscriptionModalOpen(false);
   if (el.statusText) {
     const queued = Number(data.autoScan?.queued || 0);
     const stopped = Number(data.autoScan?.stopped || 0);
@@ -2155,6 +2174,11 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  if (event.target === el.autoTranscriptionModalBackdrop || event.target === el.closeAutoTranscriptionModal) {
+    setAutoTranscriptionModalOpen(false);
+    return;
+  }
+
   const internalAnalysisLink = event.target.closest('.analysis-header-link[href^="#"]');
   if (internalAnalysisLink) {
     event.preventDefault();
@@ -2276,6 +2300,13 @@ if (el.applyFilters) {
     } catch (error) {
       notifyLoadError(error);
     }
+  });
+}
+
+if (el.openAutoTranscriptionSettings) {
+  el.openAutoTranscriptionSettings.addEventListener("click", () => {
+    setAnalysisDrawerOpen(false);
+    setAutoTranscriptionModalOpen(true);
   });
 }
 

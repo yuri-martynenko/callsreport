@@ -110,6 +110,9 @@
                     <div id="reportAutoMode" class="section-note muted">Автоматическая расшифровка: Отключена</div>
                     <div id="callsBreakdown" class="section-note muted">Статусы звонков будут показаны после загрузки.</div>
                   </div>
+                  <div class="section-head-actions">
+                    <button id="openAutoTranscriptionSettings" class="primary-action" type="button">Режим распознавания</button>
+                  </div>
                 </div>
 
                 <div class="filter-toolbar">
@@ -197,13 +200,18 @@
                     </details>
                   </label>
 
-                  <label class="settings-option filter-recorded filter-recorded-option">
-                    <input id="onlyRecorded" type="checkbox" checked />
-                    <span>Только со звуковой записью</span>
+                  <label class="filter-field filter-recorded filter-recorded-option">
+                    <span>Запись разговора</span>
+                    <span class="filter-recorded-control">
+                      <input id="onlyRecorded" type="checkbox" checked />
+                      <span>Звонки со звуковой записью</span>
+                    </span>
                   </label>
 
-                  <button id="applyFilters" class="primary-action filter-apply filter-apply-button" type="button" disabled>Применить</button>
-                  <button id="resetFilters" class="filter-reset filter-reset-button" type="button">Сбросить</button>
+                  <div class="filter-actions">
+                    <button id="applyFilters" class="primary-action filter-apply filter-apply-button" type="button" disabled>Применить</button>
+                    <button id="resetFilters" class="filter-reset filter-reset-button" type="button">Сбросить</button>
+                  </div>
                 </div>
 
                 <div class="table-wrap">
@@ -314,41 +322,13 @@
                 <div class="section-head">
                   <div class="section-head-main">
                     <h2>Настройки</h2>
-                    <span class="muted">Подготовка параметров автоматической обработки звонков.</span>
+                    <span class="muted">Общие настройки приложения.</span>
                   </div>
                 </div>
 
-                <div class="scenario-layout">
-                  <section class="settings-block">
-                    <div class="section-head">
-                      <div class="section-head-main">
-                        <h3>Автоматическая расшифровка звонков</h3>
-                        <span class="muted">Выберите, для каких звонков в будущем будет запускаться автоматическая расшифровка.</span>
-                      </div>
-                    </div>
-                    <div class="settings-options" id="autoTranscriptionOptions">
-                      <label class="settings-option">
-                        <input type="radio" name="autoTranscriptionMode" value="disabled" checked />
-                        <span>Отключить автоматическую расшифровку</span>
-                      </label>
-                      <label class="settings-option">
-                        <input type="radio" name="autoTranscriptionMode" value="all" />
-                        <span>Все звонки</span>
-                      </label>
-                      <label class="settings-option">
-                        <input type="radio" name="autoTranscriptionMode" value="incoming" />
-                        <span>Все входящие</span>
-                      </label>
-                      <label class="settings-option">
-                        <input type="radio" name="autoTranscriptionMode" value="outgoing" />
-                        <span>Все исходящие</span>
-                      </label>
-                    </div>
-                    <div class="action-stack">
-                      <button id="saveSettings" class="accent" type="button" disabled>Сохранить настройки</button>
-                    </div>
-                  </section>
-                </div>
+                <section class="settings-block settings-placeholder">
+                  <p class="muted">Настройка автоматической расшифровки звонков перенесена на вкладку «Расшифровка» в блок «Список звонков».</p>
+                </section>
               </section>
             </div>
           </section>
@@ -375,6 +355,48 @@
         </div>
         <div id="analysisDetail" class="analysis-detail empty">
           Выберите звонок со статусом «Готово» или нажмите «Анализировать», чтобы здесь появились резюме, рекомендации и проверка по сценарию.
+        </div>
+      </aside>
+    </div>
+
+    <div id="autoTranscriptionModal" class="settings-modal">
+      <button id="autoTranscriptionModalBackdrop" class="settings-modal-backdrop" type="button" aria-label="Закрыть настройки"></button>
+      <aside class="settings-modal-panel" aria-label="Настройка автоматической расшифровки звонков">
+        <div class="settings-modal-head">
+          <div class="section-head settings-modal-section-head">
+            <div class="section-head-main">
+              <h2>Автоматическая расшифровка звонков</h2>
+              <span class="muted">Выберите, для каких звонков в будущем будет запускаться автоматическая расшифровка.</span>
+            </div>
+            <div class="settings-modal-head-actions">
+              <button id="closeAutoTranscriptionModal" class="settings-modal-close" type="button" aria-label="Закрыть">×</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-modal-body">
+          <section class="settings-block">
+            <div class="settings-options" id="autoTranscriptionOptions">
+              <label class="settings-option">
+                <input type="radio" name="autoTranscriptionMode" value="disabled" checked />
+                <span>Отключить автоматическую расшифровку</span>
+              </label>
+              <label class="settings-option">
+                <input type="radio" name="autoTranscriptionMode" value="all" />
+                <span>Все звонки</span>
+              </label>
+              <label class="settings-option">
+                <input type="radio" name="autoTranscriptionMode" value="incoming" />
+                <span>Все входящие</span>
+              </label>
+              <label class="settings-option">
+                <input type="radio" name="autoTranscriptionMode" value="outgoing" />
+                <span>Все исходящие</span>
+              </label>
+            </div>
+            <div class="action-stack">
+              <button id="saveSettings" class="accent" type="button" disabled>Сохранить настройки</button>
+            </div>
+          </section>
         </div>
       </aside>
     </div>
