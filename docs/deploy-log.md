@@ -24,6 +24,13 @@
 
 ## Записи
 
+## 2026-04-20 01:46 VLAT
+
+- Задача: deploy фикса верстки шапки блока `Список звонков`, где текст статусов и режима авторасшифровки выталкивался за границы панели.
+- Длительность: около 10 минут.
+- Результат: `push` коммита `906da5a` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production `styles.css` подтвердил отсутствие старого правила с `order: -1; width: 100%` и наличие нового правила `.report-section-head .section-head-actions { flex: 0 0 auto; margin-left: auto; }`.
+- Примечание: исправление выполнено только на уровне CSS layout шапки `Список звонков`; backend и API не изменялись.
+
 ## 2026-04-20 01:38 VLAT
 
 - Задача: deploy возврата компактного отображения блока статусов звонков, переноса кнопки режима распознавания выше строки статусов, внедрения виртуализации строк таблицы и cursor-based pagination в `GET /api/calls`.
