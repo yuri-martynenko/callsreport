@@ -1,8 +1,6 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const { execFile } = require("child_process");
-const { promisify } = require("util");
 const { ensureEnvLoaded, envValue, formatEnvBootstrapSummary } = require("./env");
 
 const envBootstrap = ensureEnvLoaded({ baseDir: __dirname });
@@ -21,7 +19,6 @@ const {
 } = require("./db");
 
 const app = express();
-const execFileAsync = promisify(execFile);
 
 const PORT = Number(envValue("PORT", "3000"));
 const VIBE_API_URL = envValue("VIBE_API_URL", "https://vibecode.bitrix24.tech");
@@ -953,41 +950,24 @@ async function vibeJson(pathname, options = {}) {
   return payload;
 }
 
-const PYTHON_ACTIVITY_SEARCH = `
-import json
-import sys
-import urllib.request
-
-base_url = sys.argv[1]
-api_key = sys.argv[2]
-payload = sys.argv[3]
-
-request = urllib.request.Request(
-    base_url + "/v1/activities/search",
-    data=payload.encode("utf-8"),
-    headers={
-        "X-Api-Key": api_key,
-        "Content-Type": "application/json",
-    },
-    method="POST",
-)
-
-with urllib.request.urlopen(request, timeout=60) as response:
-    sys.stdout.write(response.read().decode("utf-8"))
-`.trim();
-
 async function searchActivities(filter, limit, offset) {
   requireConfig();
-  const requestBody = JSON.stringify({ filter, limit, offset });
-  const { stdout } = await execFileAsync(
-    "python3",
-    ["-c", PYTHON_ACTIVITY_SEARCH, VIBE_API_URL, VIBE_API_KEY, requestBody],
-    {
-      maxBuffer: 20 * 1024 * 1024,
-    },
-  );
+  const response = await fetchWithTimeout(`${VIBE_API_URL}/v1/activities/search`, {
+    method: "POST",
+    headers: vibeHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({ filter, limit, offset }),
+  }, VIBE_REQUEST_TIMEOUT_MS);
 
-  const payload = parseJsonSafely(stdout, "Vibe API /v1/activities/search via python");
+  const text = await response.text();
+  const payload = parseJsonSafely(text, "Vibe API /v1/activities/search");
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || payload?.message || "Activities search failed");
+    error.statusCode = response.status || 502;
+    error.payload = payload;
+    throw error;
+  }
   if (payload.success === false) {
     const error = new Error(payload?.error?.message || payload?.message || "Activities search failed");
     error.statusCode = 502;
