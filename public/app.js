@@ -1,5 +1,7 @@
 ﻿const PAGE_SIZE = 10;
 
+const CALLS_PAGE_CACHE_LIMIT = 20;
+
 const state = {
   calls: [],
   callsTotal: 0,
@@ -30,6 +32,9 @@ const state = {
     mode: "",
   },
 };
+
+const callsPageCache = new Map();
+const callsPagePrefetchInFlight = new Map();
 
 const el = {
   dashboardView: document.getElementById("dashboardView"),
@@ -243,6 +248,36 @@ function filtersQuery(includePaging = false) {
     params.set("pageSize", String(state.callsPageSize || PAGE_SIZE));
   }
   return params.toString();
+}
+
+function callsPageCacheKey(page = state.page, pageSize = state.callsPageSize || PAGE_SIZE) {
+  const baseQuery = filtersQuery(false) || "_";
+  return `${baseQuery}::page=${Math.max(1, Number(page || 1))}::pageSize=${Math.max(1, Number(pageSize || PAGE_SIZE))}`;
+}
+
+function callsPageQuery(page = state.page, pageSize = state.callsPageSize || PAGE_SIZE) {
+  const params = new URLSearchParams(filtersQuery(false));
+  params.set("page", String(Math.max(1, Number(page || 1))));
+  params.set("pageSize", String(Math.max(1, Number(pageSize || PAGE_SIZE))));
+  return params.toString();
+}
+
+function cacheCallsPage(key, data) {
+  if (!key || !data) return;
+  if (callsPageCache.has(key)) {
+    callsPageCache.delete(key);
+  }
+  callsPageCache.set(key, data);
+  while (callsPageCache.size > CALLS_PAGE_CACHE_LIMIT) {
+    const oldestKey = callsPageCache.keys().next().value;
+    if (!oldestKey) break;
+    callsPageCache.delete(oldestKey);
+  }
+}
+
+function clearCallsPageCache() {
+  callsPageCache.clear();
+  callsPagePrefetchInFlight.clear();
 }
 
 function formatDuration(seconds) {
@@ -1915,10 +1950,8 @@ async function deleteScenario() {
   resetScenarioForm();
 }
 
-async function loadCalls(options = {}) {
+function applyCallsPayload(data, options = {}) {
   const shouldRefreshDashboard = Boolean(options.refreshDashboard);
-  if (el.statusText) el.statusText.textContent = "Загружаю список звонков...";
-  const data = await api(`/api/calls?${filtersQuery(true)}`);
   state.calls = data.calls;
   state.callsTotal = Number(data.total || 0);
   state.callsPageSize = Number(data.pageSize || PAGE_SIZE);
@@ -1944,6 +1977,48 @@ async function loadCalls(options = {}) {
   }
 }
 
+function prefetchCallsPage(page, pageSize = state.callsPageSize || PAGE_SIZE) {
+  const normalizedPage = Math.max(1, Number(page || 1));
+  const totalPages = Math.max(1, Number(state.callsTotalPages || 1));
+  if (normalizedPage > totalPages) return;
+
+  const key = callsPageCacheKey(normalizedPage, pageSize);
+  if (callsPageCache.has(key) || callsPagePrefetchInFlight.has(key)) return;
+
+  const promise = api(`/api/calls?${callsPageQuery(normalizedPage, pageSize)}`)
+    .then((data) => {
+      cacheCallsPage(key, data);
+      return data;
+    })
+    .catch(() => null)
+    .finally(() => {
+      callsPagePrefetchInFlight.delete(key);
+    });
+
+  callsPagePrefetchInFlight.set(key, promise);
+}
+
+async function loadCalls(options = {}) {
+  const requestedPage = Math.max(1, Number(options.page || state.page || 1));
+  const requestedPageSize = Math.max(1, Number(options.pageSize || state.callsPageSize || PAGE_SIZE));
+  const shouldRefreshDashboard = Boolean(options.refreshDashboard);
+  const preferCache = Boolean(options.preferCache);
+  const cacheKey = callsPageCacheKey(requestedPage, requestedPageSize);
+  if (el.statusText) el.statusText.textContent = "Загружаю список звонков...";
+  if (preferCache && callsPageCache.has(cacheKey)) {
+    const cached = callsPageCache.get(cacheKey);
+    applyCallsPayload(cached, { refreshDashboard: shouldRefreshDashboard });
+    prefetchCallsPage(requestedPage + 1, requestedPageSize);
+    return cached;
+  }
+
+  const data = await api(`/api/calls?${callsPageQuery(requestedPage, requestedPageSize)}`);
+  cacheCallsPage(cacheKey, data);
+  applyCallsPayload(data, { refreshDashboard: shouldRefreshDashboard });
+  prefetchCallsPage(requestedPage + 1, requestedPageSize);
+  return data;
+}
+
 async function loadSummary(options = {}) {
   const data = await api(`/api/reports/summary?${filtersQuery()}`);
   state.summary = data.summary;
@@ -1955,6 +2030,7 @@ async function loadSummary(options = {}) {
 
 async function reloadReportData(options = {}) {
   const refreshDashboard = options.refreshDashboard !== false;
+  clearCallsPageCache();
   await Promise.all([
     loadCalls({ refreshDashboard: false }),
     loadSummary({ refreshDashboard: false }),
@@ -2389,7 +2465,7 @@ if (el.prevPage) {
     if (state.page <= 1) return;
     state.page -= 1;
     try {
-      await loadCalls({ refreshDashboard: false });
+      await loadCalls({ refreshDashboard: false, preferCache: true });
     } catch (error) {
       notifyLoadError(error);
     }
@@ -2401,7 +2477,7 @@ if (el.firstPage) {
     if (state.page <= 1) return;
     state.page = 1;
     try {
-      await loadCalls({ refreshDashboard: false });
+      await loadCalls({ refreshDashboard: false, preferCache: true });
     } catch (error) {
       notifyLoadError(error);
     }
@@ -2414,7 +2490,7 @@ if (el.nextPage) {
     if (state.page >= totalPages) return;
     state.page += 1;
     try {
-      await loadCalls({ refreshDashboard: false });
+      await loadCalls({ refreshDashboard: false, preferCache: true });
     } catch (error) {
       notifyLoadError(error);
     }
@@ -2427,7 +2503,7 @@ if (el.lastPage) {
     if (state.page >= totalPages) return;
     state.page = totalPages;
     try {
-      await loadCalls({ refreshDashboard: false });
+      await loadCalls({ refreshDashboard: false, preferCache: true });
     } catch (error) {
       notifyLoadError(error);
     }
