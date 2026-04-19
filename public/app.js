@@ -94,6 +94,7 @@ const el = {
   recognizedCallsChart: document.getElementById("recognizedCallsChart"),
   tokensUsageChart: document.getElementById("tokensUsageChart"),
   recognizedMinutesChart: document.getElementById("recognizedMinutesChart"),
+  dailyScoreChart: document.getElementById("dailyScoreChart"),
   saveSettings: document.getElementById("saveSettings"),
 };
 
@@ -1674,6 +1675,41 @@ function renderRecognizedMinutesChart() {
   });
 }
 
+function buildLast7DaysAverageSeries(metricResolver) {
+  const keys = lastNDaysKeys(7);
+  const buckets = new Map(keys.map((key) => [key, { total: 0, count: 0 }]));
+  for (const call of callsWithAnalysis()) {
+    const key = callDayKey(call);
+    if (!key || !buckets.has(key)) continue;
+    const value = Number(metricResolver(call));
+    if (!Number.isFinite(value)) continue;
+    const bucket = buckets.get(key);
+    bucket.total += value;
+    bucket.count += 1;
+  }
+  return keys.map((key) => {
+    const bucket = buckets.get(key);
+    const average = bucket.count ? roundedMetric(bucket.total / bucket.count, 1) : 0;
+    return {
+      key,
+      label: formatDay(key),
+      value: average,
+    };
+  });
+}
+
+function renderDailyScoreChart() {
+  const series = buildLast7DaysAverageSeries((call) => effectiveAnalysis(call)?.scriptAnalysis?.overallScore);
+  renderSeriesChart(el.dailyScoreChart, series, {
+    emptyMessage: "Нет данных по среднему score.",
+    ariaLabel: "График среднего score за последние 7 дней",
+    valueFormatter: (value) => `${value.toFixed(1)}`,
+    yTickFormatter: (value) => `${value.toFixed(1)}`,
+    strokeClass: "is-score",
+    areaClass: "is-score",
+  });
+}
+
 function renderDashboard() {
   renderSentimentChart();
   renderScenarioAverageChart();
@@ -1681,6 +1717,7 @@ function renderDashboard() {
   renderRecognizedCallsChart();
   renderTokensUsageChart();
   renderRecognizedMinutesChart();
+  renderDailyScoreChart();
 }
 async function api(url, options) {
   let lastError = null;
@@ -2274,5 +2311,6 @@ if (el.lastPage) {
     renderEmptyChart(el.recognizedCallsChart, error.message);
     renderEmptyChart(el.tokensUsageChart, error.message);
     renderEmptyChart(el.recognizedMinutesChart, error.message);
+    renderEmptyChart(el.dailyScoreChart, error.message);
   }
 })();
