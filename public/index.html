@@ -28,27 +28,64 @@
             <div class="view-stack">
               <section id="dashboardSummaryCards" class="summary-grid dashboard-summary-grid"></section>
               <section class="dashboard-grid">
-                <article class="panel chart-panel">
+                <article class="panel chart-panel chart-panel-accent">
                   <div class="section-head">
-                    <h2>Средний балл по менеджерам</h2>
-                    <span class="muted">Показатель: средний score</span>
+                    <div class="section-head-main">
+                      <h2>Тональность звонков</h2>
+                      <span class="muted">Заполнение шкалы считается от 100% распределения.</span>
+                    </div>
                   </div>
-                  <div id="managerScoreChart" class="chart-host"></div>
+                  <div id="sentimentChart" class="chart-host chart-host-compact"></div>
                 </article>
 
                 <article class="panel chart-panel">
                   <div class="section-head">
-                    <h2>Тональность звонков</h2>
+                    <div class="section-head-main">
+                      <h2>Средний процент по сценариям</h2>
+                      <span class="muted">Метрика: средний процент соблюдения скрипта.</span>
+                    </div>
                   </div>
-                  <div id="sentimentChart" class="chart-host"></div>
+                  <div id="scenarioAverageChart" class="chart-host chart-host-compact"></div>
+                </article>
+
+                <article class="panel chart-panel">
+                  <div class="section-head">
+                    <div class="section-head-main">
+                      <h2>Средний балл по менеджерам</h2>
+                      <span class="muted">Показатель: средний score по распознанным звонкам.</span>
+                    </div>
+                  </div>
+                  <div id="managerScoreChart" class="chart-host chart-host-compact"></div>
+                </article>
+
+                <article class="panel chart-panel chart-panel-wide chart-panel-dark">
+                  <div class="section-head">
+                    <div class="section-head-main">
+                      <h2>Распознанные звонки за последние 7 дней</h2>
+                      <span class="muted">Количество звонков, по которым есть анализ.</span>
+                    </div>
+                  </div>
+                  <div id="recognizedCallsChart" class="chart-host"></div>
                 </article>
 
                 <article class="panel chart-panel chart-panel-wide">
                   <div class="section-head">
-                    <h2>Динамика среднего score</h2>
-                    <span class="muted">Группировка по дням звонков</span>
+                    <div class="section-head-main">
+                      <h2>Израсходование токенов за последние 7 дней</h2>
+                      <span class="muted">Сумма токенов транскрибации и анализа по дням.</span>
+                    </div>
                   </div>
-                  <div id="dailyScoreChart" class="chart-host"></div>
+                  <div id="tokensUsageChart" class="chart-host"></div>
+                </article>
+
+                <article class="panel chart-panel chart-panel-wide">
+                  <div class="section-head">
+                    <div class="section-head-main">
+                      <h2>Распознанные минуты за последние 7 дней</h2>
+                      <span class="muted">Суммарная длительность обработанных звонков.</span>
+                    </div>
+                  </div>
+                  <div id="recognizedMinutesChart" class="chart-host"></div>
                 </article>
               </section>
             </div>

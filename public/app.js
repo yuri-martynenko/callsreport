@@ -90,7 +90,10 @@ const el = {
   pageInfo: document.getElementById("pageInfo"),
   managerScoreChart: document.getElementById("managerScoreChart"),
   sentimentChart: document.getElementById("sentimentChart"),
-  dailyScoreChart: document.getElementById("dailyScoreChart"),
+  scenarioAverageChart: document.getElementById("scenarioAverageChart"),
+  recognizedCallsChart: document.getElementById("recognizedCallsChart"),
+  tokensUsageChart: document.getElementById("tokensUsageChart"),
+  recognizedMinutesChart: document.getElementById("recognizedMinutesChart"),
   saveSettings: document.getElementById("saveSettings"),
 };
 
@@ -1367,31 +1370,161 @@ function renderEmptyChart(container, message) {
   container.innerHTML = `<div class="chart-empty">${escapeHtml(message)}</div>`;
 }
 
-function renderManagerScoreChart() {
-  const rows = (state.summary?.managers || []).filter((item) => Number.isFinite(Number(item.averageScore)));
+function roundedMetric(value, digits = 1) {
+  const factor = 10 ** digits;
+  return Math.round(Number(value || 0) * factor) / factor;
+}
+
+function percentBarWidth(value) {
+  const safe = Number(value || 0);
+  if (safe <= 0) return 0;
+  return Math.max(6, Math.min(100, roundedMetric(safe, 1)));
+}
+
+function renderHorizontalBars(container, rows, options = {}) {
+  if (!container) return;
+  const {
+    emptyMessage = "Недостаточно данных для графика.",
+    maxValue = null,
+    formatter = (value) => String(value),
+    hintFormatter = () => "",
+    trackClassName = "",
+    usePercentScale = false,
+  } = options;
+
   if (!rows.length) {
-    renderEmptyChart(el.managerScoreChart, "Недостаточно данных для графика по менеджерам.");
+    renderEmptyChart(container, emptyMessage);
     return;
   }
 
-  const maxScore = Math.max(...rows.map((item) => Number(item.averageScore) || 0), 1);
-  el.managerScoreChart.innerHTML = `<div class="bars-vertical">${rows
+  const resolvedMax = usePercentScale
+    ? 100
+    : Math.max(
+        Number(maxValue || 0),
+        ...rows.map((item) => Number(item.value || 0)),
+        1,
+      );
+
+  container.innerHTML = `<div class="bars-vertical">${rows
     .map((item) => {
-      const value = Number(item.averageScore) || 0;
-      const width = Math.max(8, Math.round((value / maxScore) * 100));
+      const value = Number(item.value || 0);
+      const width = usePercentScale ? percentBarWidth(value) : Math.max(8, Math.round((value / resolvedMax) * 100));
+      const hint = hintFormatter(item);
+      const trackClass = [trackClassName, item.trackClassName].filter(Boolean).join(" ");
       return `
         <div class="bar-row">
           <div class="bar-label">
-            <strong>${escapeHtml(item.managerName || "Без имени")}</strong>
-            <span class="muted">${escapeHtml(item.calls)} звонков</span>
+            <strong>${escapeHtml(item.label)}</strong>
+            ${hint ? `<span class="muted">${escapeHtml(hint)}</span>` : ""}
           </div>
-          <div class="bar-track">
+          <div class="bar-track ${trackClass}">
             <div class="bar-fill" style="width:${width}%"></div>
           </div>
-          <div class="bar-value">${escapeHtml(value.toFixed(1))}</div>
+          <div class="bar-value">${formatter(value, item)}</div>
         </div>`;
     })
     .join("")}</div>`;
+}
+
+function lineSeriesSvg(series, options = {}) {
+  const {
+    ariaLabel = "График",
+    valueFormatter = (value) => String(value),
+    yTickFormatter = valueFormatter,
+    strokeClass = "",
+    areaClass = "",
+  } = options;
+
+  const width = 760;
+  const height = 260;
+  const paddingX = 42;
+  const paddingTop = 28;
+  const paddingBottom = 42;
+  const chartHeight = height - paddingTop - paddingBottom;
+  const maxValue = Math.max(...series.map((item) => Number(item.value || 0)), 1);
+  const points = series.map((item, index) => {
+    const x = paddingX + (index * (width - paddingX * 2)) / Math.max(series.length - 1, 1);
+    const y = height - paddingBottom - (Number(item.value || 0) / maxValue) * chartHeight;
+    return { ...item, x, y };
+  });
+  const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const areaPoints = [`${paddingX},${height - paddingBottom}`, polyline, `${width - paddingX},${height - paddingBottom}`].join(" ");
+  const labels = points
+    .map(
+      (point) =>
+        `<text class="line-chart-axis-text" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(point.label)}</text>`,
+    )
+    .join("");
+  const pointLabels = points
+    .map(
+      (point) => `
+        <circle cx="${point.x}" cy="${point.y}" r="4"></circle>
+        <text class="line-chart-point-text" x="${point.x}" y="${point.y - 12}" text-anchor="middle">${escapeHtml(valueFormatter(point.value, point))}</text>`,
+    )
+    .join("");
+  const yTicks = Array.from({ length: 4 }, (_, index) => {
+    const ratio = index / 3;
+    const value = roundedMetric(maxValue - maxValue * ratio, maxValue >= 100 ? 0 : 1);
+    const y = paddingTop + chartHeight * ratio;
+    return `
+      <g class="line-chart-grid-line">
+        <line x1="${paddingX}" y1="${y}" x2="${width - paddingX}" y2="${y}"></line>
+        <text class="line-chart-axis-text" x="${paddingX - 10}" y="${y + 4}" text-anchor="end">${escapeHtml(yTickFormatter(value))}</text>
+      </g>`;
+  }).join("");
+
+  return `
+    <svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(ariaLabel)}">
+      <g class="line-chart-grid">
+        ${yTicks}
+        <line x1="${paddingX}" y1="${height - paddingBottom}" x2="${width - paddingX}" y2="${height - paddingBottom}"></line>
+      </g>
+      <polygon class="line-chart-area ${areaClass}" points="${areaPoints}"></polygon>
+      <polyline class="line-chart-polyline ${strokeClass}" points="${polyline}"></polyline>
+      ${pointLabels}
+      <g class="axis-labels">${labels}</g>
+    </svg>`;
+}
+
+function lastNDaysKeys(days = 7) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (days - index - 1));
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+function callDayKey(call) {
+  if (!call?.startTime) return null;
+  const date = new Date(call.startTime);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function callsWithAnalysis() {
+  return state.calls.filter((call) => {
+    const analysis = effectiveAnalysis(call);
+    return analysis && ["ready", "partial", "technical"].includes(String(analysis.state || ""));
+  });
+}
+
+function renderManagerScoreChart() {
+  const rows = (state.summary?.managers || []).filter((item) => Number.isFinite(Number(item.averageScore)));
+  renderHorizontalBars(
+    el.managerScoreChart,
+    rows.map((item) => ({
+      label: item.managerName || "Без имени",
+      value: Number(item.averageScore) || 0,
+      calls: item.calls,
+    })),
+    {
+      emptyMessage: "Недостаточно данных для графика по менеджерам.",
+      formatter: (value) => escapeHtml(value.toFixed(1)),
+      hintFormatter: (item) => `${item.calls} звонков`,
+    },
+  );
 }
 
 function renderSentimentChart() {
@@ -1412,98 +1545,139 @@ function renderSentimentChart() {
     return;
   }
 
-  const maxValue = Math.max(...parts.map((item) => item.value), 1);
-  el.sentimentChart.innerHTML = `<div class="bars-vertical">${parts
-    .map((item) => {
-      const width = Math.max(8, Math.round((item.value / maxValue) * 100));
-      const toneClass =
-        item.label === "Позитив" ? "is-positive" : item.label === "Нейтрал" ? "is-neutral" : "is-negative";
-      const percent = Math.round((item.value / total) * 100) || 0;
-      return `
-        <div class="bar-row">
-          <div class="bar-label">
-            <strong>${escapeHtml(item.label)}</strong>
-          </div>
-          <div class="bar-track ${toneClass}">
-            <div class="bar-fill" style="width:${width}%"></div>
-          </div>
-          <div class="bar-value"><span>${escapeHtml(item.value)}</span><span class="muted">(${escapeHtml(percent)}%)</span></div>
-        </div>`;
-    })
-    .join("")}</div>`;
+  renderHorizontalBars(
+    el.sentimentChart,
+    parts.map((item) => {
+      const percent = roundedMetric((item.value / total) * 100, 1);
+      return {
+        label: item.label,
+        value: percent,
+        rawValue: item.value,
+        trackClassName:
+          item.label === "Позитив" ? "is-positive" : item.label === "Нейтрал" ? "is-neutral" : "is-negative",
+      };
+    }),
+    {
+      emptyMessage: "Нет проанализированных звонков для распределения по тональности.",
+      usePercentScale: true,
+      formatter: (value, item) =>
+        `<span>${escapeHtml(`${item.rawValue}`)}</span><span class="muted">${escapeHtml(`(${value.toFixed(1)}%)`)}</span>`,
+      hintFormatter: (item) => `Доля звонков: ${item.value.toFixed(1)}%`,
+    },
+  );
 }
 
-function dailyScoreSeries() {
+function scenarioComplianceRows() {
   const buckets = new Map();
-  for (const call of state.calls) {
-    const score = Number(call.analysis?.scriptAnalysis?.overallScore);
-    if (!Number.isFinite(score)) continue;
-    const key = call.startTime ? new Date(call.startTime).toISOString().slice(0, 10) : null;
-    if (!key) continue;
-    if (!buckets.has(key)) buckets.set(key, { day: key, total: 0, count: 0 });
-    const bucket = buckets.get(key);
-    bucket.total += score;
+  for (const call of callsWithAnalysis()) {
+    const analysis = effectiveAnalysis(call);
+    const compliance = Number(analysis?.scriptAnalysis?.compliancePercent);
+    if (!Number.isFinite(compliance)) continue;
+    const scenarioLabel = String(
+      analysis?.selectedScenarioName ||
+        state.scenarios.find((item) => String(item.id) === String(analysis?.selectedScenarioId || ""))?.name ||
+        "Автосценарий",
+    ).trim();
+    if (!buckets.has(scenarioLabel)) {
+      buckets.set(scenarioLabel, { label: scenarioLabel, total: 0, count: 0 });
+    }
+    const bucket = buckets.get(scenarioLabel);
+    bucket.total += compliance;
     bucket.count += 1;
   }
 
   return Array.from(buckets.values())
     .map((item) => ({
-      day: item.day,
-      averageScore: item.count ? Math.round((item.total / item.count) * 10) / 10 : 0,
+      label: item.label,
+      value: roundedMetric(item.total / item.count, 1),
+      count: item.count,
     }))
-    .sort((left, right) => left.day.localeCompare(right.day));
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 8);
 }
 
-function renderDailyScoreChart() {
-  const series = dailyScoreSeries();
-  if (!series.length) {
-    renderEmptyChart(el.dailyScoreChart, "Недостаточно данных для графика по дням.");
+function renderScenarioAverageChart() {
+  const rows = scenarioComplianceRows();
+  renderHorizontalBars(el.scenarioAverageChart, rows, {
+    emptyMessage: "Нет данных по соблюдению сценариев.",
+    usePercentScale: true,
+    formatter: (value) => escapeHtml(`${value.toFixed(1)}%`),
+    hintFormatter: (item) => `${item.count} звонков`,
+  });
+}
+
+function buildLast7DaysSeries(metricResolver) {
+  const keys = lastNDaysKeys(7);
+  const buckets = new Map(keys.map((key) => [key, 0]));
+  for (const call of callsWithAnalysis()) {
+    const key = callDayKey(call);
+    if (!key || !buckets.has(key)) continue;
+    buckets.set(key, buckets.get(key) + Number(metricResolver(call) || 0));
+  }
+  return keys.map((key) => ({
+    key,
+    label: formatDay(key),
+    value: buckets.get(key) || 0,
+  }));
+}
+
+function renderSeriesChart(container, series, options = {}) {
+  if (!container) return;
+  const { emptyMessage = "Недостаточно данных за последние 7 дней." } = options;
+  const hasValues = series.some((item) => Number(item.value || 0) > 0);
+  if (!hasValues) {
+    renderEmptyChart(container, emptyMessage);
     return;
   }
+  container.innerHTML = lineSeriesSvg(series, options);
+}
 
-  const width = 760;
-  const height = 240;
-  const padding = 28;
-  const maxScore = Math.max(...series.map((item) => item.averageScore), 1);
-  const minScore = Math.min(...series.map((item) => item.averageScore), 0);
-  const range = Math.max(maxScore - minScore, 1);
-
-  const points = series.map((item, index) => {
-    const x = padding + (index * (width - padding * 2)) / Math.max(series.length - 1, 1);
-    const y = height - padding - ((item.averageScore - minScore) / range) * (height - padding * 2);
-    return { ...item, x, y };
+function renderRecognizedCallsChart() {
+  const series = buildLast7DaysSeries(() => 1);
+  renderSeriesChart(el.recognizedCallsChart, series, {
+    emptyMessage: "Нет распознанных звонков за последние 7 дней.",
+    ariaLabel: "График распознанных звонков за последние 7 дней",
+    valueFormatter: (value) => `${Math.round(value)}`,
+    yTickFormatter: (value) => `${Math.round(value)}`,
+    strokeClass: "is-calls",
+    areaClass: "is-calls",
   });
+}
 
-  const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const labels = series
-    .map((item, index) => {
-      const x = padding + (index * (width - padding * 2)) / Math.max(series.length - 1, 1);
-      return `<text x="${x}" y="${height - 6}" text-anchor="middle">${escapeHtml(formatDay(item.day))}</text>`;
-    })
-    .join("");
+function renderTokensUsageChart() {
+  const series = buildLast7DaysSeries((call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0));
+  renderSeriesChart(el.tokensUsageChart, series, {
+    emptyMessage: "Нет расхода токенов за последние 7 дней.",
+    ariaLabel: "График расхода токенов за последние 7 дней",
+    valueFormatter: (value) => `${Math.round(value)}`,
+    yTickFormatter: (value) => `${Math.round(value)}`,
+    strokeClass: "is-tokens",
+    areaClass: "is-tokens",
+  });
+}
 
-  const dots = points
-    .map(
-      (point) => `
-        <circle cx="${point.x}" cy="${point.y}" r="4"></circle>
-        <text x="${point.x}" y="${point.y - 10}" text-anchor="middle">${escapeHtml(point.averageScore.toFixed(1))}</text>`,
-    )
-    .join("");
-
-  el.dailyScoreChart.innerHTML = `
-    <svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="График среднего score по дням">
-      <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}"></line>
-      <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}"></line>
-      <polyline points="${polyline}"></polyline>
-      ${dots}
-      <g class="axis-labels">${labels}</g>
-    </svg>`;
+function renderRecognizedMinutesChart() {
+  const series = buildLast7DaysSeries((call) => Number(call.durationSeconds || 0) / 60).map((item) => ({
+    ...item,
+    value: roundedMetric(item.value, 1),
+  }));
+  renderSeriesChart(el.recognizedMinutesChart, series, {
+    emptyMessage: "Нет распознанных минут за последние 7 дней.",
+    ariaLabel: "График распознанных минут за последние 7 дней",
+    valueFormatter: (value) => `${value.toFixed(1)}`,
+    yTickFormatter: (value) => `${value.toFixed(1)}`,
+    strokeClass: "is-minutes",
+    areaClass: "is-minutes",
+  });
 }
 
 function renderDashboard() {
-  renderManagerScoreChart();
   renderSentimentChart();
-  renderDailyScoreChart();
+  renderScenarioAverageChart();
+  renderManagerScoreChart();
+  renderRecognizedCallsChart();
+  renderTokensUsageChart();
+  renderRecognizedMinutesChart();
 }
 async function api(url, options) {
   let lastError = null;
@@ -2093,6 +2267,9 @@ if (el.lastPage) {
     if (el.statusText) el.statusText.textContent = error.message;
     renderEmptyChart(el.managerScoreChart, error.message);
     renderEmptyChart(el.sentimentChart, error.message);
-    renderEmptyChart(el.dailyScoreChart, error.message);
+    renderEmptyChart(el.scenarioAverageChart, error.message);
+    renderEmptyChart(el.recognizedCallsChart, error.message);
+    renderEmptyChart(el.tokensUsageChart, error.message);
+    renderEmptyChart(el.recognizedMinutesChart, error.message);
   }
 })();
