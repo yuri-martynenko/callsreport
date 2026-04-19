@@ -292,7 +292,7 @@ function clearCallsPageCache() {
 }
 
 function virtualCallsEnabled() {
-  return state.calls.length > 30;
+  return false;
 }
 
 function visibleCallsWindow() {

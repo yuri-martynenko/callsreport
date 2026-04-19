@@ -184,7 +184,12 @@ button.accent { background: var(--accent); color: white; }
 .warning { background: rgba(183, 121, 31, 0.14); color: var(--warning); }
 .calls-panel { width: 100%; }
 .table-wrap { overflow-x: auto; padding-bottom: 4px; }
-.calls-table-wrap { max-height: 68vh; overflow-y: auto; overscroll-behavior: contain; }
+.calls-table-wrap {
+  max-height: none;
+  overflow: visible;
+  overscroll-behavior: auto;
+}
+.calls-table-wrap table { min-width: 0; }
 table { width: 100%; min-width: 1300px; border-collapse: collapse; table-layout: fixed; }
 th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow: hidden; }
 th, td, .call-subject, .call-meta { user-select: text; }
