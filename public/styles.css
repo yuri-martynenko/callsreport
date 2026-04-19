@@ -113,6 +113,8 @@ h1 {
 .status-breakdown-item { display: inline-flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
 .status-breakdown-label { color: var(--muted); font-size: 13px; }
 .status-breakdown-badge { min-width: 40px; font-variant-numeric: tabular-nums; }
+.report-auto-mode { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.report-auto-mode .status-breakdown-badge { min-width: 0; }
 .filter-toolbar { display: grid; grid-template-columns: minmax(140px, 0.78fr) minmax(140px, 0.78fr) minmax(220px, 1.15fr) minmax(200px, 1fr) minmax(180px, 0.92fr); gap: 12px; align-items: end; margin-bottom: 18px; padding: 16px; border-radius: 18px; background: rgba(255, 255, 255, 0.45); border: 1px solid var(--line); overflow: visible; }
 .filter-field, label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .filter-field-wide { min-width: 220px; }
@@ -560,6 +562,7 @@ tbody tr.is-clickable { cursor: pointer; }
 .settings-options { display: grid; gap: 12px; margin-top: 8px; }
 .settings-option { display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 255, 255, 0.72); }
 .settings-option input { width: 18px; min-width: 18px; max-width: 18px; height: 18px; padding: 0; flex: 0 0 18px; }
+#saveSettings { margin-top: 14px; }
 #saveSettings:disabled { background: rgba(29, 26, 22, 0.08); color: var(--muted); opacity: 1; }
 .bar-track.is-positive .bar-fill { background: linear-gradient(90deg, #1f6b5f, #3d8f81); }
 .bar-track.is-neutral .bar-fill { background: linear-gradient(90deg, #b7791f, #d1a244); }

@@ -1168,6 +1168,13 @@ function autoModeLabel(mode) {
   return map[String(mode || "").trim()] || "Отключена";
 }
 
+function autoModeToneClass(mode) {
+  const normalized = String(mode || "").trim();
+  if (normalized === "disabled") return "";
+  if (normalized === "all") return "status-ready";
+  return "status-partial";
+}
+
 function localizedStatusCountLabel(state) {
   const map = {
     total: "Всего",
@@ -1215,7 +1222,7 @@ function callsStatusCounts(calls = []) {
 
 function renderReportMeta() {
   if (el.reportAutoMode) {
-    el.reportAutoMode.textContent = `Автоматическая расшифровка: ${autoModeLabel(state.settings?.autoTranscriptionMode)}`;
+    el.reportAutoMode.innerHTML = `<span class="report-auto-mode"><span>Автоматическая расшифровка:</span><span class="badge status-breakdown-badge ${autoModeToneClass(state.settings?.autoTranscriptionMode)}">${escapeHtml(autoModeLabel(state.settings?.autoTranscriptionMode))}</span></span>`;
   }
   if (el.callsBreakdown) {
     const items = state.callsStatusBreakdown.length ? state.callsStatusBreakdown : callsStatusCounts(state.calls);
@@ -1861,13 +1868,13 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
+  const nextMode = autoTranscriptionMode();
   const data = await api("/api/settings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ autoTranscriptionMode: autoTranscriptionMode() }),
+    body: JSON.stringify({ autoTranscriptionMode: nextMode }),
   });
   applySettings(data.settings || {});
-  await reloadReportData();
   setAutoTranscriptionModalOpen(false);
   if (el.statusText) {
     const queued = Number(data.autoScan?.queued || 0);
@@ -1879,6 +1886,9 @@ async function saveSettings() {
           ? `Настройки сохранены. В автоматическую обработку поставлено ${queued} звонков.`
           : "Настройки сохранены. Новый режим автоматической обработки применён.";
   }
+  reloadReportData().catch((error) => {
+    notifyLoadError(error);
+  });
 }
 
 async function saveScenario() {
