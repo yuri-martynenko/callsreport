@@ -255,3 +255,9 @@ The call detail modal now supports playback for each transcript line:
 - frontend loads the full recording through `/api/calls/:id/recording`;
 - the browser player seeks to the selected segment `start` timestamp and stops automatically at `end`;
 - if the transcript line has no reliable timing or the call has no recording, the segment button stays unavailable.
+
+## 2026-04 Settings Apply Performance
+
+Saving `autoTranscriptionMode` no longer waits for the full automatic queue rescan to finish.
+
+After `/api/settings` persists the new mode, backend schedules the auto-enqueue refresh in the background so the UI can close the modal immediately and continue with lightweight data reloads.

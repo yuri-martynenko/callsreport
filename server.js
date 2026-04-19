@@ -2357,6 +2357,14 @@ async function refreshAutomaticAnalysis() {
   }
 }
 
+function queueAutomaticAnalysisRefresh() {
+  setTimeout(() => {
+    refreshAutomaticAnalysis().catch((error) => {
+      console.error("Failed to refresh automatic analysis after settings change", error);
+    });
+  }, 0);
+}
+
 function startAnalysisQueueScheduler() {
   if (queueScanTimer) clearInterval(queueScanTimer);
   queueScanTimer = setInterval(() => {
@@ -2460,7 +2468,13 @@ app.post("/api/settings", async (req, res, next) => {
     const store = await readSettingsStore();
     store.settings = sanitizeSettings(req.body || {});
     await writeSettingsStore(store);
-    const autoScan = await refreshAutomaticAnalysis();
+    queueAutomaticAnalysisRefresh();
+    const autoScan = {
+      scheduled: true,
+      queued: 0,
+      scanned: 0,
+      stopped: 0,
+    };
     res.json({ success: true, data: { settings: store.settings, autoScan } });
   } catch (error) {
     next(error);

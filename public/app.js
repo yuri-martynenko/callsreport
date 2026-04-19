@@ -1877,11 +1877,14 @@ async function saveSettings() {
   applySettings(data.settings || {});
   setAutoTranscriptionModalOpen(false);
   if (el.statusText) {
+    const scheduled = Boolean(data.autoScan?.scheduled);
     const queued = Number(data.autoScan?.queued || 0);
     const stopped = Number(data.autoScan?.stopped || 0);
     el.statusText.textContent =
       stopped > 0
         ? `Настройки сохранены. Автоматическая обработка отключена, из очереди снято ${stopped} звонков.`
+        : scheduled
+          ? "Настройки сохранены. Автоматическая обработка будет обновлена в фоне."
         : queued > 0
           ? `Настройки сохранены. В автоматическую обработку поставлено ${queued} звонков.`
           : "Настройки сохранены. Новый режим автоматической обработки применён.";

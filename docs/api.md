@@ -177,3 +177,9 @@ Usage:
 - the browser never receives `VIBE_API_KEY` directly;
 - if the call has no recording, the endpoint returns `404`;
 - on success it returns the original audio stream with the source content type.
+
+## 2026-04 Settings Save Note
+
+`POST /api/settings` now returns immediately after persisting settings.
+
+The automatic rescan of eligible calls for auto-transcription is scheduled in the background and no longer blocks the HTTP response.
