@@ -37,6 +37,8 @@ const AI_TRANSCRIPTION_TIMEOUT_MS = Math.max(15000, Number(envValue("AI_TRANSCRI
 
 const ACTIVE_ANALYSIS_JOB_STATUSES = new Set(["queued", "processing"]);
 const TERMINAL_ANALYSIS_JOB_STATUSES = new Set(["ready", "partial", "technical", "error"]);
+const MANAGERS_CACHE_TTL_MS = 5 * 60 * 1000;
+const FILTERED_CALLS_CACHE_TTL_MS = 30 * 1000;
 
 let queueLoopActive = false;
 let queueRunningCount = 0;
@@ -44,6 +46,8 @@ let queueScanTimer = null;
 let autoScanInFlight = false;
 const crmEntityCache = new Map();
 const crmClientWarmupInFlight = new Set();
+let managersCache = { expiresAt: 0, data: null };
+const filteredCallsCache = new Map();
 
 console.log(formatEnvBootstrapSummary(envBootstrap));
 for (const error of envBootstrap.readErrors) {
@@ -192,7 +196,9 @@ async function writeAnalysisStore(store) {
 }
 
 async function mutateAnalysisStore(mutator) {
-  return persistenceMutateAnalysisStore(mutator);
+  const result = await persistenceMutateAnalysisStore(mutator);
+  invalidateFilteredCallsCache();
+  return result;
 }
 
 async function readScenarioStore() {
@@ -200,7 +206,9 @@ async function readScenarioStore() {
 }
 
 async function writeScenarioStore(store) {
-  return persistenceWriteScenarioStore(store);
+  const result = await persistenceWriteScenarioStore(store);
+  invalidateFilteredCallsCache();
+  return result;
 }
 
 async function readSettingsStore() {
@@ -208,7 +216,9 @@ async function readSettingsStore() {
 }
 
 async function writeSettingsStore(store) {
-  return persistenceWriteSettingsStore(store);
+  const result = await persistenceWriteSettingsStore(store);
+  invalidateFilteredCallsCache();
+  return result;
 }
 
 async function readCrmClientCache(entries) {
@@ -380,6 +390,71 @@ function buildLatestActiveJobMap(jobs = []) {
     listJobsNewestFirst(jobs).filter((job) => ACTIVE_ANALYSIS_JOB_STATUSES.has(String(job.status || ""))),
     (job) => job.activityId,
   );
+}
+
+function invalidateFilteredCallsCache() {
+  filteredCallsCache.clear();
+}
+
+function normalizeCsvQueryValue(value, { numeric = false } = {}) {
+  const items = String(value || "")
+    .split(",")
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  if (numeric) {
+    return items
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item))
+      .sort((left, right) => left - right)
+      .join(",");
+  }
+
+  return items.sort((left, right) => left.localeCompare(right, "ru")).join(",");
+}
+
+function buildFilteredCallsCacheKey(query = {}) {
+  return JSON.stringify({
+    managerIds: normalizeCsvQueryValue(query.managerIds || query.managerId, { numeric: true }),
+    dateFrom: String(query.dateFrom || "").trim(),
+    dateTo: String(query.dateTo || "").trim(),
+    directions: normalizeCsvQueryValue(query.directions || query.direction),
+    analysisStates: normalizeCsvQueryValue(query.analysisStates),
+    scenarioIds: normalizeCsvQueryValue(query.scenarioIds),
+    onlyRecorded: String(query.onlyRecorded || "").trim(),
+    search: String(query.search || "").trim().toLowerCase(),
+  });
+}
+
+function normalizeDisplayAnalysisState(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "pending";
+  if (["processing", "queued"].includes(normalized)) return normalized;
+  if (["ready", "partial", "technical", "outdated", "error", "missing", "pending"].includes(normalized)) {
+    return normalized;
+  }
+  return "pending";
+}
+
+function normalizeCallStatusKey(call) {
+  const rawState = call?.analysis?.state || (!call?.hasRecording ? "missing" : "pending");
+  const normalizedState = normalizeDisplayAnalysisState(rawState);
+  return normalizedState === "processing" ? "queued" : normalizedState;
+}
+
+function buildCallStatusBreakdown(calls = []) {
+  const order = ["total", "ready", "pending", "queued", "partial", "outdated", "error", "missing"];
+  const counts = new Map(order.map((key) => [key, 0]));
+  counts.set("total", calls.length);
+
+  for (const call of calls) {
+    const key = normalizeCallStatusKey(call);
+    if (counts.has(key)) {
+      counts.set(key, Number(counts.get(key) || 0) + 1);
+    }
+  }
+
+  return order.map((key) => ({ key, count: Number(counts.get(key) || 0) }));
 }
 
 function buildAnalysisSignature({
@@ -1016,8 +1091,11 @@ async function searchActivitiesByManagers(baseFilter, managerIds, limit, offset)
 }
 
 async function listManagers() {
+  if (managersCache.data && Date.now() < managersCache.expiresAt) {
+    return managersCache.data;
+  }
   const payload = await vibeJson("/v1/users?limit=500");
-  return payload.data
+  const managers = payload.data
     .filter((user) => user.active)
     .map((user) => ({
       id: user.id,
@@ -1026,6 +1104,11 @@ async function listManagers() {
       departmentIds: user.departmentId || [],
     }))
     .sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
+  managersCache = {
+    data: managers,
+    expiresAt: Date.now() + MANAGERS_CACHE_TTL_MS,
+  };
+  return managers;
 }
 
 function buildCallFilter(query) {
@@ -1507,96 +1590,115 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
 
 async function fetchCalls(query) {
   await cleanupStaleActiveJobs();
-  const [managers, analysisStore, scenarioStore] = await Promise.all([
-    listManagers(),
-    readAnalysisStore(),
-    readScenarioStore(),
-  ]);
-  const managersById = new Map(managers.map((manager) => [manager.id, manager]));
-  const analysesByActivityId = buildLatestRecordsMap(analysisStore.analyses, (analysis) => analysis.activityId);
-  const failuresByActivityId = buildLatestRecordsMap(
-    analysisStore.failures || [],
-    (failure) => failure.activityId,
-  );
-  const jobsByActivityId = buildLatestJobMap(analysisStore.jobs || []);
-  const defaultScenario = getDefaultScenario(scenarioStore.scenarios || []);
-
-  const { filter, managerIds } = buildCallFilter(query);
   const requestedPageSize = Number(query.pageSize || query.limit || 50);
   const pageSize = Math.max(1, Math.min(requestedPageSize || 50, 200));
   const explicitOffset = Math.max(0, Number(query.offset || 0));
   const requestedPage = Math.max(1, Number(query.page || 1));
   const page = explicitOffset > 0 ? Math.floor(explicitOffset / pageSize) + 1 : requestedPage;
   const offset = explicitOffset > 0 ? explicitOffset : (page - 1) * pageSize;
-  const activityFetchLimit = 5000;
+  const cacheKey = buildFilteredCallsCacheKey(query);
+  const cachedEntry = filteredCallsCache.get(cacheKey);
+  const hasFreshCache = cachedEntry && cachedEntry.expiresAt > Date.now();
 
-  let rawActivities = [];
-  if (managerIds.length > 1) {
-    rawActivities = await searchActivitiesByManagers(filter, managerIds, activityFetchLimit, 0);
+  let snapshot;
+  if (hasFreshCache) {
+    snapshot = cachedEntry.snapshot;
   } else {
-    rawActivities = await searchActivities(filter, activityFetchLimit, 0);
-    if (!rawActivities.length && !managerIds.length) {
-      rawActivities = await searchActivitiesByManagers(
-        filter,
-        managers.map((manager) => manager.id),
-        activityFetchLimit,
-        0,
+    const [managers, analysisStore, scenarioStore] = await Promise.all([
+      listManagers(),
+      readAnalysisStore(),
+      readScenarioStore(),
+    ]);
+    const managersById = new Map(managers.map((manager) => [manager.id, manager]));
+    const analysesByActivityId = buildLatestRecordsMap(analysisStore.analyses, (analysis) => analysis.activityId);
+    const failuresByActivityId = buildLatestRecordsMap(
+      analysisStore.failures || [],
+      (failure) => failure.activityId,
+    );
+    const jobsByActivityId = buildLatestJobMap(analysisStore.jobs || []);
+    const defaultScenario = getDefaultScenario(scenarioStore.scenarios || []);
+    const { filter, managerIds } = buildCallFilter(query);
+    const activityFetchLimit = 5000;
+
+    let rawActivities = [];
+    if (managerIds.length > 1) {
+      rawActivities = await searchActivitiesByManagers(filter, managerIds, activityFetchLimit, 0);
+    } else {
+      rawActivities = await searchActivities(filter, activityFetchLimit, 0);
+      if (!rawActivities.length && !managerIds.length) {
+        rawActivities = await searchActivitiesByManagers(
+          filter,
+          managers.map((manager) => manager.id),
+          activityFetchLimit,
+          0,
+        );
+      }
+    }
+
+    let calls = rawActivities.map((activity) => {
+      const analysis = analysesByActivityId.get(String(activity.id));
+      const failure = failuresByActivityId.get(String(activity.id));
+      const latestJob = jobsByActivityId.get(String(activity.id));
+      const normalizedCall = normalizeCall(activity, managersById, analysis, failure, latestJob);
+
+      if (
+        normalizedCall.analysis &&
+        !normalizedCall.analysis.selectedScenarioId &&
+        !normalizedCall.analysis.selectedScenarioName &&
+        defaultScenario
+      ) {
+        normalizedCall.analysis = {
+          ...normalizedCall.analysis,
+          selectedScenarioId: defaultScenario.id,
+          selectedScenarioName: defaultScenario.name,
+        };
+      }
+
+      return normalizedCall;
+    });
+
+    if (query.search) {
+      const search = query.search.toLowerCase();
+      calls = calls.filter(
+        (call) =>
+          call.subject?.toLowerCase().includes(search) ||
+          call.managerName?.toLowerCase().includes(search),
       );
     }
-  }
 
-  let calls = rawActivities.map((activity) => {
-    const analysis = analysesByActivityId.get(String(activity.id));
-    const failure = failuresByActivityId.get(String(activity.id));
-    const latestJob = jobsByActivityId.get(String(activity.id));
-    const normalizedCall = normalizeCall(activity, managersById, analysis, failure, latestJob);
-
-    if (
-      normalizedCall.analysis &&
-      !normalizedCall.analysis.selectedScenarioId &&
-      !normalizedCall.analysis.selectedScenarioName &&
-      defaultScenario
-    ) {
-      normalizedCall.analysis = {
-        ...normalizedCall.analysis,
-        selectedScenarioId: defaultScenario.id,
-        selectedScenarioName: defaultScenario.name,
-      };
+    if (query.onlyRecorded === "true") {
+      calls = calls.filter((call) => call.hasRecording);
     }
 
-    return normalizedCall;
-  });
-
-  if (query.search) {
-    const search = query.search.toLowerCase();
-    calls = calls.filter(
-      (call) =>
-        call.subject?.toLowerCase().includes(search) ||
-        call.managerName?.toLowerCase().includes(search),
+    calls = applyClientSideCallFilters(calls, query);
+    calls.sort(
+      (left, right) =>
+        new Date(right.startTime || right.createdAt || 0) - new Date(left.startTime || left.createdAt || 0) ||
+        Number(right.id || 0) - Number(left.id || 0),
     );
+
+    snapshot = {
+      managers,
+      calls,
+      statusBreakdown: buildCallStatusBreakdown(calls),
+    };
+    filteredCallsCache.set(cacheKey, {
+      expiresAt: Date.now() + FILTERED_CALLS_CACHE_TTL_MS,
+      snapshot,
+    });
   }
 
-  if (query.onlyRecorded === "true") {
-    calls = calls.filter((call) => call.hasRecording);
-  }
-
-  calls = applyClientSideCallFilters(calls, query);
-  calls.sort(
-    (left, right) =>
-      new Date(right.startTime || right.createdAt || 0) - new Date(left.startTime || left.createdAt || 0) ||
-      Number(right.id || 0) - Number(left.id || 0),
-  );
-
-  const total = calls.length;
+  const total = snapshot.calls.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const pagedCalls = calls.slice(offset, offset + pageSize);
+  const pagedCalls = snapshot.calls.slice(offset, offset + pageSize);
 
   await hydrateCachedClientNames(pagedCalls);
   warmClientNamesInBackground(pagedCalls);
 
   return {
-    managers,
+    managers: snapshot.managers,
     calls: pagedCalls,
+    statusBreakdown: snapshot.statusBreakdown,
     total,
     page,
     pageSize,

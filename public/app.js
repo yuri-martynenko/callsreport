@@ -6,6 +6,7 @@ const state = {
   callsPageSize: PAGE_SIZE,
   callsTotalPages: 1,
   callsHasMore: false,
+  callsStatusBreakdown: [],
   summary: null,
   scenarios: [],
   settings: {
@@ -1167,7 +1168,7 @@ function renderReportMeta() {
     el.reportAutoMode.textContent = `Автоматическая расшифровка: ${autoModeLabel(state.settings?.autoTranscriptionMode)}`;
   }
   if (el.callsBreakdown) {
-    const items = callsStatusCounts(state.calls);
+    const items = state.callsStatusBreakdown.length ? state.callsStatusBreakdown : callsStatusCounts(state.calls);
     const totalTokens = Number(state.summary?.totalTokens || 0);
     el.callsBreakdown.innerHTML = items.length
       ? `<div class="status-breakdown">${items
@@ -1816,7 +1817,7 @@ async function saveSettings() {
     body: JSON.stringify({ autoTranscriptionMode: autoTranscriptionMode() }),
   });
   applySettings(data.settings || {});
-  await Promise.all([loadCalls(), loadSummary()]);
+  await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
   if (el.statusText) {
     const queued = Number(data.autoScan?.queued || 0);
     const stopped = Number(data.autoScan?.stopped || 0);
@@ -1850,7 +1851,8 @@ async function deleteScenario() {
   resetScenarioForm();
 }
 
-async function loadCalls() {
+async function loadCalls(options = {}) {
+  const shouldRefreshDashboard = Boolean(options.refreshDashboard);
   if (el.statusText) el.statusText.textContent = "Загружаю список звонков...";
   const data = await api(`/api/calls?${filtersQuery(true)}`);
   state.calls = data.calls;
@@ -1858,6 +1860,7 @@ async function loadCalls() {
   state.callsPageSize = Number(data.pageSize || PAGE_SIZE);
   state.callsTotalPages = Math.max(1, Number(data.totalPages || 1));
   state.callsHasMore = Boolean(data.hasMore);
+  state.callsStatusBreakdown = Array.isArray(data.statusBreakdown) ? data.statusBreakdown : [];
   state.page = Math.max(1, Number(data.page || state.page || 1));
   for (const call of state.calls) {
     syncAnalysisOverride(call);
@@ -1868,7 +1871,9 @@ async function loadCalls() {
   } else {
     renderAnalysis(state.selectedAnalysis);
   }
-  renderDashboard();
+  if (shouldRefreshDashboard) {
+    renderDashboard();
+  }
   ensureAnalysisPolling();
   if (el.statusText) {
     el.statusText.textContent = `Найдено звонков: ${state.callsTotal}`;
@@ -1903,7 +1908,7 @@ function ensureAnalysisPolling() {
   state.analysisPollingTimer = setTimeout(async function poll() {
     state.analysisPollingTimer = null;
     try {
-      await Promise.all([loadCalls(), loadSummary()]);
+      await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
     } catch (error) {
       notifyLoadError(error);
     } finally {
@@ -2014,7 +2019,7 @@ async function analyzeOne(activityId) {
       if (el.statusText) {
         el.statusText.textContent = `Актуальный анализ уже существует. Повторный запуск для звонка не потребовался.`;
       }
-      await Promise.all([loadCalls(), loadSummary()]);
+      await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
       return;
     }
 
@@ -2026,7 +2031,7 @@ async function analyzeOne(activityId) {
       selectedScenarioName: result.job?.selectedScenarioName || selectedScenario?.name || "Автосценарий",
       errorMessage: "",
     });
-    await Promise.all([loadCalls(), loadSummary()]);
+    await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
   } catch (error) {
     const failedCall = state.calls.find((item) => String(item.id) === String(activityId));
     const errorAnalysis = {
@@ -2064,7 +2069,7 @@ function scheduleFiltersReload() {
   state.filtersTimer = setTimeout(async () => {
     state.page = 1;
     try {
-      await Promise.all([loadCalls(), loadSummary()]);
+      await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
     } catch (error) {
       notifyLoadError(error);
     }
@@ -2173,7 +2178,7 @@ document.addEventListener("click", async (event) => {
     await analyzeOne(analyzeButton.getAttribute("data-id"));
   } catch (error) {
     try {
-      await Promise.all([loadCalls(), loadSummary()]);
+      await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
     } catch (refreshError) {
       notifyLoadError(refreshError);
     }
@@ -2284,7 +2289,7 @@ if (el.prevPage) {
     if (state.page <= 1) return;
     state.page -= 1;
     try {
-      await loadCalls();
+      await loadCalls({ refreshDashboard: false });
     } catch (error) {
       notifyLoadError(error);
     }
@@ -2296,7 +2301,7 @@ if (el.firstPage) {
     if (state.page <= 1) return;
     state.page = 1;
     try {
-      await loadCalls();
+      await loadCalls({ refreshDashboard: false });
     } catch (error) {
       notifyLoadError(error);
     }
@@ -2309,7 +2314,7 @@ if (el.nextPage) {
     if (state.page >= totalPages) return;
     state.page += 1;
     try {
-      await loadCalls();
+      await loadCalls({ refreshDashboard: false });
     } catch (error) {
       notifyLoadError(error);
     }
@@ -2322,7 +2327,7 @@ if (el.lastPage) {
     if (state.page >= totalPages) return;
     state.page = totalPages;
     try {
-      await loadCalls();
+      await loadCalls({ refreshDashboard: false });
     } catch (error) {
       notifyLoadError(error);
     }
@@ -2332,7 +2337,7 @@ if (el.lastPage) {
 (async function init() {
   try {
     setCurrentView("dashboard");
-    await Promise.all([loadManagers(), loadSettings(), loadScenarios(), loadCalls(), loadSummary()]);
+    await Promise.all([loadManagers(), loadSettings(), loadScenarios(), loadCalls({ refreshDashboard: false }), loadSummary()]);
     renderAnalysis(null);
   } catch (error) {
     if (el.statusText) el.statusText.textContent = error.message;
