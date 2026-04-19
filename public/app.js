@@ -18,7 +18,8 @@ const state = {
   selectedScenarioId: "",
   currentView: "dashboard",
   page: 1,
-  filtersTimer: null,
+  appliedFilters: null,
+  filtersDirty: false,
   analysisOverrides: {},
   analysisPollingTimer: null,
   playback: {
@@ -54,6 +55,7 @@ const el = {
   scenarioFilterLabel: document.getElementById("scenarioFilterLabel"),
   scenarioFilterOptions: document.getElementById("scenarioFilterOptions"),
   onlyRecorded: document.getElementById("onlyRecorded"),
+  applyFilters: document.getElementById("applyFilters"),
   resetFilters: document.getElementById("resetFilters"),
   scenarioName: document.getElementById("scenarioName"),
   scenarioDescription: document.getElementById("scenarioDescription"),
@@ -179,7 +181,7 @@ function closeFilterDropdowns(except = null) {
   });
 }
 
-function filters() {
+function currentFiltersFromControls() {
   return {
     managerIds: selectedManagerIds(),
     dateFrom: el.dateFrom.value,
@@ -191,8 +193,39 @@ function filters() {
   };
 }
 
+function normalizeFilters(filters) {
+  const normalized = filters || {};
+  return {
+    managerIds: [...new Set((normalized.managerIds || []).map((value) => String(value).trim()).filter(Boolean))].sort(),
+    dateFrom: String(normalized.dateFrom || "").trim(),
+    dateTo: String(normalized.dateTo || "").trim(),
+    directions: [...new Set((normalized.directions || []).map((value) => String(value).trim()).filter(Boolean))].sort(),
+    analysisStates: [...new Set((normalized.analysisStates || []).map((value) => String(value).trim()).filter(Boolean))].sort(),
+    scenarioIds: [...new Set((normalized.scenarioIds || []).map((value) => String(value).trim()).filter(Boolean))].sort(),
+    onlyRecorded: Boolean(normalized.onlyRecorded),
+  };
+}
+
+function filtersEqual(left, right) {
+  return JSON.stringify(normalizeFilters(left)) === JSON.stringify(normalizeFilters(right));
+}
+
+function appliedFilters() {
+  if (!state.appliedFilters) {
+    state.appliedFilters = normalizeFilters(currentFiltersFromControls());
+  }
+  return state.appliedFilters;
+}
+
+function updateApplyFiltersState() {
+  state.filtersDirty = !filtersEqual(currentFiltersFromControls(), appliedFilters());
+  if (el.applyFilters) {
+    el.applyFilters.disabled = !state.filtersDirty;
+  }
+}
+
 function filtersQuery(includePaging = false) {
-  const current = filters();
+  const current = appliedFilters();
   const params = new URLSearchParams();
   if (current.managerIds.length) params.set("managerIds", current.managerIds.join(","));
   if (current.dateFrom) params.set("dateFrom", current.dateFrom);
@@ -1104,7 +1137,6 @@ function renderSummaryInto(container, summary) {
 }
 
 function renderSummary() {
-  renderSummaryInto(el.summaryCards, state.summary);
   renderSummaryInto(el.dashboardSummaryCards, state.summary);
 }
 
@@ -1817,7 +1849,7 @@ async function saveSettings() {
     body: JSON.stringify({ autoTranscriptionMode: autoTranscriptionMode() }),
   });
   applySettings(data.settings || {});
-  await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
+  await reloadReportData();
   if (el.statusText) {
     const queued = Number(data.autoScan?.queued || 0);
     const stopped = Number(data.autoScan?.stopped || 0);
@@ -1880,11 +1912,24 @@ async function loadCalls(options = {}) {
   }
 }
 
-async function loadSummary() {
+async function loadSummary(options = {}) {
   const data = await api(`/api/reports/summary?${filtersQuery()}`);
   state.summary = data.summary;
   renderSummary();
-  renderDashboard();
+  if (options.refreshDashboard !== false) {
+    renderDashboard();
+  }
+}
+
+async function reloadReportData(options = {}) {
+  const refreshDashboard = options.refreshDashboard !== false;
+  await Promise.all([
+    loadCalls({ refreshDashboard: false }),
+    loadSummary({ refreshDashboard: false }),
+  ]);
+  if (refreshDashboard) {
+    renderDashboard();
+  }
 }
 
 function hasActiveAnalysisWork() {
@@ -1908,7 +1953,7 @@ function ensureAnalysisPolling() {
   state.analysisPollingTimer = setTimeout(async function poll() {
     state.analysisPollingTimer = null;
     try {
-      await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
+      await reloadReportData();
     } catch (error) {
       notifyLoadError(error);
     } finally {
@@ -2019,7 +2064,7 @@ async function analyzeOne(activityId) {
       if (el.statusText) {
         el.statusText.textContent = `Актуальный анализ уже существует. Повторный запуск для звонка не потребовался.`;
       }
-      await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
+      await reloadReportData();
       return;
     }
 
@@ -2031,7 +2076,7 @@ async function analyzeOne(activityId) {
       selectedScenarioName: result.job?.selectedScenarioName || selectedScenario?.name || "Автосценарий",
       errorMessage: "",
     });
-    await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
+    await reloadReportData();
   } catch (error) {
     const failedCall = state.calls.find((item) => String(item.id) === String(activityId));
     const errorAnalysis = {
@@ -2063,17 +2108,17 @@ async function analyzeOne(activityId) {
   }
 }
 
-function scheduleFiltersReload() {
-  clearTimeout(state.filtersTimer);
+function handleFilterControlsChanged() {
   refreshFilterLabels();
-  state.filtersTimer = setTimeout(async () => {
-    state.page = 1;
-    try {
-      await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
-    } catch (error) {
-      notifyLoadError(error);
-    }
-  }, 250);
+  updateApplyFiltersState();
+}
+
+async function applyFilters() {
+  state.appliedFilters = normalizeFilters(currentFiltersFromControls());
+  state.page = 1;
+  closeFilterDropdowns();
+  updateApplyFiltersState();
+  await reloadReportData();
 }
 
 function resetFilters() {
@@ -2096,7 +2141,7 @@ function resetFilters() {
 
   refreshFilterLabels();
   closeFilterDropdowns();
-  scheduleFiltersReload();
+  updateApplyFiltersState();
 }
 
 document.addEventListener("click", async (event) => {
@@ -2178,7 +2223,7 @@ document.addEventListener("click", async (event) => {
     await analyzeOne(analyzeButton.getAttribute("data-id"));
   } catch (error) {
     try {
-      await Promise.all([loadCalls({ refreshDashboard: false }), loadSummary()]);
+      await reloadReportData();
     } catch (refreshError) {
       notifyLoadError(refreshError);
     }
@@ -2189,7 +2234,7 @@ document.addEventListener("click", async (event) => {
 });
 
 [el.dateFrom, el.dateTo, el.onlyRecorded].forEach((control) => {
-  control.addEventListener("change", scheduleFiltersReload);
+  control.addEventListener("change", handleFilterControlsChanged);
 });
 
 document.addEventListener("change", (event) => {
@@ -2198,7 +2243,7 @@ document.addEventListener("change", (event) => {
       'input[data-filter-option="manager"], input[data-filter-option="direction"], input[data-filter-option="analysis-state"], input[data-filter-option="scenario"]',
     )
   ) {
-    scheduleFiltersReload();
+    handleFilterControlsChanged();
     return;
   }
 
@@ -2220,6 +2265,17 @@ document.addEventListener("change", (event) => {
 if (el.resetFilters) {
   el.resetFilters.addEventListener("click", () => {
     resetFilters();
+  });
+}
+
+if (el.applyFilters) {
+  el.applyFilters.addEventListener("click", async () => {
+    if (!state.filtersDirty) return;
+    try {
+      await applyFilters();
+    } catch (error) {
+      notifyLoadError(error);
+    }
   });
 }
 
@@ -2337,7 +2393,17 @@ if (el.lastPage) {
 (async function init() {
   try {
     setCurrentView("dashboard");
-    await Promise.all([loadManagers(), loadSettings(), loadScenarios(), loadCalls({ refreshDashboard: false }), loadSummary()]);
+    state.appliedFilters = normalizeFilters(currentFiltersFromControls());
+    refreshFilterLabels();
+    updateApplyFiltersState();
+    await Promise.all([
+      loadManagers(),
+      loadSettings(),
+      loadScenarios(),
+      loadCalls({ refreshDashboard: false }),
+      loadSummary({ refreshDashboard: false }),
+    ]);
+    renderDashboard();
     renderAnalysis(null);
   } catch (error) {
     if (el.statusText) el.statusText.textContent = error.message;
