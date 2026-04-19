@@ -1542,20 +1542,25 @@ async function fetchCalls(query) {
   const defaultScenario = getDefaultScenario(scenarioStore.scenarios || []);
 
   const { filter, managerIds } = buildCallFilter(query);
-  const limit = Math.min(Number(query.limit || 500), 500);
-  const offset = Number(query.offset || 0);
+  const requestedPageSize = Number(query.pageSize || query.limit || 50);
+  const pageSize = Math.max(1, Math.min(requestedPageSize || 50, 200));
+  const explicitOffset = Math.max(0, Number(query.offset || 0));
+  const requestedPage = Math.max(1, Number(query.page || 1));
+  const page = explicitOffset > 0 ? Math.floor(explicitOffset / pageSize) + 1 : requestedPage;
+  const offset = explicitOffset > 0 ? explicitOffset : (page - 1) * pageSize;
+  const activityFetchLimit = 5000;
 
   let rawActivities = [];
   if (managerIds.length > 1) {
-    rawActivities = await searchActivitiesByManagers(filter, managerIds, limit, offset);
+    rawActivities = await searchActivitiesByManagers(filter, managerIds, activityFetchLimit, 0);
   } else {
-    rawActivities = await searchActivities(filter, limit, offset);
+    rawActivities = await searchActivities(filter, activityFetchLimit, 0);
     if (!rawActivities.length && !managerIds.length) {
       rawActivities = await searchActivitiesByManagers(
         filter,
         managers.map((manager) => manager.id),
-        limit,
-        offset,
+        activityFetchLimit,
+        0,
       );
     }
   }
@@ -1596,10 +1601,28 @@ async function fetchCalls(query) {
   }
 
   calls = applyClientSideCallFilters(calls, query);
-  await hydrateCachedClientNames(calls);
-  warmClientNamesInBackground(calls);
+  calls.sort(
+    (left, right) =>
+      new Date(right.startTime || right.createdAt || 0) - new Date(left.startTime || left.createdAt || 0) ||
+      Number(right.id || 0) - Number(left.id || 0),
+  );
 
-  return { managers, calls, total: calls.length };
+  const total = calls.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pagedCalls = calls.slice(offset, offset + pageSize);
+
+  await hydrateCachedClientNames(pagedCalls);
+  warmClientNamesInBackground(pagedCalls);
+
+  return {
+    managers,
+    calls: pagedCalls,
+    total,
+    page,
+    pageSize,
+    totalPages,
+    hasMore: offset + pagedCalls.length < total,
+  };
 }
 
 async function downloadCallAudio(fileId) {

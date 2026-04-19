@@ -2,6 +2,10 @@
 
 const state = {
   calls: [],
+  callsTotal: 0,
+  callsPageSize: PAGE_SIZE,
+  callsTotalPages: 1,
+  callsHasMore: false,
   summary: null,
   scenarios: [],
   settings: {
@@ -186,7 +190,7 @@ function filters() {
   };
 }
 
-function filtersQuery() {
+function filtersQuery(includePaging = false) {
   const current = filters();
   const params = new URLSearchParams();
   if (current.managerIds.length) params.set("managerIds", current.managerIds.join(","));
@@ -196,6 +200,10 @@ function filtersQuery() {
   if (current.analysisStates.length) params.set("analysisStates", current.analysisStates.join(","));
   if (current.scenarioIds.length) params.set("scenarioIds", current.scenarioIds.join(","));
   params.set("onlyRecorded", String(current.onlyRecorded));
+  if (includePaging) {
+    params.set("page", String(state.page));
+    params.set("pageSize", String(state.callsPageSize || PAGE_SIZE));
+  }
   return params.toString();
 }
 
@@ -1073,8 +1081,7 @@ function hydrateSelectedAnalysis() {
 }
 
 function pagedCalls() {
-  const start = (state.page - 1) * PAGE_SIZE;
-  return state.calls.slice(start, start + PAGE_SIZE);
+  return state.calls;
 }
 
 function renderSummaryInto(container, summary) {
@@ -1183,7 +1190,7 @@ function renderReportMeta() {
 }
 
 function renderPagination() {
-  const totalPages = Math.max(1, Math.ceil(state.calls.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Number(state.callsTotalPages || 1));
   if (state.page > totalPages) state.page = totalPages;
   if (el.pageInfo) el.pageInfo.textContent = `Страница ${state.page} из ${totalPages}`;
   if (el.firstPage) el.firstPage.disabled = state.page <= 1;
@@ -1194,7 +1201,7 @@ function renderPagination() {
 function renderCalls() {
   hydrateSelectedAnalysis();
   if (el.callsCount) {
-    el.callsCount.textContent = String(state.calls.length);
+    el.callsCount.textContent = String(state.callsTotal);
   }
   renderReportMeta();
   el.callsTable.innerHTML = pagedCalls()
@@ -1845,8 +1852,13 @@ async function deleteScenario() {
 
 async function loadCalls() {
   if (el.statusText) el.statusText.textContent = "Загружаю список звонков...";
-  const data = await api(`/api/calls?${filtersQuery()}`);
+  const data = await api(`/api/calls?${filtersQuery(true)}`);
   state.calls = data.calls;
+  state.callsTotal = Number(data.total || 0);
+  state.callsPageSize = Number(data.pageSize || PAGE_SIZE);
+  state.callsTotalPages = Math.max(1, Number(data.totalPages || 1));
+  state.callsHasMore = Boolean(data.hasMore);
+  state.page = Math.max(1, Number(data.page || state.page || 1));
   for (const call of state.calls) {
     syncAnalysisOverride(call);
   }
@@ -1858,6 +1870,9 @@ async function loadCalls() {
   }
   renderDashboard();
   ensureAnalysisPolling();
+  if (el.statusText) {
+    el.statusText.textContent = `Найдено звонков: ${state.callsTotal}`;
+  }
 }
 
 async function loadSummary() {
@@ -2265,36 +2280,52 @@ if (el.showSettingsView) {
 }
 
 if (el.prevPage) {
-  el.prevPage.addEventListener("click", () => {
+  el.prevPage.addEventListener("click", async () => {
     if (state.page <= 1) return;
     state.page -= 1;
-    renderCalls();
+    try {
+      await loadCalls();
+    } catch (error) {
+      notifyLoadError(error);
+    }
   });
 }
 
 if (el.firstPage) {
-  el.firstPage.addEventListener("click", () => {
+  el.firstPage.addEventListener("click", async () => {
     if (state.page <= 1) return;
     state.page = 1;
-    renderCalls();
+    try {
+      await loadCalls();
+    } catch (error) {
+      notifyLoadError(error);
+    }
   });
 }
 
 if (el.nextPage) {
-  el.nextPage.addEventListener("click", () => {
-    const totalPages = Math.max(1, Math.ceil(state.calls.length / PAGE_SIZE));
+  el.nextPage.addEventListener("click", async () => {
+    const totalPages = Math.max(1, Number(state.callsTotalPages || 1));
     if (state.page >= totalPages) return;
     state.page += 1;
-    renderCalls();
+    try {
+      await loadCalls();
+    } catch (error) {
+      notifyLoadError(error);
+    }
   });
 }
 
 if (el.lastPage) {
-  el.lastPage.addEventListener("click", () => {
-    const totalPages = Math.max(1, Math.ceil(state.calls.length / PAGE_SIZE));
+  el.lastPage.addEventListener("click", async () => {
+    const totalPages = Math.max(1, Number(state.callsTotalPages || 1));
     if (state.page >= totalPages) return;
     state.page = totalPages;
-    renderCalls();
+    try {
+      await loadCalls();
+    } catch (error) {
+      notifyLoadError(error);
+    }
   });
 }
 
