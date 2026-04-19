@@ -38,7 +38,8 @@ const AI_TRANSCRIPTION_TIMEOUT_MS = Math.max(15000, Number(envValue("AI_TRANSCRI
 const ACTIVE_ANALYSIS_JOB_STATUSES = new Set(["queued", "processing"]);
 const TERMINAL_ANALYSIS_JOB_STATUSES = new Set(["ready", "partial", "technical", "error"]);
 const MANAGERS_CACHE_TTL_MS = 5 * 60 * 1000;
-const FILTERED_CALLS_CACHE_TTL_MS = 30 * 1000;
+const FILTERED_CALLS_CACHE_TTL_MS = 5 * 60 * 1000;
+const STALE_JOBS_CLEANUP_INTERVAL_MS = 30 * 1000;
 
 let queueLoopActive = false;
 let queueRunningCount = 0;
@@ -48,6 +49,8 @@ const crmEntityCache = new Map();
 const crmClientWarmupInFlight = new Set();
 let managersCache = { expiresAt: 0, data: null };
 const filteredCallsCache = new Map();
+let staleJobsCleanupCheckedAt = 0;
+let staleJobsCleanupInFlight = null;
 
 console.log(formatEnvBootstrapSummary(envBootstrap));
 for (const error of envBootstrap.readErrors) {
@@ -524,7 +527,7 @@ function isStaleActiveJob(job) {
   return Date.now() - referenceTime > ANALYSIS_ACTIVE_JOB_STALE_MS;
 }
 
-async function cleanupStaleActiveJobs() {
+async function cleanupStaleActiveJobsLegacy() {
   return mutateAnalysisStore(async (store) => {
     let updated = 0;
     store.jobs = (store.jobs || []).map((job) => {
@@ -541,6 +544,48 @@ async function cleanupStaleActiveJobs() {
     });
     return { updated };
   });
+}
+
+async function cleanupStaleActiveJobs() {
+  if (staleJobsCleanupInFlight) return staleJobsCleanupInFlight;
+  if (Date.now() - staleJobsCleanupCheckedAt < STALE_JOBS_CLEANUP_INTERVAL_MS) {
+    return { updated: 0, skipped: true };
+  }
+
+  staleJobsCleanupInFlight = (async () => {
+    try {
+      const store = await readAnalysisStore();
+      const staleJobIds = new Set(
+        (store.jobs || []).filter((job) => isStaleActiveJob(job)).map((job) => String(job.id)),
+      );
+
+      staleJobsCleanupCheckedAt = Date.now();
+      if (!staleJobIds.size) {
+        return { updated: 0, skipped: true };
+      }
+
+      return mutateAnalysisStore(async (draft) => {
+        let updated = 0;
+        draft.jobs = (draft.jobs || []).map((job) => {
+          if (!staleJobIds.has(String(job.id))) return job;
+          updated += 1;
+          return updateJobRecord(job, {
+            status: "error",
+            finishedAt: new Date().toISOString(),
+            errorMessage:
+              job.status === "processing"
+                ? "Р¤РѕРЅРѕРІР°СЏ РѕР±СЂР°Р±РѕС‚РєР° Р±С‹Р»Р° РѕСЃС‚Р°РЅРѕРІР»РµРЅР° РїРѕ С‚Р°Р№РјР°СѓС‚Сѓ. Р—Р°РїСѓСЃС‚РёС‚Рµ Р°РЅР°Р»РёР· РїРѕРІС‚РѕСЂРЅРѕ."
+                : "Р—Р°РґР°С‡Р° Р°РЅР°Р»РёР·Р° СЃР»РёС€РєРѕРј РґРѕР»РіРѕ РѕСЃС‚Р°РІР°Р»Р°СЃСЊ РІ РѕС‡РµСЂРµРґРё Рё Р±С‹Р»Р° СЃР±СЂРѕС€РµРЅР°. Р—Р°РїСѓСЃС‚РёС‚Рµ Р°РЅР°Р»РёР· РїРѕРІС‚РѕСЂРЅРѕ.",
+          });
+        });
+        return { updated };
+      });
+    } finally {
+      staleJobsCleanupInFlight = null;
+    }
+  })();
+
+  return staleJobsCleanupInFlight;
 }
 
 function deriveTranscriptionTokenUsage(transcriptionPayload) {
