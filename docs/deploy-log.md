@@ -24,6 +24,13 @@
 
 ## Записи
 
+## 2026-04-21 23:24 VLAT
+
+- Задача: deploy исправления корневой причины завышенной высоты `Запись разговора` и элементов в dropdown-фильтрах через раздельные правила для обычных полей и checkbox-элементов.
+- Длительность: около 5 минут.
+- Результат: `push` коммита `68bb480` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production CSS на `127.0.0.1:3000` подтвердил правило `.filter-toolbar input:not([type="checkbox"]):not([type="radio"])` и возврат checkbox-элементов `filter-recorded-control` и dropdown-списков к `height/min-height = 16px`.
+- Примечание: изменения ограничены фронтенд-CSS фильтра без изменения backend, API, БД и логики очереди.
+
 ## 2026-04-21 23:18 VLAT
 
 - Задача: deploy жёсткого выравнивания фильтра с точной высотой `Запись разговора`, уменьшением высоты пунктов выпадающих списков и фиксацией одинаковой ширины кнопок `Применить`/`Сбросить` с `Режим распознавания` при выравнивании по нижней границе блока.
