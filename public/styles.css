@@ -772,7 +772,7 @@ button.accent {
   border-radius: 12px;
 }
 
-.filter-toolbar input,
+.filter-toolbar input:not([type="checkbox"]):not([type="radio"]),
 .filter-toolbar select,
 .filter-toolbar textarea,
 .filter-toolbar .multi-select summary,
@@ -786,6 +786,18 @@ button.accent {
   padding: 2px 2px;
   gap: 8px;
   min-height: 28px;
+}
+
+.filter-toolbar .multi-select-menu .multi-select-option input,
+.filter-toolbar .filter-recorded-control input {
+  width: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+  padding: 0;
 }
 
 .filter-toolbar .multi-select-menu .multi-select-option span {
