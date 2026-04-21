@@ -24,6 +24,12 @@
 
 ## Записи
 
+## 2026-04-22 00:29 VLAT
+
+- Задача: deploy обновления модалки `Детализация звонка` по согласованному стилю: `Резюме` переведено в semantic-card блок, а `Потребность клиента` и `Следующий шаг` вынесены в отдельные выделенные секции сразу после него без изменения остальной композиции.
+- Длительность: около 15 минут.
+- Результат: `push` коммита `f52e3a8` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production-версии `app.js` и `styles.css` на `127.0.0.1:3000` подтвердили наличие `analysisClientNeed`, `analysisNextStep`, `detail-block-summary`, `detail-block-client-need`, `detail-block-next-step` и `detail-inline-metric`.
+
 ## 2026-04-22 00:20 VLAT
 
 - Задача: deploy точечного исправления фильтра после обратной связи по скриншоту: отделение обычных полей от checkbox-элементов, чтобы `Запись разговора` и пункты dropdown-списков больше не растягивались общим правилом высоты.
