@@ -741,19 +741,19 @@ button.accent {
 }
 
 .filter-actions {
-  grid-column: 1 / -1;
-  grid-row: 3;
+  grid-column: 5;
+  grid-row: 1 / span 2;
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
   gap: 8px;
-  align-self: start;
-  padding-top: 2px;
+  align-self: stretch;
+  padding-top: 0;
 }
 
 .filter-apply-button,
 .filter-reset-button {
-  width: auto;
+  width: 100%;
   min-width: 112px;
 }
 
@@ -776,6 +776,71 @@ button.accent {
 .filter-toolbar .multi-select summary,
 .filter-toolbar .filter-recorded-control {
   min-height: 46px;
+}
+
+.filter-toolbar .filter-recorded-control span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+}
+
+.calls-panel button,
+.scenario-editor-panel button,
+.settings-modal-panel button,
+.analysis-drawer-panel button {
+  border: 1px solid rgba(96, 112, 134, 0.18);
+  background: rgba(247, 250, 253, 0.95);
+  color: var(--text);
+  border-radius: 12px;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.calls-panel button.primary-action,
+.scenario-editor-panel button.primary-action,
+.settings-modal-panel button.primary-action,
+.analysis-drawer-panel button.primary-action,
+.calls-panel button.accent,
+.scenario-editor-panel button.accent,
+.settings-modal-panel button.accent,
+.analysis-drawer-panel button.accent {
+  background: rgba(31, 94, 255, 0.12);
+  color: #163b8f;
+  border-color: rgba(31, 94, 255, 0.18);
+}
+
+.calls-panel button:hover,
+.scenario-editor-panel button:hover,
+.settings-modal-panel button:hover,
+.analysis-drawer-panel button:hover {
+  background: rgba(240, 245, 252, 0.98);
+}
+
+.calls-panel button.primary-action:hover,
+.scenario-editor-panel button.primary-action:hover,
+.settings-modal-panel button.primary-action:hover,
+.analysis-drawer-panel button.primary-action:hover,
+.calls-panel button.accent:hover,
+.scenario-editor-panel button.accent:hover,
+.settings-modal-panel button.accent:hover,
+.analysis-drawer-panel button.accent:hover {
+  background: rgba(31, 94, 255, 0.16);
+}
+
+.calls-panel .call-action-icon,
+.analysis-drawer-close,
+.settings-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scenario-link {
+  border: 0;
+  background: transparent;
+  color: #163b8f;
+  box-shadow: none;
 }
 
 .badge {
@@ -994,7 +1059,7 @@ textarea {
   .filter-apply-button,
   .filter-reset-button { min-width: 0; }
   .filter-actions {
-    grid-column: 1 / -1;
+    grid-column: auto;
     grid-row: auto;
     justify-content: flex-start;
     flex-wrap: nowrap;
