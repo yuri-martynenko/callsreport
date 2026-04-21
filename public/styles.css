@@ -745,7 +745,7 @@ button.accent {
   grid-row: 1 / span 2;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 8px;
   align-self: stretch;
   padding-top: 0;
@@ -778,10 +778,20 @@ button.accent {
   min-height: 46px;
 }
 
+.filter-toolbar .multi-select-menu .multi-select-option {
+  padding: 4px 4px;
+  gap: 8px;
+}
+
+.filter-toolbar .multi-select-menu .multi-select-option span {
+  line-height: 1.2;
+}
+
 .filter-toolbar .filter-recorded-control span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 20px;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .calls-panel button,
