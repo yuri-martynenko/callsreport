@@ -24,6 +24,13 @@
 
 ## Записи
 
+## 2026-04-21 22:01 VLAT
+
+- Задача: deploy облегчённого и более компактного UI с обновлённой шапкой, light/minimal палитрой и новым hero-блоком на дашборде.
+- Длительность: около 5 минут.
+- Результат: `push` коммита `d3f927b` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production HTML на `127.0.0.1:3000` подтвердил наличие `topbar-kicker`, `topbar-subtitle` и `dashboard-hero`.
+- Примечание: изменения ограничены фронтенд-дизайном (`public/index.html`, `public/styles.css`) без изменения backend, API, БД и логики очереди.
+
 ## 2026-04-20 01:46 VLAT
 
 - Задача: deploy фикса верстки шапки блока `Список звонков`, где текст статусов и режима авторасшифровки выталкивался за границы панели.
