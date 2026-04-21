@@ -585,36 +585,39 @@ function analysisHeaderMarkup(analysis, options = {}) {
   } else if (options.showScenarioPill) {
     pills.push(`<span class="pill">Сценарий: ${escapeHtml(scenarioName)}</span>`);
   }
-  const audioControls = analysis?.recordingUrl
-    ? `
-      <div class="analysis-header-audio">
-        <div class="analysis-header-audio-track">
-          <span class="analysis-header-audio-time" data-role="playback-current">${escapeHtml(formatTimestamp(playbackCurrentTime))}</span>
-          <input
-            class="analysis-header-audio-range"
-            type="range"
-            min="0"
-            max="${escapeHtml(Math.max(playbackDuration, 1))}"
-            step="0.1"
-            value="${escapeHtml(Math.min(playbackCurrentTime, Math.max(playbackDuration, 1)))}"
-            data-action="seek-call-audio"
-            ${state.playback.loading ? "disabled" : ""}
-          />
-          <span class="analysis-header-audio-time" data-role="playback-duration">${escapeHtml(formatTimestamp(playbackDuration))}</span>
-        </div>
-        <button type="button" class="analysis-audio-button ${isPlayingFullCall ? "is-active" : ""}" data-action="toggle-full-call-audio">${isPlayingFullCall ? "■ Остановить разговор" : "▶ Прослушать разговор"}</button>
-      </div>`
-    : "";
-
   return `
     <div class="analysis-header-rows">
       <div class="analysis-header-top">
         <div class="analysis-header-pills">${pills.join("")}</div>
       </div>
-      ${audioControls}
       ${navLinks}
     </div>
   `;
+}
+
+function analysisAudioControlsMarkup(analysis) {
+  if (!analysis?.recordingUrl) return "";
+  const playbackDuration = Number(state.playback.duration || analysis.durationSeconds || 0);
+  const playbackCurrentTime = Number(state.playback.currentTime || 0);
+  const isPlayingFullCall = state.playback.mode === "full-call" && !transcriptPlayback.audio.paused;
+  return `
+    <div class="analysis-header-audio transcript-audio-controls">
+      <div class="analysis-header-audio-track">
+        <span class="analysis-header-audio-time" data-role="playback-current">${escapeHtml(formatTimestamp(playbackCurrentTime))}</span>
+        <input
+          class="analysis-header-audio-range"
+          type="range"
+          min="0"
+          max="${escapeHtml(Math.max(playbackDuration, 1))}"
+          step="0.1"
+          value="${escapeHtml(Math.min(playbackCurrentTime, Math.max(playbackDuration, 1)))}"
+          data-action="seek-call-audio"
+          ${state.playback.loading ? "disabled" : ""}
+        />
+        <span class="analysis-header-audio-time" data-role="playback-duration">${escapeHtml(formatTimestamp(playbackDuration))}</span>
+      </div>
+      <button type="button" class="analysis-audio-button ${isPlayingFullCall ? "is-active" : ""}" data-action="toggle-full-call-audio">${isPlayingFullCall ? "■ Остановить разговор" : "▶ Прослушать разговор"}</button>
+    </div>`;
 }
 
 function formatTimestamp(seconds) {
@@ -1618,6 +1621,7 @@ function renderAnalysis(analysis) {
     </section>
     <section id="analysisTranscript" class="detail-block">
       <h3>Транскрипт</h3>
+      ${analysisAudioControlsMarkup(analysis)}
       ${transcriptSegmentsMarkup(analysis)}
     </section>`;
 }

@@ -396,6 +396,9 @@ tbody tr.is-clickable { cursor: pointer; }
   gap: 12px;
   width: 100%;
 }
+.transcript-audio-controls {
+  margin: 8px 0 18px;
+}
 .analysis-header-audio-track {
   display: flex;
   align-items: center;
