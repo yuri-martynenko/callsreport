@@ -24,6 +24,13 @@
 
 ## Записи
 
+## 2026-04-21 22:18 VLAT
+
+- Задача: deploy удаления блока `Обзор системы`, упрощения кнопок шапки без теней и уменьшения типографики для более плотного отображения интерфейса, особенно в таблице звонков.
+- Длительность: около 5 минут.
+- Результат: `push` коммита `0f1ba6f` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production HTML/CSS на `127.0.0.1:3000` подтвердил отсутствие блока `dashboard-hero`, наличие кнопок `menu-link` в шапке и новых компактных правил `box-shadow: none`, `font-size: 12px`, `font-size: 11px`.
+- Примечание: изменения ограничены фронтенд-версткой и типографикой без изменения backend, API, БД и логики очереди.
+
 ## 2026-04-21 22:01 VLAT
 
 - Задача: deploy облегчённого и более компактного UI с обновлённой шапкой, light/minimal палитрой и новым hero-блоком на дашборде.
