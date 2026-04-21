@@ -597,7 +597,13 @@ function analysisHeaderMarkup(analysis, options = {}) {
 
 function analysisAudioControlsMarkup(analysis) {
   if (!analysis?.recordingUrl) return "";
-  const playbackDuration = Number(state.playback.duration || analysis.durationSeconds || 0);
+  const sourceCall = callById(analysis?.activityId) || {};
+  const playbackDuration = Number(
+    state.playback.duration ||
+      analysis.durationSeconds ||
+      sourceCall.durationSeconds ||
+      0
+  );
   const playbackCurrentTime = Number(state.playback.currentTime || 0);
   const isPlayingFullCall = state.playback.mode === "full-call" && !transcriptPlayback.audio.paused;
   return `
@@ -935,8 +941,29 @@ function transcriptSegmentsMarkup(analysis) {
     .join("")}</div>`;
 }
 
+function transcriptFullTextValue(analysis) {
+  const rawSegments = Array.isArray(analysis?.transcriptSegments) ? analysis.transcriptSegments : [];
+  const segments = rawSegments.length ? rawSegments : inferTranscriptSegments(analysis || {});
+  if (segments.length) {
+    return segments
+      .map((segment, index) => {
+        const roleLabel = transcriptRoleLabel(segment, index);
+        const text = String(segment?.text || "").trim();
+        return text ? `${roleLabel}: ${text}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  return String(analysis?.transcriptText || "")
+    .split("\n")
+    .map((line) => line.replace(/^\[(\d{2}:\d{2}(?::\d{2})?)\s*-\s*(\d{2}:\d{2}(?::\d{2})?)\]\s*/g, "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 function transcriptFullTextMarkup(analysis) {
-  const fullText = String(analysis.transcriptText || "").trim();
+  const fullText = transcriptFullTextValue(analysis).trim();
   if (!fullText) {
     return `<p class="transcript-text">Полный текст транскрипта отсутствует</p>`;
   }

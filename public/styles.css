@@ -380,8 +380,8 @@ tbody tr.is-clickable { cursor: pointer; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 34px;
-  padding: 6px 10px;
+  min-width: 30px;
+  padding: 4px 9px;
   border-radius: 999px;
   background: rgba(29, 26, 22, 0.08);
   color: var(--text);
@@ -490,8 +490,8 @@ tbody tr.is-clickable { cursor: pointer; }
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
-  min-height: 34px;
-  padding: 6px 10px;
+  min-height: 30px;
+  padding: 4px 9px;
   border-radius: 999px;
   background: rgba(96, 112, 134, 0.08);
   border: 1px solid rgba(96, 112, 134, 0.16);
@@ -591,7 +591,7 @@ tbody tr.is-clickable { cursor: pointer; }
   line-height: 1;
 }
 .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.pill { padding: 6px 10px; border-radius: 999px; background: rgba(139, 61, 44, 0.1); font-size: 12px; }
+.pill { padding: 4px 9px; border-radius: 999px; background: rgba(139, 61, 44, 0.1); font-size: 12px; }
 .transcript-text { white-space: pre-wrap; line-height: 1.45; margin: 0; }
 .transcript-list { display: flex; flex-direction: column; gap: 8px; }
 .transcript-row { padding: 10px 12px; border-radius: 12px; background: rgba(252, 253, 255, 0.92); border: 1px solid rgba(96, 112, 134, 0.14); }
@@ -1064,7 +1064,7 @@ textarea {
 .chart-inline-note,
 .transcript-row {
   border-radius: 16px;
-  background: rgba(247, 250, 253, 0.78);
+  background: rgba(252, 253, 255, 0.96);
 }
 
 .analysis-drawer-backdrop,
