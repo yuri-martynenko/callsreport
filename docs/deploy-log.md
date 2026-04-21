@@ -24,6 +24,13 @@
 
 ## Записи
 
+## 2026-04-21 23:05 VLAT
+
+- Задача: deploy возврата блока кнопок фильтра вправо, выравнивания высоты `Запись разговора` с остальными полями фильтра и унификации стилей кнопок на страницах `Расшифровка`, `Сценарии` и в модалках.
+- Длительность: около 5 минут.
+- Результат: `push` коммита `eae38a6` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production CSS на `127.0.0.1:3000` подтвердил наличие правил для `filter-actions`, `filter-toolbar .filter-recorded-control span` и единого кнопочного набора для `.calls-panel button`, `.scenario-editor-panel button`, `.settings-modal-panel button`, `.analysis-drawer-panel button`.
+- Примечание: изменения ограничены фронтенд-версткой и визуальным стилем кнопок без изменения backend, API, БД и логики очереди.
+
 ## 2026-04-21 22:57 VLAT
 
 - Задача: deploy выравнивания высоты полей фильтра по эталону `Период с`, переноса кнопок `Применить`/`Сбросить` на отдельную строку под фильтрами и добавления отступа после заголовка `Транскрипт` в модалке детализации звонка.
