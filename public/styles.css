@@ -15,6 +15,7 @@
   --radius: 22px;
   --font-display: "Segoe UI Semibold", "Trebuchet MS", sans-serif;
   --font-body: "Segoe UI", "Tahoma", sans-serif;
+  --action-button-width: 212px;
 }
 
 * { box-sizing: border-box; }
@@ -744,8 +745,8 @@ button.accent {
   grid-column: 5;
   grid-row: 1 / span 2;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
+  align-items: flex-end;
+  justify-content: flex-end;
   gap: 8px;
   align-self: stretch;
   padding-top: 0;
@@ -753,8 +754,8 @@ button.accent {
 
 .filter-apply-button,
 .filter-reset-button {
-  width: 100%;
-  min-width: 112px;
+  width: min(100%, var(--action-button-width));
+  min-width: 0;
 }
 
 .call-action-icon.primary-action {
@@ -764,8 +765,9 @@ button.accent {
 }
 
 .filter-recorded-control {
+  height: 46px;
   min-height: 46px;
-  padding: 11px 13px;
+  padding: 0 13px;
   background: rgba(255, 255, 255, 0.96);
   border-radius: 12px;
 }
@@ -775,16 +777,19 @@ button.accent {
 .filter-toolbar textarea,
 .filter-toolbar .multi-select summary,
 .filter-toolbar .filter-recorded-control {
+  height: 46px;
   min-height: 46px;
+  box-sizing: border-box;
 }
 
 .filter-toolbar .multi-select-menu .multi-select-option {
-  padding: 4px 4px;
+  padding: 2px 2px;
   gap: 8px;
+  min-height: 28px;
 }
 
 .filter-toolbar .multi-select-menu .multi-select-option span {
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .filter-toolbar .filter-recorded-control span {
@@ -792,6 +797,13 @@ button.accent {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 46px;
+}
+
+#openAutoTranscriptionSettings,
+.filter-apply-button,
+.filter-reset-button {
+  width: min(100%, var(--action-button-width));
 }
 
 .calls-panel button,
