@@ -1584,6 +1584,9 @@ function renderAnalysis(analysis) {
     : analysis.transcriptText
       ? "Полный AI-разбор пока не сформирован: сохранилась транскрибация, но резюме и оценка сценария не были получены. Обычно помогает повторный анализ звонка."
       : "Результат анализа пока не заполнен. Попробуйте повторно запустить анализ звонка.";
+  const overviewOutcome = localizeFreeText(analysis.overview?.callOutcome || "Результат не определён");
+  const clientNeed = localizeFreeText(analysis.overview?.clientNeed || "Потребность клиента не определена");
+  const nextStep = localizeFreeText(analysis.nextStep || "Следующий шаг не определён");
 
   setAnalysisHeaderMeta(
     analysisHeaderMarkup(analysis, {
@@ -1597,15 +1600,19 @@ function renderAnalysis(analysis) {
   );
 
   el.analysisDetail.innerHTML = `
-    <section id="analysisOverview" class="detail-block">
-      <h3>${escapeHtml(analysis.subject || "Резюме")}</h3>
+    <section id="analysisOverview" class="detail-block detail-block-summary">
+      <h3>Резюме</h3>
       ${detailMetaMarkup(analysis)}
+      <div class="detail-inline-metric"><strong>Результат</strong><span>${escapeHtml(overviewOutcome)}</span></div>
       <p>${escapeHtml(resultExplanation)}</p>
-      <ul class="flat">
-        <li><strong>Результат</strong>: ${escapeHtml(localizeFreeText(analysis.overview?.callOutcome || "Результат не определён"))}</li>
-        <li><strong>Потребность клиента</strong>: ${escapeHtml(localizeFreeText(analysis.overview?.clientNeed || "Потребность клиента не определена"))}</li>
-        <li><strong>Следующий шаг</strong>: ${escapeHtml(localizeFreeText(analysis.nextStep || "Следующий шаг не определён"))}</li>
-      </ul>
+    </section>
+    <section id="analysisClientNeed" class="detail-block detail-block-client-need">
+      <h3>Потребность клиента</h3>
+      <p>${escapeHtml(clientNeed)}</p>
+    </section>
+    <section id="analysisNextStep" class="detail-block detail-block-next-step">
+      <h3>Следующий шаг</h3>
+      <p>${escapeHtml(nextStep)}</p>
     </section>
     <section id="analysisRecommendations" class="detail-block">
       <h3>Рекомендации</h3>
