@@ -390,6 +390,34 @@ tbody tr.is-clickable { cursor: pointer; }
   flex-wrap: wrap;
   justify-content: flex-start;
 }
+.analysis-header-audio {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.analysis-header-audio-track {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.analysis-header-audio-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: var(--primary);
+}
+.analysis-header-audio-time {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .analysis-header-nav {
   display: flex;
   gap: 6px;
@@ -421,18 +449,19 @@ tbody tr.is-clickable { cursor: pointer; }
   text-decoration: none;
 }
 .analysis-audio-button {
-  border: 1px solid rgba(31, 107, 95, 0.2);
-  background: rgba(31, 107, 95, 0.12);
-  color: var(--accent);
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 12px;
+  border: 1px solid rgba(96, 112, 134, 0.18);
+  background: rgba(247, 250, 253, 0.95);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
 }
 .analysis-audio-button.is-active {
-  background: rgba(139, 61, 44, 0.12);
-  border-color: rgba(139, 61, 44, 0.2);
-  color: var(--primary);
+  background: rgba(31, 94, 255, 0.16);
+  border-color: rgba(31, 94, 255, 0.18);
+  color: #163b8f;
 }
 .analysis-drawer-close {
   width: 40px;
@@ -510,18 +539,18 @@ tbody tr.is-clickable { cursor: pointer; }
 .transcript-meta-line { display: flex; justify-content: flex-start; gap: 10px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
 .transcript-play-button {
   margin-left: auto;
-  padding: 8px 12px;
-  border: 1px solid rgba(139, 61, 44, 0.18);
-  background: rgba(139, 61, 44, 0.08);
-  color: var(--primary);
-  border-radius: 999px;
-  font-size: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(96, 112, 134, 0.18);
+  background: rgba(247, 250, 253, 0.95);
+  color: var(--text);
+  border-radius: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 .transcript-play-button.is-active {
-  background: rgba(31, 107, 95, 0.16);
-  border-color: rgba(31, 107, 95, 0.24);
-  color: var(--accent);
+  background: rgba(31, 94, 255, 0.16);
+  border-color: rgba(31, 94, 255, 0.18);
+  color: #163b8f;
 }
 .transcript-play-button:disabled {
   opacity: 0.5;
@@ -1129,6 +1158,10 @@ textarea {
   .analysis-header-pills,
   .analysis-header-top,
   .analysis-header-nav { align-items: flex-start; justify-content: flex-start; }
+  .analysis-header-audio {
+    flex-direction: column;
+    align-items: stretch;
+  }
   .analysis-header-nav {
     flex-wrap: wrap;
   }

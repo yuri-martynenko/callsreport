@@ -38,6 +38,9 @@ const state = {
     audioUrl: "",
     loading: false,
     mode: "",
+    currentTime: 0,
+    duration: 0,
+    seeking: false,
   },
 };
 
@@ -508,6 +511,17 @@ function detailMetaMarkup(source = {}) {
 }
 
 function analysisHeaderStatusMarkup(label, source = {}, tone = "neutral") {
+  const hasSourceMeta = Boolean(
+    source?.clientName ||
+      source?.clientPhone ||
+      source?.direction ||
+      source?.startTime ||
+      Number(source?.durationSeconds) > 0 ||
+      source?.ownerId,
+  );
+  if (!hasSourceMeta) {
+    return `<span class="analysis-status-badge ${escapeHtml(tone)}">${escapeHtml(`Статус: ${label}`)}</span>`;
+  }
   const parts = [
     `Клиент: ${callClientTitle(source)}`,
     `Телефон: ${source.clientPhone || "—"}`,
@@ -516,10 +530,7 @@ function analysisHeaderStatusMarkup(label, source = {}, tone = "neutral") {
     `Длительность: ${formatDuration(source.durationSeconds)}`,
   ];
 
-  return `
-    <span class="analysis-status-badge ${escapeHtml(tone)}">${escapeHtml(`Статус: ${label}`)}</span>
-    <span class="analysis-status-meta">${parts.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</span>
-  `;
+  return `<span class="analysis-status-meta">${parts.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</span>`;
 }
 
 function analysisHeaderMarkup(analysis, options = {}) {
@@ -529,6 +540,22 @@ function analysisHeaderMarkup(analysis, options = {}) {
   const transcriptionTokens = analysis?.tokenUsage?.transcriptionTokens ?? "—";
   const analysisTokens = analysis?.tokenUsage?.analysisTotalTokens ?? "—";
   const scenarioName = options.scenarioName || analysis?.selectedScenarioName || "Автосценарий";
+  const statusLabel = String(options.statusLabel || "").trim();
+  const statusTone = String(options.statusTone || "neutral").trim();
+  const playbackDuration = Math.max(
+    0,
+    Number(
+      state.playback.duration ||
+        options.playbackDuration ||
+        analysis?.durationSeconds ||
+        options.sourceCall?.durationSeconds ||
+        0,
+    ),
+  );
+  const playbackCurrentTime = Math.max(0, Math.min(Number(state.playback.currentTime || 0), playbackDuration || Number.MAX_SAFE_INTEGER));
+  const isPlayingFullCall =
+    state.playback.activityId === analysis?.activityId &&
+    state.playback.mode === "full-call";
   const navLinks = options.showNav
     ? `
       <div class="analysis-header-nav">
@@ -543,6 +570,9 @@ function analysisHeaderMarkup(analysis, options = {}) {
       </div>`
     : "";
   const pills = [];
+  if (statusLabel) {
+    pills.push(`<span class="analysis-status-badge ${escapeHtml(statusTone)}">${escapeHtml(`Статус: ${statusLabel}`)}</span>`);
+  }
   if (options.showDetailPills) {
     pills.push(`<span class="pill">Сентимент: ${escapeHtml(localizeSentiment(analysis?.overview?.sentiment))}</span>`);
     pills.push(`<span class="pill">Риск: ${escapeHtml(localizeRisk(analysis?.overview?.riskLevel))}</span>`);
@@ -555,20 +585,33 @@ function analysisHeaderMarkup(analysis, options = {}) {
   } else if (options.showScenarioPill) {
     pills.push(`<span class="pill">Сценарий: ${escapeHtml(scenarioName)}</span>`);
   }
-  if (analysis?.recordingUrl) {
-    const isPlayingFullCall =
-      state.playback.activityId === analysis.activityId &&
-      state.playback.mode === "full-call";
-    pills.push(
-      `<button type="button" class="analysis-audio-button ${isPlayingFullCall ? "is-active" : ""}" data-action="toggle-full-call-audio">${isPlayingFullCall ? "■ Остановить разговор" : "▶ Прослушать разговор"}</button>`,
-    );
-  }
+  const audioControls = analysis?.recordingUrl
+    ? `
+      <div class="analysis-header-audio">
+        <div class="analysis-header-audio-track">
+          <span class="analysis-header-audio-time" data-role="playback-current">${escapeHtml(formatTimestamp(playbackCurrentTime))}</span>
+          <input
+            class="analysis-header-audio-range"
+            type="range"
+            min="0"
+            max="${escapeHtml(Math.max(playbackDuration, 1))}"
+            step="0.1"
+            value="${escapeHtml(Math.min(playbackCurrentTime, Math.max(playbackDuration, 1)))}"
+            data-action="seek-call-audio"
+            ${state.playback.loading ? "disabled" : ""}
+          />
+          <span class="analysis-header-audio-time" data-role="playback-duration">${escapeHtml(formatTimestamp(playbackDuration))}</span>
+        </div>
+        <button type="button" class="analysis-audio-button ${isPlayingFullCall ? "is-active" : ""}" data-action="toggle-full-call-audio">${isPlayingFullCall ? "■ Остановить разговор" : "▶ Прослушать разговор"}</button>
+      </div>`
+    : "";
 
   return `
     <div class="analysis-header-rows">
       <div class="analysis-header-top">
         <div class="analysis-header-pills">${pills.join("")}</div>
       </div>
+      ${audioControls}
       ${navLinks}
     </div>
   `;
@@ -921,6 +964,23 @@ function updateTranscriptPlaybackButtons() {
     fullCallButton.textContent = isActive ? "■ Остановить разговор" : "▶ Прослушать разговор";
     fullCallButton.disabled = Boolean(state.playback.loading);
   }
+  const audioRange = document.querySelector('[data-action="seek-call-audio"]');
+  if (audioRange) {
+    const max = Math.max(1, Number(state.playback.duration || audioRange.max || 1));
+    if (!state.playback.seeking) {
+      audioRange.max = String(max);
+      audioRange.value = String(Math.max(0, Math.min(Number(state.playback.currentTime || 0), max)));
+    }
+    audioRange.disabled = Boolean(state.playback.loading);
+  }
+  const currentLabel = document.querySelector('[data-role="playback-current"]');
+  if (currentLabel) {
+    currentLabel.textContent = formatTimestamp(state.playback.currentTime || 0);
+  }
+  const durationLabel = document.querySelector('[data-role="playback-duration"]');
+  if (durationLabel) {
+    durationLabel.textContent = formatTimestamp(state.playback.duration || 0);
+  }
 }
 
 function stopTranscriptPlayback(resetState = true) {
@@ -934,6 +994,9 @@ function stopTranscriptPlayback(resetState = true) {
     state.playback.segmentKey = "";
     state.playback.loading = false;
     state.playback.mode = "";
+    state.playback.currentTime = 0;
+    state.playback.duration = 0;
+    state.playback.seeking = false;
     updateTranscriptPlaybackButtons();
   }
 }
@@ -967,6 +1030,8 @@ async function ensureTranscriptAudioSource(analysis) {
   state.playback.activityId = analysis.activityId;
   state.playback.audioUrl = analysis.recordingUrl;
   state.playback.loading = false;
+  state.playback.currentTime = 0;
+  state.playback.duration = 0;
   updateTranscriptPlaybackButtons();
 }
 
@@ -1078,7 +1143,17 @@ async function toggleFullCallPlayback() {
 
 if (transcriptPlayback.audio) {
   transcriptPlayback.audio.preload = "auto";
+  transcriptPlayback.audio.addEventListener("loadedmetadata", () => {
+    state.playback.duration = Number.isFinite(transcriptPlayback.audio.duration) ? transcriptPlayback.audio.duration : 0;
+    state.playback.currentTime = Number(transcriptPlayback.audio.currentTime || 0);
+    updateTranscriptPlaybackButtons();
+  });
   transcriptPlayback.audio.addEventListener("timeupdate", () => {
+    state.playback.currentTime = Number(transcriptPlayback.audio.currentTime || 0);
+    if (Number.isFinite(transcriptPlayback.audio.duration)) {
+      state.playback.duration = Number(transcriptPlayback.audio.duration || 0);
+    }
+    updateTranscriptPlaybackButtons();
     if (transcriptPlayback.stopAt == null) return;
     if (transcriptPlayback.audio.currentTime >= transcriptPlayback.stopAt) {
       stopTranscriptPlayback();
@@ -1086,6 +1161,11 @@ if (transcriptPlayback.audio) {
   });
   transcriptPlayback.audio.addEventListener("ended", () => {
     stopTranscriptPlayback();
+  });
+  transcriptPlayback.audio.addEventListener("pause", () => {
+    if (state.playback.mode === "full-call" && transcriptPlayback.stopAt == null) {
+      updateTranscriptPlaybackButtons();
+    }
   });
 }
 
@@ -1435,12 +1515,14 @@ function renderAnalysis(analysis) {
 
   if (analysis.state === "queued" || analysis.state === "processing") {
     const source = callById(state.selectedCallId) || analysis;
-    setAnalysisHeaderMeta(analysisHeaderMarkup(analysis));
-    el.analysisState.innerHTML = analysisHeaderStatusMarkup(
-      analysis.state === "queued" ? "В очереди" : "В работе",
-      source,
-      "warning",
+    setAnalysisHeaderMeta(
+      analysisHeaderMarkup(analysis, {
+        statusLabel: analysis.state === "queued" ? "В очереди" : "В работе",
+        statusTone: "warning",
+        sourceCall: source,
+      }),
     );
+    el.analysisState.innerHTML = analysisHeaderStatusMarkup(analysis.state === "queued" ? "В очереди" : "В работе", source, "warning");
     el.analysisState.className = "analysis-status-line";
     el.analysisDetail.className = "analysis-detail";
     el.analysisDetail.innerHTML = `
@@ -1454,7 +1536,7 @@ function renderAnalysis(analysis) {
 
   if (analysis.state === "error") {
     const source = callById(state.selectedCallId) || analysis;
-    setAnalysisHeaderMeta(analysisHeaderMarkup(analysis));
+    setAnalysisHeaderMeta(analysisHeaderMarkup(analysis, { statusLabel: "Ошибка", statusTone: "warning", sourceCall: source }));
     el.analysisState.innerHTML = analysisHeaderStatusMarkup("Ошибка", source, "warning");
     el.analysisState.className = "analysis-status-line";
     el.analysisDetail.className = "analysis-detail";
@@ -1505,6 +1587,9 @@ function renderAnalysis(analysis) {
       showDetailPills: true,
       showNav: true,
       scenarioName: analysis.selectedScenarioName || "Автоподбор / ручной ввод",
+      statusLabel: detailStateLabel,
+      statusTone: hasDetailedResult && analysis.state !== "outdated" ? "success" : "warning",
+      sourceCall: source,
     }),
   );
 
@@ -2174,6 +2259,9 @@ function selectAnalysisByCallId(activityId) {
       analysisHeaderMarkup(call || {}, {
         showScenarioPill: true,
         scenarioName: selectedScenario?.name || "Автосценарий",
+        statusLabel: "Не готов",
+        statusTone: "neutral",
+        sourceCall: call || {},
       }),
     );
     el.analysisState.innerHTML = analysisHeaderStatusMarkup("Не готов", call || {}, "neutral");
@@ -2612,6 +2700,27 @@ window.addEventListener("resize", () => {
   if (virtualCallsEnabled()) {
     renderCalls();
   }
+});
+
+document.addEventListener("input", (event) => {
+  const audioRange = event.target.closest('[data-action="seek-call-audio"]');
+  if (!audioRange) return;
+  state.playback.seeking = true;
+  state.playback.currentTime = Number(audioRange.value || 0);
+  updateTranscriptPlaybackButtons();
+});
+
+document.addEventListener("change", (event) => {
+  const audioRange = event.target.closest('[data-action="seek-call-audio"]');
+  if (!audioRange || !transcriptPlayback.audio) return;
+  const nextTime = Math.max(0, Number(audioRange.value || 0));
+  transcriptPlayback.stopAt = null;
+  state.playback.segmentKey = "";
+  state.playback.mode = "full-call";
+  state.playback.currentTime = nextTime;
+  state.playback.seeking = false;
+  transcriptPlayback.audio.currentTime = nextTime;
+  updateTranscriptPlaybackButtons();
 });
 
 (async function init() {
