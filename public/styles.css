@@ -278,6 +278,27 @@ tbody tr.is-clickable { cursor: pointer; }
 .detail-inline-metric strong {
   font-weight: 700;
 }
+.transcript-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 16px;
+  align-items: start;
+}
+.transcript-column {
+  min-width: 0;
+}
+.transcript-column h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.3;
+  color: #4b5b73;
+}
+.transcript-fulltext-card {
+  padding: 14px 15px;
+  border-radius: 14px;
+  background: rgba(252, 253, 255, 0.96);
+  border: 1px solid rgba(96, 112, 134, 0.14);
+}
 .analysis-drawer {
   position: fixed;
   inset: 0;
@@ -432,7 +453,7 @@ tbody tr.is-clickable { cursor: pointer; }
   width: 100%;
 }
 .transcript-audio-controls {
-  margin: 8px 0 18px;
+  margin: 0 0 14px;
 }
 .analysis-header-audio-track {
   display: flex;
@@ -1134,6 +1155,12 @@ textarea {
 .analysis-detail ul.flat {
   font-size: 12px;
   line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+  .transcript-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .line-chart line {

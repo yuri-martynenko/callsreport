@@ -935,6 +935,15 @@ function transcriptSegmentsMarkup(analysis) {
     .join("")}</div>`;
 }
 
+function transcriptFullTextMarkup(analysis) {
+  const fullText = String(analysis.transcriptText || "").trim();
+  if (!fullText) {
+    return `<p class="transcript-text">Полный текст транскрипта отсутствует</p>`;
+  }
+
+  return `<div class="transcript-fulltext-card"><p class="transcript-text">${escapeHtml(fullText)}</p></div>`;
+}
+
 const transcriptPlayback = {
   audio: typeof Audio !== "undefined" ? new Audio() : null,
   objectUrl: "",
@@ -1603,8 +1612,8 @@ function renderAnalysis(analysis) {
     <section id="analysisOverview" class="detail-block detail-block-summary">
       <h3>Резюме</h3>
       ${detailMetaMarkup(analysis)}
-      <div class="detail-inline-metric"><strong>Результат</strong><span>${escapeHtml(overviewOutcome)}</span></div>
       <p>${escapeHtml(resultExplanation)}</p>
+      <div class="detail-inline-metric"><strong>Результат</strong><span>${escapeHtml(overviewOutcome)}</span></div>
     </section>
     <section id="analysisClientNeed" class="detail-block detail-block-client-need">
       <h3>Потребность клиента</h3>
@@ -1628,8 +1637,17 @@ function renderAnalysis(analysis) {
     </section>
     <section id="analysisTranscript" class="detail-block">
       <h3>Транскрипт</h3>
-      ${analysisAudioControlsMarkup(analysis)}
-      ${transcriptSegmentsMarkup(analysis)}
+      <div class="transcript-layout">
+        <div class="transcript-column transcript-column-fulltext">
+          <h4>Полный текст</h4>
+          ${transcriptFullTextMarkup(analysis)}
+        </div>
+        <div class="transcript-column transcript-column-segments">
+          <h4>Плеер и фрагменты</h4>
+          ${analysisAudioControlsMarkup(analysis)}
+          ${transcriptSegmentsMarkup(analysis)}
+        </div>
+      </div>
     </section>`;
 }
 
