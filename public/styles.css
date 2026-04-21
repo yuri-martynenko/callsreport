@@ -52,7 +52,7 @@ body.drawer-open { overflow: hidden; }
 .topbar-nav {
   display: flex;
   flex-wrap: nowrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   justify-content: flex-end;
   flex: 1 1 auto;
@@ -662,17 +662,21 @@ body {
 
 .menu-link {
   background: rgba(96, 112, 134, 0.1);
-  padding: 9px 13px;
+  padding: 8px 12px;
+  border: 1px solid rgba(96, 112, 134, 0.14);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 h1 {
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1.08;
   white-space: normal;
 }
 
 h2 {
-  font-size: 22px;
+  font-size: 19px;
   line-height: 1.15;
 }
 
@@ -683,44 +687,6 @@ h2 {
 
 .section-head {
   margin-bottom: 12px;
-}
-
-.dashboard-hero {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 18px 20px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 253, 0.94)),
-    radial-gradient(circle at top right, rgba(31, 94, 255, 0.08), transparent 28%);
-}
-
-.dashboard-hero-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 780px;
-}
-
-.dashboard-hero-eyebrow {
-  color: var(--primary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.dashboard-hero-copy .muted {
-  max-width: 760px;
-  font-size: 14px;
-}
-
-.dashboard-hero-pills {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .summary-grid {
@@ -755,7 +721,7 @@ h2 {
 .filter-field,
 label {
   gap: 5px;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 input,
@@ -769,17 +735,21 @@ textarea,
 
 button {
   border-radius: 12px;
-  padding: 11px 15px;
+  padding: 10px 14px;
   transition: transform 120ms ease, opacity 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .primary-action {
   background: var(--primary);
-  box-shadow: 0 12px 24px rgba(31, 94, 255, 0.18);
+  color: #ffffff;
+  border: 1px solid rgba(31, 94, 255, 0.22);
 }
 
 button.accent {
-  box-shadow: 0 10px 22px rgba(15, 159, 140, 0.18);
+  border: 1px solid rgba(15, 159, 140, 0.2);
 }
 
 .call-action,
@@ -788,6 +758,7 @@ button.accent {
 #newScenario,
 #deleteScenario {
   background: rgba(96, 112, 134, 0.1);
+  box-shadow: none;
 }
 
 .filter-recorded-control {
@@ -800,6 +771,7 @@ button.accent {
 .badge {
   padding: 5px 10px;
   background: rgba(96, 112, 134, 0.1);
+  font-size: 11px;
 }
 
 .neutral {
@@ -819,12 +791,74 @@ button.accent {
 
 th,
 td {
-  padding: 10px 10px;
+  padding: 9px 8px;
 }
 
 tbody tr:hover,
 tbody tr.is-selected {
   background: rgba(31, 94, 255, 0.04);
+}
+
+th {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+td {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.summary-card .hint,
+.muted,
+.call-meta,
+.status-breakdown-label,
+.report-auto-mode,
+.chart-inline-note,
+.transcript-time,
+.pill,
+.analysis-status-meta,
+.analysis-header-link,
+.analysis-audio-button,
+.transcript-role-badge,
+.transcript-play-button,
+.status-pill {
+  font-size: 12px;
+}
+
+.summary-card .value {
+  font-size: 26px;
+}
+
+.section-note {
+  font-size: 12px;
+}
+
+.topbar-subtitle {
+  font-size: 12px;
+}
+
+.topbar-kicker {
+  font-size: 10px;
+}
+
+.multi-select summary,
+input,
+select,
+textarea {
+  font-size: 12px;
+}
+
+.call-subject,
+.crm-link,
+.scenario-link {
+  font-size: 12px;
+}
+
+.call-action-icon,
+.analysis-drawer-close,
+.settings-modal-close {
+  box-shadow: none;
 }
 
 .detail-block,
@@ -873,16 +907,6 @@ tbody tr.is-selected {
 }
 
 @media (max-width: 1280px) {
-  .dashboard-hero {
-    flex-direction: column;
-  }
-
-  .dashboard-hero-pills {
-    justify-content: flex-start;
-  }
-}
-
-@media (max-width: 1280px) {
   .topbar-inner { align-items: stretch; flex-direction: column; }
   .topbar-nav { justify-content: flex-start; }
   .filter-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -903,13 +927,6 @@ tbody tr.is-selected {
 }
 @media (max-width: 820px) {
   .topbar, .workspace { padding: 16px; }
-  .dashboard-hero {
-    padding: 16px;
-  }
-  .dashboard-hero-copy .muted,
-  .topbar-subtitle {
-    font-size: 13px;
-  }
   .summary-grid { grid-template-columns: 1fr; }
   .filter-toolbar, .rules-grid, .bar-row { grid-template-columns: 1fr; }
   .filter-recorded, .filter-actions { grid-column: auto; grid-row: auto; }
