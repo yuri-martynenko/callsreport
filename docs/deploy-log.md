@@ -24,6 +24,12 @@
 
 ## Записи
 
+## 2026-04-22 00:43 VLAT
+
+- Задача: deploy уточнения модалки `Детализация звонка`: строка `Результат` перенесена под текст `Резюме`, а блок `Транскрипт` перестроен в две колонки с полным текстом слева и текущим плеером с разбитым диалогом справа.
+- Длительность: около 15 минут.
+- Результат: `push` коммита `868e094` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production-версии `app.js` и `styles.css` на `127.0.0.1:3000` подтвердили наличие `transcriptFullTextMarkup`, `detail-inline-metric`, `transcript-layout`, `transcript-column h4` и `transcript-fulltext-card`.
+
 ## 2026-04-22 00:29 VLAT
 
 - Задача: deploy обновления модалки `Детализация звонка` по согласованному стилю: `Резюме` переведено в semantic-card блок, а `Потребность клиента` и `Следующий шаг` вынесены в отдельные выделенные секции сразу после него без изменения остальной композиции.
