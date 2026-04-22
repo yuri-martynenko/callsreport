@@ -2079,6 +2079,52 @@ async function buildCallsSnapshot(query = {}) {
   }
 }
 
+function sortedOptionList(values, buildLabel, numeric = false) {
+  return [...values]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .sort((left, right) => {
+      if (numeric) return Number(left) - Number(right);
+      return left.localeCompare(right, "ru");
+    })
+    .map((value) => ({ value, label: buildLabel(value) }));
+}
+
+async function buildScenarioOptions() {
+  const [scenarioStore, snapshot] = await Promise.all([
+    readScenarioStore(),
+    buildCallsSnapshot({ onlyRecorded: "false" }),
+  ]);
+
+  const scenarios = Array.isArray(scenarioStore?.scenarios) ? scenarioStore.scenarios : [];
+  const calls = Array.isArray(snapshot?.calls) ? snapshot.calls : [];
+  const entityTypes = new Set(["1", "2", "3", "4", "31"]);
+  const pipelineIds = new Set();
+  const stageIds = new Set();
+  const lineNumbers = new Set();
+
+  for (const scenario of scenarios) {
+    for (const value of scenario?.matchRules?.entityTypeIds || []) entityTypes.add(String(value));
+    for (const value of scenario?.matchRules?.pipelineIds || []) pipelineIds.add(String(value));
+    for (const value of scenario?.matchRules?.stageIds || []) stageIds.add(String(value));
+    for (const value of scenario?.matchRules?.lineNumbers || []) lineNumbers.add(String(value));
+  }
+
+  for (const call of calls) {
+    if (Number(call?.ownerTypeId || 0) > 0) entityTypes.add(String(call.ownerTypeId));
+    if (Number(call?.pipelineId || 0) > 0) pipelineIds.add(String(call.pipelineId));
+    if (String(call?.stageId || "").trim()) stageIds.add(String(call.stageId));
+    if (String(call?.lineNumber || "").trim()) lineNumbers.add(String(call.lineNumber));
+  }
+
+  return {
+    entityTypes: sortedOptionList(entityTypes, (value) => ownerTypeLabel(Number(value)), true),
+    pipelines: sortedOptionList(pipelineIds, (value) => `Воронка ${value}`, true),
+    stages: sortedOptionList(stageIds, (value) => value),
+    lineNumbers: sortedOptionList(lineNumbers, (value) => value),
+  };
+}
+
 async function downloadCallAudio(fileId) {
   requireConfig();
   const response = await fetchWithTimeout(`${VIBE_API_URL}/v1/files/${fileId}/download`, {
@@ -2794,6 +2840,14 @@ app.get("/api/scenarios", async (_req, res, next) => {
   try {
     const store = await readScenarioStore();
     res.json({ success: true, data: { scenarios: store.scenarios || [] } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/scenario-options", async (_req, res, next) => {
+  try {
+    res.json({ success: true, data: await buildScenarioOptions() });
   } catch (error) {
     next(error);
   }

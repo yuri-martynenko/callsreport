@@ -23,10 +23,7 @@ body {
   margin: 0;
   font-family: var(--font-body);
   color: var(--text);
-  background:
-    radial-gradient(circle at top left, rgba(184, 104, 46, 0.18), transparent 30%),
-    radial-gradient(circle at top right, rgba(31, 107, 95, 0.18), transparent 28%),
-    linear-gradient(135deg, #efe4d4, #f8f3ec 45%, #eee4d8);
+  background: #f3f7fb;
 }
 body.drawer-open { overflow: hidden; }
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
@@ -690,11 +687,26 @@ tbody tr.is-clickable { cursor: pointer; }
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+.scenario-core-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
 .rules-grid {
   margin-top: 12px;
 }
-.rules-grid-compact {
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
+.rules-grid-duration {
+  margin-top: 12px;
+}
+.scenario-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.scenario-toggle-grid .filter-recorded-option {
+  gap: 8px;
+}
+.scenario-toggle-grid .filter-recorded-control {
+  background: rgba(255, 255, 255, 0.92);
 }
 .section-head-compact {
   margin-bottom: 10px;
@@ -846,10 +858,7 @@ ul.flat { margin: 10px 0 0; padding-left: 18px; }
 }
 
 body {
-  background:
-    radial-gradient(circle at top left, rgba(31, 94, 255, 0.12), transparent 30%),
-    radial-gradient(circle at top right, rgba(15, 159, 140, 0.1), transparent 24%),
-    linear-gradient(180deg, #f8fbff 0%, #f3f7fb 40%, #eef3f8 100%);
+  background: #f3f7fb;
 }
 
 .topbar {
@@ -1345,7 +1354,7 @@ textarea {
     padding: 10px 16px;
   }
   .summary-grid { grid-template-columns: 1fr; }
-  .filter-toolbar, .rules-grid, .bar-row, .scenario-core-grid { grid-template-columns: 1fr; }
+  .filter-toolbar, .rules-grid, .rules-grid-duration, .bar-row, .scenario-core-grid, .scenario-toggle-grid { grid-template-columns: 1fr; }
   .filter-recorded, .filter-actions { grid-column: auto; grid-row: auto; }
   .section-head-actions { width: 100%; }
   .section-head-actions > button { width: 100%; }
