@@ -24,6 +24,12 @@
 
 ## Записи
 
+## 2026-04-22 11:59 VLAT
+
+- Задача: deploy дополнительного уплотнения heatmap за 3 месяца, замены бордер-разделителей месяцев на увеличенные межмесячные отступы и увеличения подписей осей на целевых line-chart графиках.
+- Длительность: около 15 минут.
+- Результат: `push` коммита `be264b7` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production `styles.css` и `app.js` на `127.0.0.1:3000` подтвердили `--month-gap`, уменьшение heatmap-сетки до `minmax(3px, 1fr)`, увеличение `.line-chart-axis-text.is-medium` до `14px`, отсутствие старого `.heatmap-cell.is-month-divider` и наличие JS-маркеров `--month-gap:6px;` и `is-medium`.
+
 ## 2026-04-22 11:52 VLAT
 
 - Задача: deploy компактного отображения двух heatmap за 3 месяца с визуальными разделителями месяцев и дополнительной настройки размеров подписей значений на line-chart графиках.
