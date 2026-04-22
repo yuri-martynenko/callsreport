@@ -11,6 +11,12 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-22 17:04 VLAT
+
+- Задача: ускорение первого открытия приложения; убрана preload-загрузка report на старте, облегчён payload `/api/dashboard`, добавлена дедупликация одинаковых snapshot-запросов.
+- Длительность: около 55 минут.
+- Примечание: локальный smoke показал сокращение payload `/api/dashboard` примерно с 1.9 MB до 0.57 MB; production deploy выполнен с коммита `8942a82`, шаги `stop_existing`, `clean`, `download`, `normalize_windows_paths`, `cleanup_metadata`, `runtime`, `install`, `systemd`, `start`, `healthcheck` завершились со статусом `ok`.
+
 ## Формат записи
 
 ```text
