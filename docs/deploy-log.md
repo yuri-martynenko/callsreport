@@ -24,6 +24,12 @@
 
 ## Записи
 
+## 2026-04-22 10:24 VLAT
+
+- Задача: deploy исправления графика `Средний балл по менеджерам` с возвратом разбивки по ФИО, добавления 3-месячных графиков по высокому риску, токенам на минуту и нарушаемым checkpoint’ам, а также двух тепловых карт вызовов и распознанных вызовов.
+- Длительность: около 20 минут.
+- Результат: `push` коммита `cc4079d` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, `GET /api/dashboard` подтвердил `managerRows=4` и `analyses=262`, а production-версии `app.js` и `styles.css` подтвердили наличие `highRiskChart`, `tokensPerMinuteChart`, `violatedCheckpointsChart`, `renderHeatmap`, `dashboardAnalyses`, `.heatmap-grid`, `.line-chart-point-text.is-emphasis` и `.line-chart-point-text.is-compact`.
+
 ## 2026-04-22 10:06 VLAT
 
 - Задача: deploy правок дашборда: добавить KPI `Всего звонков` и `Ожидает анализа`, отвязать общие графики от фильтров страницы `Расшифровка`, перевести `Динамика среднего score` на весь период и выровнять bar-chart диаграммы по ширине с переносом длинных подписей.
