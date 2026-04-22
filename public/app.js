@@ -2122,39 +2122,61 @@ function renderHeatmap(container, data, options = {}) {
   }
 
   const leadingEmpty = data.days[0]?.weekday || 0;
-  const monthLabels = [];
-  data.days.forEach((item, index) => {
-    const date = new Date(`${item.key}T00:00:00`);
-    const monthLabel = date.toLocaleDateString("ru-RU", { month: "short" });
-    if (!monthLabels.length || monthLabels[monthLabels.length - 1].label !== monthLabel) {
-      monthLabels.push({ label: monthLabel, column: Math.floor((index + leadingEmpty) / 7) + 1 });
-    }
-  });
-  const separatorColumns = new Set(monthLabels.slice(1).map((item) => item.column));
-
   const paddedDays = [
     ...Array.from({ length: leadingEmpty }, () => null),
     ...data.days,
   ];
-
-  const cells = paddedDays
-    .map((item, index) => {
-      const column = Math.floor(index / 7) + 1;
-      const stylePrefix = separatorColumns.has(column) ? "--month-gap:6px;" : "";
-      if (!item) return `<div class="heatmap-cell is-empty" style="${stylePrefix}" aria-hidden="true"></div>`;
-      const intensity = data.maxValue > 0 ? Math.max(0.1, item.value / data.maxValue) : 0;
-      const style = `${stylePrefix}--heat:${intensity.toFixed(3)};`;
-      return `<div class="heatmap-cell ${item.value ? "is-filled" : ""}" style="${style}" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
-    })
-    .join("");
+  const weekColumns = [];
+  for (let offset = 0; offset < paddedDays.length; offset += 7) {
+    const items = paddedDays.slice(offset, offset + 7);
+    const firstActual = items.find(Boolean);
+    const monthLabel = firstActual
+      ? new Date(`${firstActual.key}T00:00:00`).toLocaleDateString("ru-RU", { month: "short" })
+      : "";
+    weekColumns.push({ monthLabel, items });
+  }
+  const monthGroups = [];
+  for (const column of weekColumns) {
+    const lastGroup = monthGroups[monthGroups.length - 1];
+    if (!lastGroup || lastGroup.label !== column.monthLabel) {
+      monthGroups.push({ label: column.monthLabel, columns: [column] });
+    } else {
+      lastGroup.columns.push(column);
+    }
+  }
 
   container.innerHTML = `
     <div class="heatmap">
       <div class="heatmap-months">
-        ${monthLabels.map((item, index) => `<span style="grid-column:${item.column};${index ? "--month-gap:6px;" : ""}">${escapeHtml(item.label)}</span>`).join("")}
+        ${monthGroups
+          .map(
+            (group) =>
+              `<span class="heatmap-month-label" style="--columns:${group.columns.length}">${escapeHtml(group.label)}</span>`,
+          )
+          .join("")}
       </div>
-      <div class="heatmap-grid">
-        ${cells}
+      <div class="heatmap-groups">
+        ${monthGroups
+          .map(
+            (group) => `
+              <div class="heatmap-group" style="--columns:${group.columns.length}">
+                ${group.columns
+                  .map(
+                    (column) => `
+                      <div class="heatmap-column">
+                        ${column.items
+                          .map((item) => {
+                            if (!item) return '<div class="heatmap-cell is-empty" aria-hidden="true"></div>';
+                            const intensity = data.maxValue > 0 ? Math.max(0.1, item.value / data.maxValue) : 0;
+                            return `<div class="heatmap-cell ${item.value ? "is-filled" : ""}" style="--heat:${intensity.toFixed(3)};" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
+                          })
+                          .join("")}
+                      </div>`,
+                  )
+                  .join("")}
+              </div>`,
+          )
+          .join("")}
       </div>
       <div class="heatmap-legend">
         <span class="muted">Меньше</span>
