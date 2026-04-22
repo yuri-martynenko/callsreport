@@ -96,6 +96,15 @@ const el = {
   newScenario: document.getElementById("newScenario"),
   deleteScenario: document.getElementById("deleteScenario"),
   scenarioList: document.getElementById("scenarioList"),
+  scenarioSearch: document.getElementById("scenarioSearch"),
+  scenarioCountValue: document.getElementById("scenarioCountValue"),
+  scenarioAutoApplyValue: document.getElementById("scenarioAutoApplyValue"),
+  scenarioRulesValue: document.getElementById("scenarioRulesValue"),
+  scenarioLibraryMeta: document.getElementById("scenarioLibraryMeta"),
+  scenarioFormEyebrow: document.getElementById("scenarioFormEyebrow"),
+  scenarioFormTitle: document.getElementById("scenarioFormTitle"),
+  scenarioSelectedBadge: document.getElementById("scenarioSelectedBadge"),
+  scenarioSelectionSummary: document.getElementById("scenarioSelectionSummary"),
   summaryCards: document.getElementById("summaryCards"),
   dashboardSummaryCards: document.getElementById("dashboardSummaryCards"),
   callsTable: document.getElementById("callsTable"),
@@ -1241,6 +1250,96 @@ function collectScenarioPayload() {
   };
 }
 
+function scenarioTags(scenario) {
+  const tags = [];
+  if (scenario.autoApply) tags.push("Автоподбор");
+  if (scenario.isDefault) tags.push("По умолчанию");
+  if (scenario.matchRules?.directions?.length) {
+    tags.push(scenario.matchRules.directions.map((item) => localizeDirection(item)).join(", "));
+  }
+  return tags;
+}
+
+function scenarioRuleSummaries(scenario) {
+  const rules = [];
+  if (scenario.matchRules?.managerIds?.length) rules.push(`Менеджеры: ${scenario.matchRules.managerIds.join(", ")}`);
+  if (scenario.matchRules?.entityTypeIds?.length) {
+    rules.push(`CRM: ${scenario.matchRules.entityTypeIds.map((item) => ownerTypeLabel(item)).join(", ")}`);
+  }
+  if (scenario.matchRules?.pipelineIds?.length) rules.push(`Воронки: ${scenario.matchRules.pipelineIds.join(", ")}`);
+  if (scenario.matchRules?.stageIds?.length) rules.push(`Стадии: ${scenario.matchRules.stageIds.join(", ")}`);
+  if (scenario.matchRules?.lineNumbers?.length) rules.push(`Линии: ${scenario.matchRules.lineNumbers.join(", ")}`);
+  if (scenario.matchRules?.subjectKeywords?.length) rules.push(`Ключи: ${scenario.matchRules.subjectKeywords.join(", ")}`);
+  if (scenario.matchRules?.minDurationSeconds != null) rules.push(`От ${scenario.matchRules.minDurationSeconds} сек`);
+  if (scenario.matchRules?.maxDurationSeconds != null) rules.push(`До ${scenario.matchRules.maxDurationSeconds} сек`);
+  return rules;
+}
+
+function scenarioChecklistCount(scenario) {
+  return String(scenario?.scriptChecklist || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+}
+
+function scenarioCustomMetricCount(scenario) {
+  return Array.isArray(scenario?.customMetrics) ? scenario.customMetrics.filter(Boolean).length : 0;
+}
+
+function filteredScenarios() {
+  const query = String(el.scenarioSearch?.value || "").trim().toLowerCase();
+  if (!query) return state.scenarios;
+  return state.scenarios.filter((scenario) => {
+    const haystack = [
+      scenario.name,
+      scenario.description,
+      scenario.scriptChecklist,
+      (scenario.customMetrics || []).join(" "),
+      scenarioTags(scenario).join(" "),
+      scenarioRuleSummaries(scenario).join(" "),
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
+function updateScenarioSummaryCards() {
+  const scenarios = Array.isArray(state.scenarios) ? state.scenarios : [];
+  const autoApplyCount = scenarios.filter((scenario) => scenario.autoApply).length;
+  const withRulesCount = scenarios.filter((scenario) => scenarioRuleSummaries(scenario).length > 0).length;
+  if (el.scenarioCountValue) el.scenarioCountValue.textContent = String(scenarios.length);
+  if (el.scenarioAutoApplyValue) el.scenarioAutoApplyValue.textContent = String(autoApplyCount);
+  if (el.scenarioRulesValue) el.scenarioRulesValue.textContent = String(withRulesCount);
+}
+
+function updateScenarioFormMeta(scenario = null) {
+  const selected = scenario || state.scenarios.find((item) => String(item.id) === String(state.selectedScenarioId)) || null;
+  const isDraft = !selected;
+  if (el.scenarioFormEyebrow) {
+    el.scenarioFormEyebrow.textContent = isDraft ? "Новый сценарий" : "Редактирование сценария";
+  }
+  if (el.scenarioFormTitle) {
+    el.scenarioFormTitle.textContent = isDraft ? "Соберите логику анализа" : (selected.name || "Сценарий без названия");
+  }
+  if (el.scenarioSelectedBadge) {
+    el.scenarioSelectedBadge.textContent = isDraft ? "Черновик" : (selected.isDefault ? "По умолчанию" : "Сохранён");
+    el.scenarioSelectedBadge.className = `badge ${selected?.isDefault ? "success" : "neutral"}`;
+  }
+  if (el.scenarioSelectionSummary) {
+    if (!selected) {
+      el.scenarioSelectionSummary.textContent =
+        "Выберите сценарий слева или создайте новый, чтобы заполнить чек-лист разговора и правила автоподбора.";
+      return;
+    }
+    const checklistCount = scenarioChecklistCount(selected);
+    const metricCount = scenarioCustomMetricCount(selected);
+    const rulesCount = scenarioRuleSummaries(selected).length;
+    el.scenarioSelectionSummary.textContent =
+      `${checklistCount} пунктов в чек-листе, ${metricCount} доп. метрик и ${rulesCount} правил автоподбора.`;
+  }
+}
+
 function resetScenarioForm() {
   state.selectedScenarioId = "";
   el.scenarioName.value = "";
@@ -1258,6 +1357,7 @@ function resetScenarioForm() {
   el.scenarioMaxDuration.value = "";
   el.scenarioAutoApply.checked = true;
   el.scenarioIsDefault.checked = false;
+  updateScenarioFormMeta(null);
 }
 
 function applyScenarioToForm(scenario) {
@@ -1281,32 +1381,55 @@ function applyScenarioToForm(scenario) {
   el.scenarioMaxDuration.value = scenario.matchRules?.maxDurationSeconds ?? "";
   el.scenarioAutoApply.checked = Boolean(scenario.autoApply);
   el.scenarioIsDefault.checked = Boolean(scenario.isDefault);
+  updateScenarioFormMeta(scenario);
 }
 
 function renderScenarioList() {
   if (!el.scenarioList) return;
-  el.scenarioList.innerHTML = state.scenarios
+  const scenarios = filteredScenarios();
+  const query = String(el.scenarioSearch?.value || "").trim();
+
+  if (el.scenarioLibraryMeta) {
+    const baseText = query
+      ? `Найдено ${scenarios.length} из ${state.scenarios.length} сценариев по запросу «${query}».`
+      : `Всего ${state.scenarios.length} сценариев. Выберите карточку слева, чтобы редактировать её без длинной таблицы.`;
+    el.scenarioLibraryMeta.textContent = baseText;
+  }
+
+  if (!scenarios.length) {
+    el.scenarioList.innerHTML = `
+      <article class="scenario-empty-state">
+        <h3>Сценарии не найдены</h3>
+        <p class="muted">${query ? "Измените поисковый запрос или создайте новый сценарий." : "Создайте первый сценарий, чтобы настроить правила анализа."}</p>
+      </article>`;
+    return;
+  }
+
+  el.scenarioList.innerHTML = scenarios
     .map((scenario) => {
-      const tags = [];
-      if (scenario.autoApply) tags.push("авто");
-      if (scenario.isDefault) tags.push("по умолчанию");
-      if (scenario.matchRules?.directions?.length) tags.push(scenario.matchRules.directions.join(", "));
-      const rules = [];
-      if (scenario.matchRules?.managerIds?.length) rules.push(`менеджеры: ${scenario.matchRules.managerIds.join(", ")}`);
-      if (scenario.matchRules?.entityTypeIds?.length) rules.push(`сущности: ${scenario.matchRules.entityTypeIds.map((item) => ownerTypeLabel(item)).join(", ")}`);
-      if (scenario.matchRules?.pipelineIds?.length) rules.push(`воронки: ${scenario.matchRules.pipelineIds.join(", ")}`);
-      if (scenario.matchRules?.stageIds?.length) rules.push(`стадии: ${scenario.matchRules.stageIds.join(", ")}`);
-      if (scenario.matchRules?.lineNumbers?.length) rules.push(`линии: ${scenario.matchRules.lineNumbers.join(", ")}`);
-      if (scenario.matchRules?.subjectKeywords?.length) rules.push(`ключи: ${scenario.matchRules.subjectKeywords.join(", ")}`);
-      if (scenario.matchRules?.minDurationSeconds != null) rules.push(`от ${scenario.matchRules.minDurationSeconds} сек`);
-      if (scenario.matchRules?.maxDurationSeconds != null) rules.push(`до ${scenario.matchRules.maxDurationSeconds} сек`);
+      const tags = scenarioTags(scenario);
+      const rules = scenarioRuleSummaries(scenario);
+      const checklistCount = scenarioChecklistCount(scenario);
+      const metricCount = scenarioCustomMetricCount(scenario);
       return `
-        <tr class="${state.selectedScenarioId === scenario.id ? "is-selected" : ""}" data-action="pick-scenario" data-id="${scenario.id}">
-          <td><button type="button" class="scenario-link" data-action="pick-scenario" data-id="${scenario.id}">${escapeHtml(scenario.name)}</button></td>
-          <td>${escapeHtml(scenario.description || "Без описания")}</td>
-          <td>${escapeHtml(tags.join(" • ") || "Ручной запуск")}</td>
-          <td>${escapeHtml(rules.join(" • ") || "Без правил")}</td>
-        </tr>`;
+        <article class="scenario-card ${String(state.selectedScenarioId) === String(scenario.id) ? "is-selected" : ""}" data-action="pick-scenario" data-id="${scenario.id}">
+          <div class="scenario-card-head">
+            <div class="scenario-card-title-block">
+              <button type="button" class="scenario-link" data-action="pick-scenario" data-id="${scenario.id}">${escapeHtml(scenario.name)}</button>
+              <p class="scenario-card-description">${escapeHtml(scenario.description || "Без описания")}</p>
+            </div>
+            <div class="scenario-card-metrics">
+              <span class="scenario-chip">${checklistCount} этап.</span>
+              <span class="scenario-chip">${metricCount} метрик</span>
+            </div>
+          </div>
+          <div class="scenario-chip-row">
+            ${(tags.length ? tags : ["Ручной запуск"]).map((tag) => `<span class="scenario-chip">${escapeHtml(tag)}</span>`).join("")}
+          </div>
+          <div class="scenario-rule-list">
+            ${(rules.length ? rules : ["Правила автоподбора не заданы"]).map((rule) => `<span class="scenario-rule-pill">${escapeHtml(rule)}</span>`).join("")}
+          </div>
+        </article>`;
     })
     .join("");
 }
@@ -2396,11 +2519,18 @@ async function loadScenarios() {
       )
       .join("");
   }
+  updateScenarioSummaryCards();
   renderScenarioList();
   refreshFilterLabels();
   if (state.selectedScenarioId) {
     const scenario = state.scenarios.find((item) => item.id === state.selectedScenarioId);
-    if (scenario) applyScenarioToForm(scenario);
+    if (scenario) {
+      applyScenarioToForm(scenario);
+    } else {
+      resetScenarioForm();
+    }
+  } else {
+    updateScenarioFormMeta(null);
   }
 }
 
@@ -2466,13 +2596,22 @@ async function saveScenario() {
   state.selectedScenarioId = data.scenario.id;
   await loadScenarios();
   applyScenarioToForm(data.scenario);
+  if (el.statusText) {
+    el.statusText.textContent = `Сценарий «${data.scenario.name}» сохранён.`;
+  }
 }
 
 async function deleteScenario() {
   if (!state.selectedScenarioId) return;
+  const current = state.scenarios.find((item) => String(item.id) === String(state.selectedScenarioId));
   await api(`/api/scenarios/${state.selectedScenarioId}`, { method: "DELETE" });
   await loadScenarios();
   resetScenarioForm();
+  if (el.statusText) {
+    el.statusText.textContent = current?.name
+      ? `Сценарий «${current.name}» удалён.`
+      : "Сценарий удалён.";
+  }
 }
 
 function applyCallsPayload(data, options = {}) {
@@ -2976,6 +3115,12 @@ if (el.newScenario) {
   });
 }
 
+if (el.scenarioSearch) {
+  el.scenarioSearch.addEventListener("input", () => {
+    renderScenarioList();
+  });
+}
+
 if (el.deleteScenario) {
   el.deleteScenario.addEventListener("click", async () => {
     try {
@@ -3087,6 +3232,13 @@ window.addEventListener("resize", () => {
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target === el.scenarioName) {
+    const draftTitle = el.scenarioName.value.trim() || "Соберите логику анализа";
+    if (el.scenarioFormTitle && !state.selectedScenarioId) {
+      el.scenarioFormTitle.textContent = draftTitle;
+    }
+  }
+
   const audioRange = event.target.closest('[data-action="seek-call-audio"]');
   if (!audioRange) return;
   state.playback.seeking = true;
