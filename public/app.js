@@ -13,6 +13,7 @@ const state = {
   callsStatusBreakdown: [],
   summary: null,
   dashboardCalls: [],
+  dashboardAnalyses: [],
   dashboardSummary: null,
   dashboardStatusBreakdown: [],
   scenarios: [],
@@ -125,6 +126,11 @@ const el = {
   recognizedCallsChart: document.getElementById("recognizedCallsChart"),
   tokensUsageChart: document.getElementById("tokensUsageChart"),
   recognizedMinutesChart: document.getElementById("recognizedMinutesChart"),
+  highRiskChart: document.getElementById("highRiskChart"),
+  tokensPerMinuteChart: document.getElementById("tokensPerMinuteChart"),
+  violatedCheckpointsChart: document.getElementById("violatedCheckpointsChart"),
+  callsHeatmap: document.getElementById("callsHeatmap"),
+  recognizedCallsHeatmap: document.getElementById("recognizedCallsHeatmap"),
   dailyScoreChart: document.getElementById("dailyScoreChart"),
   saveSettings: document.getElementById("saveSettings"),
 };
@@ -1753,6 +1759,8 @@ function lineSeriesSvg(series, options = {}) {
     areaClass = "",
     maxXAxisLabels = 10,
     maxPointLabels = 14,
+    pointTextClass = "",
+    axisTextClass = "",
   } = options;
 
   const width = 760;
@@ -1774,14 +1782,14 @@ function lineSeriesSvg(series, options = {}) {
     .map((point, index) => {
       const shouldShow = index === points.length - 1 || index % labelStep === 0;
       if (!shouldShow) return "";
-      return `<text class="line-chart-axis-text" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(point.label)}</text>`;
+      return `<text class="line-chart-axis-text ${axisTextClass}" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(point.label)}</text>`;
     })
     .join("");
   const pointLabelStep = Math.max(1, Math.ceil(points.length / Math.max(1, maxPointLabels)));
   const pointLabels = points
     .map((point, index) => `
         <circle cx="${point.x}" cy="${point.y}" r="4"></circle>
-        ${index === points.length - 1 || index % pointLabelStep === 0 ? `<text class="line-chart-point-text" x="${point.x}" y="${point.y - 12}" text-anchor="middle">${escapeHtml(valueFormatter(point.value, point))}</text>` : ""}`,
+        ${index === points.length - 1 || index % pointLabelStep === 0 ? `<text class="line-chart-point-text ${pointTextClass}" x="${point.x}" y="${point.y - 12}" text-anchor="middle">${escapeHtml(valueFormatter(point.value, point))}</text>` : ""}`,
     )
     .join("");
   const yTicks = Array.from({ length: 4 }, (_, index) => {
@@ -1791,7 +1799,7 @@ function lineSeriesSvg(series, options = {}) {
     return `
       <g class="line-chart-grid-line">
         <line x1="${paddingX}" y1="${y}" x2="${width - paddingX}" y2="${y}"></line>
-        <text class="line-chart-axis-text" x="${paddingX - 10}" y="${y + 4}" text-anchor="end">${escapeHtml(yTickFormatter(value))}</text>
+        <text class="line-chart-axis-text ${axisTextClass}" x="${paddingX - 10}" y="${y + 4}" text-anchor="end">${escapeHtml(yTickFormatter(value))}</text>
       </g>`;
   }).join("");
 
@@ -1808,14 +1816,20 @@ function lineSeriesSvg(series, options = {}) {
     </svg>`;
 }
 
-function lastNDaysKeys(days = 7) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+function lastNDaysKeys(days = 7, endDate = new Date()) {
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
   return Array.from({ length: days }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (days - index - 1));
+    const date = new Date(end);
+    date.setDate(end.getDate() - (days - index - 1));
     return date.toISOString().slice(0, 10);
   });
+}
+
+function filterCallsByLastNDays(calls, days) {
+  const keys = lastNDaysKeys(days);
+  const allowed = new Set(keys);
+  return calls.filter((call) => allowed.has(callDayKey(call)));
 }
 
 function callDayKey(call) {
@@ -1839,15 +1853,45 @@ function dashboardCallsWithAnalysis() {
   });
 }
 
+function dashboardAnalysesList() {
+  return Array.isArray(state.dashboardAnalyses) ? state.dashboardAnalyses : [];
+}
+
+function isCheckpointViolation(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  return !["passed", "good", "not_applicable", "пройден", "хорошо", "не применимо"].includes(normalized);
+}
+
 function renderManagerScoreChart() {
-  const rows = (state.dashboardSummary?.managers || []).filter((item) => Number.isFinite(Number(item.averageScore)));
+  const callsById = new Map(state.dashboardCalls.map((call) => [String(call.id), call]));
+  const buckets = new Map();
+  for (const item of dashboardAnalysesList()) {
+    const score = Number(item?.scriptAnalysis?.overallScore);
+    if (!Number.isFinite(score)) continue;
+    const managerId = String(item?.managerId || item?.managerName || "unknown");
+    const fallbackCall = callsById.get(String(item?.activityId));
+    if (!buckets.has(managerId)) {
+      buckets.set(managerId, {
+        label: item?.managerName || fallbackCall?.managerName || `Менеджер #${item?.managerId || "—"}`,
+        totalScore: 0,
+        calls: 0,
+      });
+    }
+    const bucket = buckets.get(managerId);
+    bucket.totalScore += score;
+    bucket.calls += 1;
+  }
+  const rows = Array.from(buckets.values())
+    .map((item) => ({
+      label: item.label,
+      value: item.calls ? roundedMetric(item.totalScore / item.calls, 1) : 0,
+      calls: item.calls,
+    }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 12);
   renderHorizontalBars(
     el.managerScoreChart,
-    rows.map((item) => ({
-      label: item.managerName || "Без имени",
-      value: Number(item.averageScore) || 0,
-      calls: item.calls,
-    })),
+    rows,
     {
       emptyMessage: "Недостаточно данных для графика по менеджерам.",
       formatter: (value) => escapeHtml(value.toFixed(1)),
@@ -1950,7 +1994,7 @@ function buildLast7DaysSeries(calls, metricResolver) {
   }));
 }
 
-function buildAverageSeriesByDay(calls, metricResolver) {
+function buildAverageSeriesByDay(calls, metricResolver, days = null) {
   const buckets = new Map();
   for (const call of calls) {
     const key = callDayKey(call);
@@ -1965,6 +2009,17 @@ function buildAverageSeriesByDay(calls, metricResolver) {
     bucket.count += 1;
   }
 
+  if (Number.isFinite(Number(days)) && Number(days) > 0) {
+    return lastNDaysKeys(Number(days)).map((key) => {
+      const bucket = buckets.get(key) || { total: 0, count: 0 };
+      return {
+        key,
+        label: formatDay(key),
+        value: bucket.count ? roundedMetric(bucket.total / bucket.count, 1) : 0,
+      };
+    });
+  }
+
   return Array.from(buckets.entries())
     .sort((left, right) => left[0].localeCompare(right[0]))
     .map(([key, bucket]) => ({
@@ -1974,17 +2029,150 @@ function buildAverageSeriesByDay(calls, metricResolver) {
     }));
 }
 
+function buildCountSeriesByDay(calls, predicate = () => true, days = 90) {
+  const keys = lastNDaysKeys(days);
+  const buckets = new Map(keys.map((key) => [key, 0]));
+  for (const call of calls) {
+    const key = callDayKey(call);
+    if (!key || !buckets.has(key) || !predicate(call)) continue;
+    buckets.set(key, buckets.get(key) + 1);
+  }
+  return keys.map((key) => ({
+    key,
+    label: formatDay(key),
+    value: buckets.get(key) || 0,
+  }));
+}
+
+function buildRatioSeriesByDay(calls, numeratorResolver, denominatorResolver, days = 90) {
+  const keys = lastNDaysKeys(days);
+  const buckets = new Map(keys.map((key) => [key, { numerator: 0, denominator: 0 }]));
+  for (const call of calls) {
+    const key = callDayKey(call);
+    if (!key || !buckets.has(key)) continue;
+    const numerator = Number(numeratorResolver(call));
+    const denominator = Number(denominatorResolver(call));
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) continue;
+    const bucket = buckets.get(key);
+    bucket.numerator += numerator;
+    bucket.denominator += denominator;
+  }
+  return keys.map((key) => {
+    const bucket = buckets.get(key);
+    return {
+      key,
+      label: formatDay(key),
+      value: bucket.denominator > 0 ? roundedMetric(bucket.numerator / bucket.denominator, 1) : 0,
+    };
+  });
+}
+
+function violatedCheckpointRows(limit = 10) {
+  const buckets = new Map();
+  for (const item of dashboardCallsWithAnalysis()) {
+    const checkpoints = effectiveAnalysis(item)?.scriptAnalysis?.checkpoints || [];
+    for (const checkpoint of checkpoints) {
+      if (!checkpoint?.name || !isCheckpointViolation(checkpoint?.status)) continue;
+      const key = String(checkpoint.name).trim();
+      if (!buckets.has(key)) {
+        buckets.set(key, { label: key, count: 0 });
+      }
+      buckets.get(key).count += 1;
+    }
+  }
+  return Array.from(buckets.values())
+    .sort((left, right) => right.count - left.count)
+    .slice(0, limit)
+    .map((item) => ({
+      label: item.label,
+      value: item.count,
+      count: item.count,
+    }));
+}
+
+function buildHeatmapData(calls, predicate = () => true, days = 90) {
+  const keys = lastNDaysKeys(days);
+  const buckets = new Map(keys.map((key) => [key, 0]));
+  for (const call of calls) {
+    const key = callDayKey(call);
+    if (!key || !buckets.has(key) || !predicate(call)) continue;
+    buckets.set(key, buckets.get(key) + 1);
+  }
+
+  const daysData = keys.map((key) => {
+    const date = new Date(`${key}T00:00:00`);
+    return {
+      key,
+      label: formatDay(key),
+      weekday: (date.getDay() + 6) % 7,
+      value: buckets.get(key) || 0,
+    };
+  });
+
+  const maxValue = Math.max(...daysData.map((item) => item.value), 0);
+  return { days: daysData, maxValue };
+}
+
+function renderHeatmap(container, data, options = {}) {
+  if (!container) return;
+  const { emptyMessage = "Недостаточно данных для тепловой карты." } = options;
+  if (!data?.days?.length) {
+    renderEmptyChart(container, emptyMessage);
+    return;
+  }
+
+  const leadingEmpty = data.days[0]?.weekday || 0;
+  const monthLabels = [];
+  data.days.forEach((item, index) => {
+    const date = new Date(`${item.key}T00:00:00`);
+    const monthLabel = date.toLocaleDateString("ru-RU", { month: "short" });
+    if (!monthLabels.length || monthLabels[monthLabels.length - 1].label !== monthLabel) {
+      monthLabels.push({ label: monthLabel, column: Math.floor((index + leadingEmpty) / 7) + 1 });
+    }
+  });
+
+  const paddedDays = [
+    ...Array.from({ length: leadingEmpty }, () => null),
+    ...data.days,
+  ];
+
+  const cells = paddedDays
+    .map((item) => {
+      if (!item) return '<div class="heatmap-cell is-empty" aria-hidden="true"></div>';
+      const intensity = data.maxValue > 0 ? Math.max(0.1, item.value / data.maxValue) : 0;
+      const style = `--heat:${intensity.toFixed(3)};`;
+      return `<div class="heatmap-cell ${item.value ? "is-filled" : ""}" style="${style}" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
+    })
+    .join("");
+
+  container.innerHTML = `
+    <div class="heatmap">
+      <div class="heatmap-months">
+        ${monthLabels.map((item) => `<span style="grid-column:${item.column}">${escapeHtml(item.label)}</span>`).join("")}
+      </div>
+      <div class="heatmap-grid">
+        ${cells}
+      </div>
+      <div class="heatmap-legend">
+        <span class="muted">Меньше</span>
+        <span class="heatmap-legend-scale"><i></i><i></i><i></i><i></i></span>
+        <span class="muted">Больше</span>
+      </div>
+    </div>`;
+}
+
 function renderSeriesChart(container, series, options = {}) {
   if (!container) return;
-  const { emptyMessage = "Недостаточно данных за последние 7 дней." } = options;
+  const {
+    emptyMessage = "Недостаточно данных для графика.",
+    zeroMessage = "Значения за выбранный период равны 0.",
+  } = options;
   if (!series.length) {
     renderEmptyChart(container, emptyMessage);
     return;
   }
   const hasValues = series.some((item) => Number(item.value || 0) > 0);
-  const note = hasValues
-    ? ""
-    : '<div class="chart-inline-note">За последние 7 дней значения равны 0.</div>';
+  const note = hasValues ? "" : `<div class="chart-inline-note">${escapeHtml(zeroMessage)}</div>`;
   container.innerHTML = `${note}${lineSeriesSvg(series, options)}`;
 }
 
@@ -1997,6 +2185,7 @@ function renderRecognizedCallsChart() {
     yTickFormatter: (value) => `${Math.round(value)}`,
     strokeClass: "is-calls",
     areaClass: "is-calls",
+    pointTextClass: "is-emphasis",
   });
 }
 
@@ -2012,6 +2201,7 @@ function renderTokensUsageChart() {
     yTickFormatter: (value) => `${Math.round(value)}`,
     strokeClass: "is-tokens",
     areaClass: "is-tokens",
+    pointTextClass: "is-emphasis",
   });
 }
 
@@ -2027,21 +2217,89 @@ function renderRecognizedMinutesChart() {
     yTickFormatter: (value) => `${value.toFixed(1)}`,
     strokeClass: "is-minutes",
     areaClass: "is-minutes",
+    pointTextClass: "is-emphasis",
+  });
+}
+
+function renderHighRiskChart() {
+  const series = buildCountSeriesByDay(
+    filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
+    (call) => String(effectiveAnalysis(call)?.overview?.riskLevel || "").toLowerCase() === "high" || localizeRiskLevel(effectiveAnalysis(call)?.overview?.riskLevel) === "Высокий",
+    90,
+  );
+  renderSeriesChart(el.highRiskChart, series, {
+    emptyMessage: "Нет данных по высокому риску.",
+    zeroMessage: "За последние 3 месяца звонков с высоким риском не было.",
+    ariaLabel: "График динамики высокого риска за последние 3 месяца",
+    valueFormatter: (value) => `${Math.round(value)}`,
+    yTickFormatter: (value) => `${Math.round(value)}`,
+    strokeClass: "is-tokens",
+    areaClass: "is-tokens",
+    maxXAxisLabels: 8,
+    maxPointLabels: 10,
+    pointTextClass: "is-compact",
+    axisTextClass: "is-compact",
+  });
+}
+
+function renderTokensPerMinuteChart() {
+  const series = buildRatioSeriesByDay(
+    filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
+    (call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0),
+    (call) => Math.max(0, Number(call.durationSeconds || 0) / 60),
+    90,
+  );
+  renderSeriesChart(el.tokensPerMinuteChart, series, {
+    emptyMessage: "Нет данных по токенам на минуту.",
+    zeroMessage: "За последние 3 месяца расход токенов на минуту равен 0.",
+    ariaLabel: "График токенов на минуту за последние 3 месяца",
+    valueFormatter: (value) => `${value.toFixed(1)}`,
+    yTickFormatter: (value) => `${value.toFixed(1)}`,
+    strokeClass: "is-score",
+    areaClass: "is-score",
+    maxXAxisLabels: 8,
+    maxPointLabels: 10,
+    pointTextClass: "is-compact",
+    axisTextClass: "is-compact",
+  });
+}
+
+function renderViolatedCheckpointsChart() {
+  const rows = violatedCheckpointRows();
+  renderHorizontalBars(el.violatedCheckpointsChart, rows, {
+    emptyMessage: "Нет данных по нарушениям checkpoint’ов.",
+    formatter: (value) => escapeHtml(`${Math.round(value)}`),
+    hintFormatter: (item) => `${item.count} нарушений`,
+  });
+}
+
+function renderHeatmaps() {
+  renderHeatmap(el.callsHeatmap, buildHeatmapData(state.dashboardCalls, () => true, 92), {
+    emptyMessage: "Нет данных по всем вызовам.",
+  });
+  renderHeatmap(el.recognizedCallsHeatmap, buildHeatmapData(dashboardCallsWithAnalysis(), () => true, 92), {
+    emptyMessage: "Нет данных по распознанным вызовам.",
   });
 }
 
 function renderDailyScoreChart() {
   const series = buildAverageSeriesByDay(
-    dashboardCallsWithAnalysis(),
+    filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
     (call) => effectiveAnalysis(call)?.scriptAnalysis?.overallScore,
+    90,
   );
   renderSeriesChart(el.dailyScoreChart, series, {
     emptyMessage: "Нет данных по среднему score.",
-    ariaLabel: "График среднего score за весь период",
+    zeroMessage: "За последние 3 месяца значения среднего score равны 0.",
+    ariaLabel: "График среднего score за последние 3 месяца",
     valueFormatter: (value) => `${value.toFixed(1)}`,
     yTickFormatter: (value) => `${value.toFixed(1)}`,
     strokeClass: "is-score",
     areaClass: "is-score",
+    maxXAxisLabels: 9,
+    maxPointLabels: 8,
+    pointTextClass: "is-compact",
+    axisTextClass: "is-compact",
   });
 }
 
@@ -2049,9 +2307,13 @@ function renderDashboard() {
   renderSentimentChart();
   renderScenarioAverageChart();
   renderManagerScoreChart();
+  renderHeatmaps();
   renderRecognizedCallsChart();
   renderTokensUsageChart();
   renderRecognizedMinutesChart();
+  renderHighRiskChart();
+  renderTokensPerMinuteChart();
+  renderViolatedCheckpointsChart();
   renderDailyScoreChart();
 }
 async function api(url, options) {
@@ -2283,6 +2545,7 @@ async function loadDashboardData(options = {}) {
   const data = await api("/api/dashboard");
   state.dashboardSummary = data.summary || null;
   state.dashboardCalls = Array.isArray(data.calls) ? data.calls : [];
+  state.dashboardAnalyses = Array.isArray(data.analyses) ? data.analyses : [];
   state.dashboardStatusBreakdown = Array.isArray(data.statusBreakdown) ? data.statusBreakdown : [];
   renderSummary();
   if (options.refreshDashboard !== false) {
@@ -2840,6 +3103,11 @@ document.addEventListener("change", (event) => {
     renderEmptyChart(el.recognizedCallsChart, error.message);
     renderEmptyChart(el.tokensUsageChart, error.message);
     renderEmptyChart(el.recognizedMinutesChart, error.message);
+    renderEmptyChart(el.highRiskChart, error.message);
+    renderEmptyChart(el.tokensPerMinuteChart, error.message);
+    renderEmptyChart(el.violatedCheckpointsChart, error.message);
+    renderEmptyChart(el.callsHeatmap, error.message);
+    renderEmptyChart(el.recognizedCallsHeatmap, error.message);
     renderEmptyChart(el.dailyScoreChart, error.message);
   }
 })();

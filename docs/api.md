@@ -170,6 +170,7 @@
 - `summary.statusBreakdown` — breakdown статусов по всему набору;
 - `summary.managers` — средний `overallScore` по менеджерам;
 - `calls` — полный список нормализованных звонков для построения dashboard-графиков;
+- `analyses` — latest analyses по `activityId` для агрегатов, не зависящих от текущего calls payload;
 - `statusBreakdown` — общий breakdown статусов на верхнем уровне ответа.
 
 ## Summary Response Notes
@@ -183,7 +184,7 @@ If a caller needs the full filtered analyses array, it must request it explicitl
 ## 2026-04 Dashboard Data Note
 
 - `GET /api/reports/summary` остаётся фильтрованным по текущим параметрам страницы расшифровки.
-- `GET /api/dashboard` возвращает агрегаты и звонки за весь доступный период и должен использоваться для карточек и графиков дашборда, которые не должны зависеть от report-фильтров.
+- `GET /api/dashboard` возвращает агрегаты, звонки и latest analyses за весь доступный период и должен использоваться для карточек, heatmap и графиков дашборда, которые не должны зависеть от report-фильтров.
 
 ## 2026-04 Transcript Playback Note
 

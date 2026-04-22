@@ -58,6 +58,25 @@
                   <div id="managerScoreChart" class="chart-host chart-host-compact"></div>
                 </article>
 
+                <article class="panel chart-panel chart-panel-wide">
+                  <div class="section-head">
+                    <div class="section-head-main">
+                      <h2>Тепловая карта вызовов за 3 месяца</h2>
+                      <span class="muted">Слева все звонки, справа только распознанные звонки.</span>
+                    </div>
+                  </div>
+                  <div class="dashboard-subgrid dashboard-subgrid-halves">
+                    <section>
+                      <h3 class="dashboard-subtitle">Все вызовы</h3>
+                      <div id="callsHeatmap" class="heatmap-host"></div>
+                    </section>
+                    <section>
+                      <h3 class="dashboard-subtitle">Распознанные вызовы</h3>
+                      <div id="recognizedCallsHeatmap" class="heatmap-host"></div>
+                    </section>
+                  </div>
+                </article>
+
                 <article class="panel chart-panel chart-panel-slim">
                   <div class="section-head">
                     <div class="section-head-main">
@@ -88,11 +107,41 @@
                   <div id="recognizedMinutesChart" class="chart-host chart-host-slim"></div>
                 </article>
 
+                <article class="panel chart-panel">
+                  <div class="section-head">
+                    <div class="section-head-main">
+                      <h2>Динамика высокого риска</h2>
+                      <span class="muted">Количество звонков с высоким риском по дням за 3 месяца.</span>
+                    </div>
+                  </div>
+                  <div id="highRiskChart" class="chart-host chart-host-compact"></div>
+                </article>
+
+                <article class="panel chart-panel">
+                  <div class="section-head">
+                    <div class="section-head-main">
+                      <h2>Токены на 1 минуту звонка</h2>
+                      <span class="muted">Средний расход токенов на одну распознанную минуту по дням за 3 месяца.</span>
+                    </div>
+                  </div>
+                  <div id="tokensPerMinuteChart" class="chart-host chart-host-compact"></div>
+                </article>
+
+                <article class="panel chart-panel">
+                  <div class="section-head">
+                    <div class="section-head-main">
+                      <h2>Топ нарушаемых checkpoint’ов</h2>
+                      <span class="muted">Чаще всего проблемные пункты сценария за весь период.</span>
+                    </div>
+                  </div>
+                  <div id="violatedCheckpointsChart" class="chart-host chart-host-compact"></div>
+                </article>
+
                 <article class="panel chart-panel chart-panel-wide">
                   <div class="section-head">
                     <div class="section-head-main">
                       <h2>Динамика среднего score</h2>
-                      <span class="muted">Данные за весь период с группировкой по дням звонков.</span>
+                      <span class="muted">Данные за последние 3 месяца с группировкой по дням звонков.</span>
                     </div>
                   </div>
                   <div id="dailyScoreChart" class="chart-host"></div>

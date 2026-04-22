@@ -2481,12 +2481,8 @@ function summarizeAnalyses(analyses) {
   };
 }
 
-function summarizeDashboardCalls(calls = []) {
-  const summary = summarizeAnalyses(
-    calls
-      .map((call) => call.analysis)
-      .filter((analysis) => analysis && matchesSummaryFilters(analysis, {})),
-  );
+function summarizeDashboardData(calls = [], analyses = []) {
+  const summary = summarizeAnalyses(analyses);
   const statusBreakdown = buildCallStatusBreakdown(calls);
   const pendingCalls = Number(statusBreakdown.find((item) => item.key === "pending")?.count || 0);
   const queuedCalls = Number(statusBreakdown.find((item) => item.key === "queued")?.count || 0);
@@ -2708,12 +2704,17 @@ app.get("/api/reports/summary", async (req, res, next) => {
 
 app.get("/api/dashboard", async (_req, res, next) => {
   try {
-    const snapshot = await buildCallsSnapshot({ onlyRecorded: "false" });
+    const [snapshot, store] = await Promise.all([
+      buildCallsSnapshot({ onlyRecorded: "false" }),
+      readAnalysisStore(),
+    ]);
+    const analyses = uniqueLatestAnalyses(store.analyses || []);
     res.json({
       success: true,
       data: {
-        summary: summarizeDashboardCalls(snapshot.calls),
+        summary: summarizeDashboardData(snapshot.calls, analyses),
         calls: snapshot.calls,
+        analyses,
         statusBreakdown: snapshot.statusBreakdown,
       },
     });
