@@ -11,6 +11,13 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-22 18:59 VLAT
+
+- Задача: deploy правок страницы `Сценарий` с удалением градиентного фона, переименованием раздела, переводом правил автоподбора на мультиселекты, упрощением ввода индивидуальных параметров и добавлением backend endpoint `/api/scenario-options`.
+- Длительность: около 25 минут.
+- Результат: `push` коммита `11dbf67` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production-версии `index.html`, `styles.css` и `app.js` на `127.0.0.1:3000` подтвердили наличие `scenarioManagerIdsDropdown`, `scenario-toggle-grid`, `background: #f3f7fb;`, `loadScenarioRuleOptions`, `scenario-entity-type` и `selectedScenarioRuleValues`.
+- Примечание: внешний `appUrl` без portal-сессии по-прежнему отдает Black Hole-страницу авторизации, поэтому финальная smoke-проверка frontend и нового `/api/scenario-options` выполнялась через локальный runtime `127.0.0.1:3000` на сервере.
+
 ## 2026-04-22 18:29 VLAT
 
 - Задача: deploy полного пересмотра страницы `Сценарии анализа` с возвратом библиотеки сценариев в табличный реестр и переносом детального просмотра и редактирования в модальное окно по аналогии с `Детализацией звонка`.
