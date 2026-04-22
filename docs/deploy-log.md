@@ -11,6 +11,12 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-22 18:29 VLAT
+
+- Задача: deploy полного пересмотра страницы `Сценарии анализа` с возвратом библиотеки сценариев в табличный реестр и переносом детального просмотра и редактирования в модальное окно по аналогии с `Детализацией звонка`.
+- Длительность: около 20 минут.
+- Результат: `push` коммита `2942ba6` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production-версии `index.html`, `styles.css` и `app.js` на `127.0.0.1:3000` подтвердили наличие `scenario-registry-table`, `scenarioModal`, `scenarioModalTitle`, `closeScenarioModal`, `scenario-modal-panel`, `scenario-library-toolbar` и `setScenarioModalOpen`.
+
 ## 2026-04-22 17:04 VLAT
 
 - Задача: ускорение первого открытия приложения; убрана preload-загрузка report на старте, облегчён payload `/api/dashboard`, добавлена дедупликация одинаковых snapshot-запросов.
