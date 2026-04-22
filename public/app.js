@@ -2140,18 +2140,18 @@ function renderHeatmap(container, data, options = {}) {
   const cells = paddedDays
     .map((item, index) => {
       const column = Math.floor(index / 7) + 1;
-      const dividerClass = separatorColumns.has(column) ? "is-month-divider" : "";
-      if (!item) return `<div class="heatmap-cell is-empty ${dividerClass}" aria-hidden="true"></div>`;
+      const stylePrefix = separatorColumns.has(column) ? "--month-gap:6px;" : "";
+      if (!item) return `<div class="heatmap-cell is-empty" style="${stylePrefix}" aria-hidden="true"></div>`;
       const intensity = data.maxValue > 0 ? Math.max(0.1, item.value / data.maxValue) : 0;
-      const style = `--heat:${intensity.toFixed(3)};`;
-      return `<div class="heatmap-cell ${item.value ? "is-filled" : ""} ${dividerClass}" style="${style}" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
+      const style = `${stylePrefix}--heat:${intensity.toFixed(3)};`;
+      return `<div class="heatmap-cell ${item.value ? "is-filled" : ""}" style="${style}" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
     })
     .join("");
 
   container.innerHTML = `
     <div class="heatmap">
       <div class="heatmap-months">
-        ${monthLabels.map((item, index) => `<span class="${index ? "is-month-divider" : ""}" style="grid-column:${item.column}">${escapeHtml(item.label)}</span>`).join("")}
+        ${monthLabels.map((item, index) => `<span style="grid-column:${item.column};${index ? "--month-gap:6px;" : ""}">${escapeHtml(item.label)}</span>`).join("")}
       </div>
       <div class="heatmap-grid">
         ${cells}
@@ -2189,6 +2189,7 @@ function renderRecognizedCallsChart() {
     strokeClass: "is-calls",
     areaClass: "is-calls",
     pointTextClass: "is-emphasis",
+    axisTextClass: "is-medium",
   });
 }
 
@@ -2205,6 +2206,7 @@ function renderTokensUsageChart() {
     strokeClass: "is-tokens",
     areaClass: "is-tokens",
     pointTextClass: "is-emphasis",
+    axisTextClass: "is-medium",
   });
 }
 
@@ -2221,6 +2223,7 @@ function renderRecognizedMinutesChart() {
     strokeClass: "is-minutes",
     areaClass: "is-minutes",
     pointTextClass: "is-emphasis",
+    axisTextClass: "is-medium",
   });
 }
 
