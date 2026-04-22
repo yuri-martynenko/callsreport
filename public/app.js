@@ -2130,6 +2130,7 @@ function renderHeatmap(container, data, options = {}) {
       monthLabels.push({ label: monthLabel, column: Math.floor((index + leadingEmpty) / 7) + 1 });
     }
   });
+  const separatorColumns = new Set(monthLabels.slice(1).map((item) => item.column));
 
   const paddedDays = [
     ...Array.from({ length: leadingEmpty }, () => null),
@@ -2137,18 +2138,20 @@ function renderHeatmap(container, data, options = {}) {
   ];
 
   const cells = paddedDays
-    .map((item) => {
-      if (!item) return '<div class="heatmap-cell is-empty" aria-hidden="true"></div>';
+    .map((item, index) => {
+      const column = Math.floor(index / 7) + 1;
+      const dividerClass = separatorColumns.has(column) ? "is-month-divider" : "";
+      if (!item) return `<div class="heatmap-cell is-empty ${dividerClass}" aria-hidden="true"></div>`;
       const intensity = data.maxValue > 0 ? Math.max(0.1, item.value / data.maxValue) : 0;
       const style = `--heat:${intensity.toFixed(3)};`;
-      return `<div class="heatmap-cell ${item.value ? "is-filled" : ""}" style="${style}" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
+      return `<div class="heatmap-cell ${item.value ? "is-filled" : ""} ${dividerClass}" style="${style}" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
     })
     .join("");
 
   container.innerHTML = `
     <div class="heatmap">
       <div class="heatmap-months">
-        ${monthLabels.map((item) => `<span style="grid-column:${item.column}">${escapeHtml(item.label)}</span>`).join("")}
+        ${monthLabels.map((item, index) => `<span class="${index ? "is-month-divider" : ""}" style="grid-column:${item.column}">${escapeHtml(item.label)}</span>`).join("")}
       </div>
       <div class="heatmap-grid">
         ${cells}
@@ -2237,8 +2240,8 @@ function renderHighRiskChart() {
     areaClass: "is-tokens",
     maxXAxisLabels: 8,
     maxPointLabels: 10,
-    pointTextClass: "is-compact",
-    axisTextClass: "is-compact",
+    pointTextClass: "is-medium",
+    axisTextClass: "is-medium",
   });
 }
 
@@ -2259,8 +2262,8 @@ function renderTokensPerMinuteChart() {
     areaClass: "is-score",
     maxXAxisLabels: 8,
     maxPointLabels: 10,
-    pointTextClass: "is-compact",
-    axisTextClass: "is-compact",
+    pointTextClass: "is-medium",
+    axisTextClass: "is-medium",
   });
 }
 
@@ -2298,8 +2301,8 @@ function renderDailyScoreChart() {
     areaClass: "is-score",
     maxXAxisLabels: 9,
     maxPointLabels: 8,
-    pointTextClass: "is-compact",
-    axisTextClass: "is-compact",
+    pointTextClass: "is-mini",
+    axisTextClass: "is-mini",
   });
 }
 
