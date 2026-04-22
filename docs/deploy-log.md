@@ -24,6 +24,12 @@
 
 ## Записи
 
+## 2026-04-22 12:18 VLAT
+
+- Задача: deploy увеличения размеров клеток heatmap до значения в 2 раза больше квадратов легенды.
+- Длительность: около 10 минут.
+- Результат: `push` коммита `6fd47ce` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production `styles.css` на `127.0.0.1:3000` подтвердил `width: calc(var(--columns) * 24px + (var(--columns) - 1) * 2px);`, `grid-template-rows: repeat(7, 24px);`, `width: 24px;`, `height: 24px;` и `border-radius: 4px;`.
+
 ## 2026-04-22 12:12 VLAT
 
 - Задача: deploy полного перестроения heatmap на dashboard: перейти с растягиваемой CSS-сетки на фиксированные компактные клетки и отдельные month-group блоки, чтобы реально уменьшить размер квадратов и убрать вертикальные линии внутри карты.
