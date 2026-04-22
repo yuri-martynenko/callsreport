@@ -51,6 +51,8 @@ let managersCache = { expiresAt: 0, data: null };
 const filteredCallsCache = new Map();
 let staleJobsCleanupCheckedAt = 0;
 let staleJobsCleanupInFlight = null;
+const analysisLocalizationRepairInFlight = new Map();
+const analysisLocalizationRepairCooldown = new Map();
 
 console.log(formatEnvBootstrapSummary(envBootstrap));
 for (const error of envBootstrap.readErrors) {
@@ -925,8 +927,8 @@ function containsMeaningfulLatin(value) {
   return latinMatches.some((word) => !["json", "score"].includes(word.toLowerCase()));
 }
 
-function analysisNeedsRussianLocalization(analysis) {
-  const texts = [
+function extractStructuredAnalysisTexts(analysis = {}) {
+  return [
     analysis?.summary,
     analysis?.overview?.callOutcome,
     analysis?.overview?.clientNeed,
@@ -937,8 +939,10 @@ function analysisNeedsRussianLocalization(analysis) {
     ...(analysis?.scriptAnalysis?.checkpoints || []).flatMap((item) => [item?.name, item?.comment]),
     ...(analysis?.customMetrics || []).flatMap((item) => [item?.name, item?.comment]),
   ];
+}
 
-  return texts.some((item) => containsMeaningfulLatin(item));
+function analysisNeedsRussianLocalization(analysis) {
+  return extractStructuredAnalysisTexts(analysis).some((item) => containsMeaningfulLatin(item));
 }
 
 function emptyStructuredAnalysis() {
@@ -985,6 +989,80 @@ async function localizeAnalysisToRussian(analysis) {
 
   const { content } = extractCompletionContent(payload);
   return normalizeAnalysisResult(extractJsonObject(content));
+}
+
+async function ensureRussianStructuredAnalysis(analysis, { maxAttempts = 2 } = {}) {
+  let normalized = normalizeAnalysisResult(analysis);
+  let localizationAttempts = 0;
+  let localizationErrorMessage = "";
+
+  while (analysisNeedsRussianLocalization(normalized) && localizationAttempts < maxAttempts) {
+    localizationAttempts += 1;
+    try {
+      normalized = await localizeAnalysisToRussian(normalized);
+    } catch (error) {
+      localizationErrorMessage = String(error?.message || "Не удалось локализовать analysis на русский язык");
+      break;
+    }
+  }
+
+  return {
+    analysis: normalized,
+    localizationAttempts,
+    localizationErrorMessage,
+    localizationPending: analysisNeedsRussianLocalization(normalized),
+  };
+}
+
+function analysisLocalizationRepairKey(record = {}) {
+  return `${String(record.activityId || "")}:${String(record.signature || "")}`;
+}
+
+async function repairStoredAnalysisLocalization(record) {
+  if (!record || !analysisNeedsRussianLocalization(record)) return record;
+
+  const repairKey = analysisLocalizationRepairKey(record);
+  const cooldownUntil = Number(analysisLocalizationRepairCooldown.get(repairKey) || 0);
+  if (cooldownUntil > Date.now()) return record;
+  if (analysisLocalizationRepairInFlight.has(repairKey)) {
+    return analysisLocalizationRepairInFlight.get(repairKey);
+  }
+
+  const repairPromise = (async () => {
+    const localization = await ensureRussianStructuredAnalysis(record, { maxAttempts: 2 });
+    if (localization.localizationPending) {
+      analysisLocalizationRepairCooldown.set(repairKey, Date.now() + 10 * 60 * 1000);
+      return record;
+    }
+
+    const repairedRecord = {
+      ...record,
+      ...localization.analysis,
+      updatedAt: new Date().toISOString(),
+      processingNotes: {
+        ...(record.processingNotes || {}),
+        localizationRepairApplied: localization.localizationAttempts > 0,
+        localizationAttempts: localization.localizationAttempts,
+        localizationErrorMessage: localization.localizationErrorMessage || "",
+        localizationPending: false,
+      },
+    };
+
+    await upsertAnalysisRecord(repairedRecord);
+    analysisLocalizationRepairCooldown.delete(repairKey);
+    return repairedRecord;
+  })()
+    .catch((error) => {
+      analysisLocalizationRepairCooldown.set(repairKey, Date.now() + 10 * 60 * 1000);
+      console.warn("Failed to repair stored analysis localization", error);
+      return record;
+    })
+    .finally(() => {
+      analysisLocalizationRepairInFlight.delete(repairKey);
+    });
+
+  analysisLocalizationRepairInFlight.set(repairKey, repairPromise);
+  return repairPromise;
 }
 
 function mergeTokenUsage(transcriptionUsage, analysisUsage) {
@@ -1751,6 +1829,26 @@ async function buildCallsSnapshot(query = {}) {
     }
   }
 
+  const candidateAnalyses = Array.from(
+    new Set(
+      rawActivities
+        .map((activity) => String(activity.id || ""))
+        .filter(Boolean),
+    ),
+  )
+    .map((activityId) => analysesByActivityId.get(activityId))
+    .filter((analysis) => analysis && analysisNeedsRussianLocalization(analysis));
+
+  if (candidateAnalyses.length) {
+    const repairedAnalyses = await Promise.all(
+      candidateAnalyses.slice(0, 20).map((analysis) => repairStoredAnalysisLocalization(analysis)),
+    );
+    for (const repairedAnalysis of repairedAnalyses) {
+      if (!repairedAnalysis) continue;
+      analysesByActivityId.set(String(repairedAnalysis.activityId), repairedAnalysis);
+    }
+  }
+
   let calls = rawActivities.map((activity) => {
     const analysis = analysesByActivityId.get(String(activity.id));
     const failure = failuresByActivityId.get(String(activity.id));
@@ -2085,12 +2183,12 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
       }
     }
 
-    if (analysisNeedsRussianLocalization(normalizedAnalysis)) {
-      try {
-        normalizedAnalysis = await localizeAnalysisToRussian(normalizedAnalysis);
-      } catch (localizationError) {
-        console.warn("Failed to localize analysis to Russian", localizationError);
-      }
+    const localization = await ensureRussianStructuredAnalysis(normalizedAnalysis, { maxAttempts: 2 });
+    normalizedAnalysis = localization.analysis;
+    if (localization.localizationPending) {
+      structuredAnalysisErrorMessage =
+        structuredAnalysisErrorMessage || localization.localizationErrorMessage || "Не удалось локализовать analysis на русский язык";
+      normalizedAnalysis = emptyStructuredAnalysis();
     }
 
     hasMeaningfulStructuredResult = analysisHasMeaningfulContent(normalizedAnalysis);
@@ -2125,6 +2223,9 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
         structuredAnalysisErrorMessage,
         structuredAnalysisRecovered,
         structuredAnalysisAttempts,
+        localizationAttempts: localization.localizationAttempts,
+        localizationErrorMessage: localization.localizationErrorMessage || "",
+        localizationPending: localization.localizationPending,
       },
       ...normalizedAnalysis,
     };
