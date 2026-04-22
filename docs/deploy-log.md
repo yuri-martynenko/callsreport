@@ -24,6 +24,12 @@
 
 ## Записи
 
+## 2026-04-22 11:40 VLAT
+
+- Задача: deploy точечного исправления frontend-ошибки `localizeRiskLevel is not defined` во всех dashboard-графиках.
+- Длительность: около 10 минут.
+- Результат: `push` коммита `9aa05f4` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production `app.js` на `127.0.0.1:3000` подтвердил использование `localizeRisk(` и отсутствие `localizeRiskLevel(`.
+
 ## 2026-04-22 10:24 VLAT
 
 - Задача: deploy исправления графика `Средний балл по менеджерам` с возвратом разбивки по ФИО, добавления 3-месячных графиков по высокому риску, токенам на минуту и нарушаемым checkpoint’ам, а также двух тепловых карт вызовов и распознанных вызовов.
