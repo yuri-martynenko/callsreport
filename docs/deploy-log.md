@@ -24,6 +24,12 @@
 
 ## Записи
 
+## 2026-04-22 11:52 VLAT
+
+- Задача: deploy компактного отображения двух heatmap за 3 месяца с визуальными разделителями месяцев и дополнительной настройки размеров подписей значений на line-chart графиках.
+- Длительность: около 15 минут.
+- Результат: `push` коммита `5794f25` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production `styles.css` и `app.js` на `127.0.0.1:3000` подтвердили уменьшение heatmap-сетки до `minmax(5px, 1fr)`, наличие `.heatmap-cell.is-month-divider`, `.line-chart-point-text.is-emphasis { font-size: 18px; }`, `.line-chart-point-text.is-medium { font-size: 15px; }`, `.line-chart-point-text.is-mini { font-size: 7px; }`, а также JS-маркеры `separatorColumns`, `is-month-divider`, `is-medium` и `is-mini`.
+
 ## 2026-04-22 11:40 VLAT
 
 - Задача: deploy точечного исправления frontend-ошибки `localizeRiskLevel is not defined` во всех dashboard-графиках.
