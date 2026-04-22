@@ -561,13 +561,65 @@ function defaultScenario() {
   return state.scenarios.find((scenario) => scenario.isDefault) || state.scenarios[0] || null;
 }
 
+function scenarioMatchesCall(call, scenario) {
+  const rules = scenario?.matchRules || {};
+  if (rules.directions?.length && !rules.directions.includes(call.direction)) return false;
+  if (rules.managerIds?.length && !rules.managerIds.includes(Number(call.managerId))) return false;
+  if (rules.entityTypeIds?.length && !rules.entityTypeIds.includes(Number(call.ownerTypeId))) return false;
+  if (rules.pipelineIds?.length && !rules.pipelineIds.includes(Number(call.pipelineId))) return false;
+  if (rules.stageIds?.length && !rules.stageIds.includes(String(call.stageId || ""))) return false;
+  if (rules.lineNumbers?.length) {
+    const lineValue = String(call.lineNumber || "").trim();
+    if (!lineValue || !rules.lineNumbers.includes(lineValue)) return false;
+  }
+  if (Number.isFinite(rules.minDurationSeconds) && Number(call.durationSeconds || 0) < Number(rules.minDurationSeconds)) return false;
+  if (Number.isFinite(rules.maxDurationSeconds) && Number(call.durationSeconds || 0) > Number(rules.maxDurationSeconds)) return false;
+  if (rules.subjectKeywords?.length) {
+    const subject = String(call.subject || "").toLowerCase();
+    if (!rules.subjectKeywords.some((keyword) => subject.includes(String(keyword || "").toLowerCase()))) return false;
+  }
+  return true;
+}
+
+function scenarioPriorityScore(call, scenario) {
+  const rules = scenario?.matchRules || {};
+  let score = 0;
+  if (rules.entityTypeIds?.length) score += 5;
+  if (rules.managerIds?.length) score += 4;
+  if (rules.pipelineIds?.length) score += 4;
+  if (rules.stageIds?.length) score += 4;
+  if (rules.lineNumbers?.length) score += 4;
+  if (rules.subjectKeywords?.length) score += 3;
+  if (rules.directions?.length) score += 2;
+  if (Number.isFinite(rules.minDurationSeconds) || Number.isFinite(rules.maxDurationSeconds)) score += 1;
+  if (scenario.isDefault) score -= 10;
+  if (call.ownerTypeId && rules.entityTypeIds?.includes(Number(call.ownerTypeId))) score += 2;
+  if (call.direction && rules.directions?.includes(call.direction)) score += 1;
+  if (call.managerId && rules.managerIds?.includes(Number(call.managerId))) score += 2;
+  if (call.pipelineId && rules.pipelineIds?.includes(Number(call.pipelineId))) score += 2;
+  if (call.stageId && rules.stageIds?.includes(String(call.stageId))) score += 2;
+  if (call.lineNumber && rules.lineNumbers?.includes(String(call.lineNumber))) score += 2;
+  return score;
+}
+
+function recommendedScenarioForCall(call) {
+  if (!call) return defaultScenario();
+  const candidates = state.scenarios.filter((scenario) => scenario.autoApply && scenarioMatchesCall(call, scenario));
+  if (!candidates.length) return defaultScenario();
+  return [...candidates].sort((left, right) => scenarioPriorityScore(call, right) - scenarioPriorityScore(call, left))[0] || defaultScenario();
+}
+
 function selectedScenarioIdForCall(call) {
-  return effectiveAnalysis(call)?.selectedScenarioId || defaultScenario()?.id || "";
+  const analysis = effectiveAnalysis(call);
+  const persisted = state.scenarios.find((scenario) => String(scenario.id) === String(analysis?.selectedScenarioId || ""));
+  if (persisted && !persisted.isDefault) {
+    return persisted.id;
+  }
+  return recommendedScenarioForCall(call)?.id || persisted?.id || defaultScenario()?.id || "";
 }
 
 function selectedScenarioForCall(call) {
-  const scenarioId = call ? selectedScenarioIdForCall(call) : "";
-  return state.scenarios.find((item) => String(item.id) === String(scenarioId)) || defaultScenario();
+  return call ? recommendedScenarioForCall(call) || defaultScenario() : defaultScenario();
 }
 
 function formatDate(value) {
@@ -1537,8 +1589,8 @@ function renderScenarioList() {
           <td class="scenario-description-column">${escapeHtml(scenario.description || "Без описания")}</td>
           <td>${checklistCount}</td>
           <td>${metricCount}</td>
-          <td>${scenario.autoApply ? '<span class="badge success">Да</span>' : '<span class="badge neutral">Нет</span>'}</td>
-          <td>${scenario.isDefault ? '<span class="badge success">Да</span>' : '<span class="badge neutral">Нет</span>'}</td>
+          <td>${scenario.autoApply ? "Да" : "Нет"}</td>
+          <td>${scenario.isDefault ? "Да" : "Нет"}</td>
           <td>${escapeHtml(directionLabel)}</td>
           <td>${escapeHtml(managerLabel)}</td>
           <td>${escapeHtml(crmParts.join(" • ") || "Без ограничений")}</td>
@@ -2820,7 +2872,7 @@ async function saveScenario() {
   state.selectedScenarioId = data.scenario.id;
   await loadScenarios();
   applyScenarioToForm(data.scenario);
-  setScenarioModalOpen(true);
+  setScenarioModalOpen(false);
   if (el.statusText) {
     el.statusText.textContent = `Сценарий «${data.scenario.name}» сохранён.`;
   }

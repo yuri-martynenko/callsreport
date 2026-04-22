@@ -260,6 +260,28 @@ function createId(prefix = "id") {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function extractLineNumber(activity = {}) {
+  const candidates = [
+    activity.lineNumber,
+    activity.lineId,
+    activity.LINE_NUMBER,
+    activity.LINE_ID,
+    activity.phoneNumber,
+    activity.PHONE_NUMBER,
+    activity.SETTINGS?.LINE_NUMBER,
+    activity.SETTINGS?.LINE_ID,
+    activity.SETTINGS?.PHONE_NUMBER,
+    activity.SETTINGS?.PHONE,
+    activity.PROVIDER_DATA?.lineNumber,
+    activity.PROVIDER_DATA?.phoneNumber,
+  ];
+  for (const candidate of candidates) {
+    const normalized = String(candidate || "").trim();
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
 function sanitizeStringList(value) {
   if (!Array.isArray(value)) return [];
   return value.map((item) => String(item || "").trim()).filter(Boolean);
@@ -387,6 +409,93 @@ function pickScenarioForCall(call, scenarios, requestedScenarioId) {
   }
 
   return getDefaultScenario(scenarios);
+}
+
+async function resolveCrmContextForCall(call = {}) {
+  const ownerTypeId = Number(call.ownerTypeId || 0);
+  const ownerId = Number(call.ownerId || 0);
+  const lineNumber = String(call.lineNumber || "").trim();
+
+  if (!ownerTypeId || !ownerId) {
+    return {
+      pipelineId: null,
+      stageId: "",
+      lineNumber,
+    };
+  }
+
+  if (ownerTypeId === 2) {
+    const deal = await readCrmEntityCached(`deal:${ownerId}`, async () => {
+      const payload = await vibeJson(`/v1/deals/${ownerId}`);
+      return payload?.data || null;
+    });
+    return {
+      pipelineId: Number(deal?.categoryId || 0) || null,
+      stageId: String(deal?.stageId || "").trim(),
+      lineNumber,
+    };
+  }
+
+  if (ownerTypeId === 1) {
+    const lead = await readCrmEntityCached(`lead:${ownerId}`, async () => {
+      const payload = await vibeJson(`/v1/leads/${ownerId}`);
+      return payload?.data || null;
+    });
+    return {
+      pipelineId: null,
+      stageId: String(lead?.stageId || "").trim(),
+      lineNumber,
+    };
+  }
+
+  return {
+    pipelineId: null,
+    stageId: "",
+    lineNumber,
+  };
+}
+
+async function hydrateCallsCrmContext(calls = []) {
+  if (!Array.isArray(calls) || !calls.length) return calls;
+  const uniqueCalls = Array.from(
+    new Map(
+      calls
+        .filter(Boolean)
+        .map((call) => [`${Number(call.ownerTypeId || 0)}:${Number(call.ownerId || 0)}:${String(call.lineNumber || "").trim()}`, call]),
+    ).values(),
+  );
+
+  for (let index = 0; index < uniqueCalls.length; index += 25) {
+    const batch = uniqueCalls.slice(index, index + 25);
+    await Promise.all(
+      batch.map(async (call) => {
+        const context = await resolveCrmContextForCall(call);
+        call.pipelineId = context.pipelineId;
+        call.stageId = context.stageId;
+        call.lineNumber = context.lineNumber;
+      }),
+    );
+  }
+
+  const contextByKey = new Map(
+    uniqueCalls.map((call) => [
+      `${Number(call.ownerTypeId || 0)}:${Number(call.ownerId || 0)}:${String(call.lineNumber || "").trim()}`,
+      {
+        pipelineId: call.pipelineId,
+        stageId: call.stageId,
+        lineNumber: call.lineNumber,
+      },
+    ]),
+  );
+
+  for (const call of calls) {
+    const context = contextByKey.get(`${Number(call.ownerTypeId || 0)}:${Number(call.ownerId || 0)}:${String(call.lineNumber || "").trim()}`);
+    if (!context) continue;
+    call.pipelineId = context.pipelineId;
+    call.stageId = context.stageId;
+    call.lineNumber = context.lineNumber;
+  }
+  return calls;
 }
 
 function buildLatestRecordsMap(items = [], keySelector) {
@@ -1849,6 +1958,7 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
         : analysis.sourceUpdatedAt !== activity.updatedAt
           ? "outdated"
           : deriveAnalysisResultState(analysis);
+  const lineNumber = extractLineNumber(activity);
 
   return {
     id: activity.id,
@@ -1870,7 +1980,7 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
     crmEntityUrl: buildCrmEntityUrl(activity.ownerTypeId, activity.ownerId),
     pipelineId: null,
     stageId: "",
-    lineNumber: "",
+    lineNumber,
     missedCall: Boolean(activity.SETTINGS?.MISSED_CALL),
     hasRecording: files.length > 0,
     recordingFileId: files[0]?.id || null,
@@ -2042,6 +2152,8 @@ async function buildCallsSnapshot(query = {}) {
 
       return normalizedCall;
     });
+
+    await hydrateCallsCrmContext(calls);
 
     if (query.search) {
       const search = query.search.toLowerCase();
@@ -2326,6 +2438,7 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
   const managersById = new Map(managers.map((manager) => [manager.id, manager]));
   const rawCall = callPayload.data;
   const call = normalizeCall(rawCall, managersById, null);
+  await hydrateCallsCrmContext([call]);
   const selectedScenario = pickScenarioForCall(call, scenarioStore.scenarios || [], scenarioId);
   const effectiveScriptChecklist = String(scriptChecklist || selectedScenario?.scriptChecklist || "").trim();
   const effectiveCustomMetrics =
@@ -2476,6 +2589,7 @@ async function buildAnalysisJobContext(activityId, scriptChecklist, customMetric
   const managersById = new Map(managers.map((manager) => [manager.id, manager]));
   const rawCall = callPayload.data;
   const call = normalizeCall(rawCall, managersById, null, null);
+  await hydrateCallsCrmContext([call]);
   const selectedScenario = pickScenarioForCall(call, scenarioStore.scenarios || [], scenarioId);
   const effectiveScriptChecklist = String(scriptChecklist || selectedScenario?.scriptChecklist || "").trim();
   const effectiveCustomMetrics =
