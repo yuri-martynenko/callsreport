@@ -11,6 +11,13 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-22 19:39 VLAT
+
+- Задача: deploy упрощения страницы `Сценарий` после обратной связи: убрать неподдерживаемые поля `Воронки`/`Стадии`/`Номера линий`, не усложнять CRM-обогащение, сохранить закрытие модалки после сохранения и корректный автоподбор по надежным правилам.
+- Длительность: около 30 минут.
+- Результат: `push` коммита `411e788` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, server-side exec подтвердил наличие `/var/lib/callsreport/.env`, фактический `ExecStart` с `APP_ENV_FILE=/var/lib/callsreport/.env node server.js`, локальный `GET /api/health` на `127.0.0.1:3000` вернул `ok=true, configured=true`, а `GET /api/scenario-options` теперь возвращает только `entityTypes`.
+- Примечание: поля `Воронки`, `Стадии` и `Номера линий` исключены из UX и логики автоподбора как ненадежно определяемые; smoke на production также подтвердил наличие `scenarioEntityTypeIdsDropdown` в `index.html` и вызовы `setScenarioModalOpen(false)` в `public/app.js`.
+
 ## 2026-04-22 18:59 VLAT
 
 - Задача: deploy правок страницы `Сценарий` с удалением градиентного фона, переименованием раздела, переводом правил автоподбора на мультиселекты, упрощением ввода индивидуальных параметров и добавлением backend endpoint `/api/scenario-options`.
