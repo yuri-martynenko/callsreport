@@ -194,6 +194,12 @@ If a caller needs the full filtered analyses array, it must request it explicitl
 
 This internal endpoint proxies the source call recording by `activityId`.
 
+## 2026-04 Startup Performance Note
+
+- Frontend no longer preloads report data during application startup. The initial screen opens with dashboard data only, and the report page loads its `/api/calls` and `/api/reports/summary` data on first open.
+- `GET /api/dashboard` now returns a lightweight dashboard call payload. It keeps fields required for charts and summary widgets, but no longer ships full transcript and detailed analysis blocks that are only needed on the report page.
+- `GET /api/dashboard` summary is now derived from the lightweight `calls[].analysis` payload and the top-level `statusBreakdown`. The separate top-level `analyses` array is no longer required by the current frontend flow.
+
 Usage:
 
 - the call detail modal uses it to play individual transcript fragments;

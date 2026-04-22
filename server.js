@@ -49,6 +49,7 @@ const crmEntityCache = new Map();
 const crmClientWarmupInFlight = new Set();
 let managersCache = { expiresAt: 0, data: null };
 const filteredCallsCache = new Map();
+const filteredCallsSnapshotInFlight = new Map();
 let staleJobsCleanupCheckedAt = 0;
 let staleJobsCleanupInFlight = null;
 const analysisLocalizationRepairInFlight = new Map();
@@ -460,6 +461,70 @@ function buildCallStatusBreakdown(calls = []) {
   }
 
   return order.map((key) => ({ key, count: Number(counts.get(key) || 0) }));
+}
+
+function summarizeAnalysesFromCalls(calls = []) {
+  return summarizeAnalyses(
+    calls
+      .map((call) =>
+        call?.analysis
+          ? {
+              ...call.analysis,
+              managerId: call.managerId,
+              managerName: call.managerName,
+            }
+          : null,
+      )
+      .filter(Boolean),
+  );
+}
+
+function createDashboardAnalysisSnapshot(analysis = null) {
+  if (!analysis) return null;
+  return {
+    activityId: analysis.activityId,
+    updatedAt: analysis.updatedAt,
+    selectedScenarioId: analysis.selectedScenarioId || null,
+    selectedScenarioName: analysis.selectedScenarioName || "",
+    state: analysis.state,
+    isCurrent: Boolean(analysis.isCurrent),
+    overview: analysis.overview
+      ? {
+          sentiment: analysis.overview.sentiment ?? null,
+          riskLevel: analysis.overview.riskLevel ?? null,
+        }
+      : null,
+    scriptAnalysis: analysis.scriptAnalysis
+      ? {
+          overallScore: analysis.scriptAnalysis.overallScore ?? null,
+          compliancePercent: analysis.scriptAnalysis.compliancePercent ?? null,
+          checkpoints: Array.isArray(analysis.scriptAnalysis.checkpoints)
+            ? analysis.scriptAnalysis.checkpoints.map((checkpoint) => ({
+                name: checkpoint?.name || "",
+                status: checkpoint?.status || "",
+              }))
+            : [],
+        }
+      : null,
+    tokenUsage: analysis.tokenUsage
+      ? {
+          totalTokens: analysis.tokenUsage.totalTokens ?? 0,
+        }
+      : null,
+  };
+}
+
+function createDashboardCallSnapshot(call = {}) {
+  return {
+    id: call.id,
+    managerId: call.managerId,
+    managerName: call.managerName,
+    direction: call.direction,
+    startTime: call.startTime,
+    durationSeconds: call.durationSeconds,
+    hasRecording: Boolean(call.hasRecording),
+    analysis: createDashboardAnalysisSnapshot(call.analysis),
+  };
 }
 
 function callSortTimestamp(call = {}) {
@@ -1797,106 +1862,118 @@ async function buildCallsSnapshot(query = {}) {
   if (hasFreshCache) {
     return cachedEntry.snapshot;
   }
+  if (filteredCallsSnapshotInFlight.has(cacheKey)) {
+    return filteredCallsSnapshotInFlight.get(cacheKey);
+  }
 
-  const [managers, analysisStore, scenarioStore] = await Promise.all([
-    listManagers(),
-    readAnalysisStore(),
-    readScenarioStore(),
-  ]);
-  const managersById = new Map(managers.map((manager) => [manager.id, manager]));
-  const analysesByActivityId = buildLatestRecordsMap(analysisStore.analyses, (analysis) => analysis.activityId);
-  const failuresByActivityId = buildLatestRecordsMap(
-    analysisStore.failures || [],
-    (failure) => failure.activityId,
-  );
-  const jobsByActivityId = buildLatestJobMap(analysisStore.jobs || []);
-  const defaultScenario = getDefaultScenario(scenarioStore.scenarios || []);
-  const { filter, managerIds } = buildCallFilter(query);
-  const activityFetchLimit = 5000;
+  const snapshotPromise = (async () => {
+    const [managers, analysisStore, scenarioStore] = await Promise.all([
+      listManagers(),
+      readAnalysisStore(),
+      readScenarioStore(),
+    ]);
+    const managersById = new Map(managers.map((manager) => [manager.id, manager]));
+    const analysesByActivityId = buildLatestRecordsMap(analysisStore.analyses, (analysis) => analysis.activityId);
+    const failuresByActivityId = buildLatestRecordsMap(
+      analysisStore.failures || [],
+      (failure) => failure.activityId,
+    );
+    const jobsByActivityId = buildLatestJobMap(analysisStore.jobs || []);
+    const defaultScenario = getDefaultScenario(scenarioStore.scenarios || []);
+    const { filter, managerIds } = buildCallFilter(query);
+    const activityFetchLimit = 5000;
 
-  let rawActivities = [];
-  if (managerIds.length > 1) {
-    rawActivities = await searchActivitiesByManagers(filter, managerIds, activityFetchLimit, 0);
-  } else {
-    rawActivities = await searchActivities(filter, activityFetchLimit, 0);
-    if (!rawActivities.length && !managerIds.length) {
-      rawActivities = await searchActivitiesByManagers(
-        filter,
-        managers.map((manager) => manager.id),
-        activityFetchLimit,
-        0,
+    let rawActivities = [];
+    if (managerIds.length > 1) {
+      rawActivities = await searchActivitiesByManagers(filter, managerIds, activityFetchLimit, 0);
+    } else {
+      rawActivities = await searchActivities(filter, activityFetchLimit, 0);
+      if (!rawActivities.length && !managerIds.length) {
+        rawActivities = await searchActivitiesByManagers(
+          filter,
+          managers.map((manager) => manager.id),
+          activityFetchLimit,
+          0,
+        );
+      }
+    }
+
+    const candidateAnalyses = Array.from(
+      new Set(
+        rawActivities
+          .map((activity) => String(activity.id || ""))
+          .filter(Boolean),
+      ),
+    )
+      .map((activityId) => analysesByActivityId.get(activityId))
+      .filter((analysis) => analysis && analysisNeedsRussianLocalization(analysis));
+
+    if (candidateAnalyses.length) {
+      const repairedAnalyses = await Promise.all(
+        candidateAnalyses.slice(0, 20).map((analysis) => repairStoredAnalysisLocalization(analysis)),
+      );
+      for (const repairedAnalysis of repairedAnalyses) {
+        if (!repairedAnalysis) continue;
+        analysesByActivityId.set(String(repairedAnalysis.activityId), repairedAnalysis);
+      }
+    }
+
+    let calls = rawActivities.map((activity) => {
+      const analysis = analysesByActivityId.get(String(activity.id));
+      const failure = failuresByActivityId.get(String(activity.id));
+      const latestJob = jobsByActivityId.get(String(activity.id));
+      const normalizedCall = normalizeCall(activity, managersById, analysis, failure, latestJob);
+
+      if (
+        normalizedCall.analysis &&
+        !normalizedCall.analysis.selectedScenarioId &&
+        !normalizedCall.analysis.selectedScenarioName &&
+        defaultScenario
+      ) {
+        normalizedCall.analysis = {
+          ...normalizedCall.analysis,
+          selectedScenarioId: defaultScenario.id,
+          selectedScenarioName: defaultScenario.name,
+        };
+      }
+
+      return normalizedCall;
+    });
+
+    if (query.search) {
+      const search = query.search.toLowerCase();
+      calls = calls.filter(
+        (call) =>
+          call.subject?.toLowerCase().includes(search) ||
+          call.managerName?.toLowerCase().includes(search),
       );
     }
-  }
 
-  const candidateAnalyses = Array.from(
-    new Set(
-      rawActivities
-        .map((activity) => String(activity.id || ""))
-        .filter(Boolean),
-    ),
-  )
-    .map((activityId) => analysesByActivityId.get(activityId))
-    .filter((analysis) => analysis && analysisNeedsRussianLocalization(analysis));
-
-  if (candidateAnalyses.length) {
-    const repairedAnalyses = await Promise.all(
-      candidateAnalyses.slice(0, 20).map((analysis) => repairStoredAnalysisLocalization(analysis)),
-    );
-    for (const repairedAnalysis of repairedAnalyses) {
-      if (!repairedAnalysis) continue;
-      analysesByActivityId.set(String(repairedAnalysis.activityId), repairedAnalysis);
-    }
-  }
-
-  let calls = rawActivities.map((activity) => {
-    const analysis = analysesByActivityId.get(String(activity.id));
-    const failure = failuresByActivityId.get(String(activity.id));
-    const latestJob = jobsByActivityId.get(String(activity.id));
-    const normalizedCall = normalizeCall(activity, managersById, analysis, failure, latestJob);
-
-    if (
-      normalizedCall.analysis &&
-      !normalizedCall.analysis.selectedScenarioId &&
-      !normalizedCall.analysis.selectedScenarioName &&
-      defaultScenario
-    ) {
-      normalizedCall.analysis = {
-        ...normalizedCall.analysis,
-        selectedScenarioId: defaultScenario.id,
-        selectedScenarioName: defaultScenario.name,
-      };
+    if (query.onlyRecorded === "true") {
+      calls = calls.filter((call) => call.hasRecording);
     }
 
-    return normalizedCall;
-  });
+    calls = applyClientSideCallFilters(calls, query);
+    calls.sort(compareCallsForReport);
 
-  if (query.search) {
-    const search = query.search.toLowerCase();
-    calls = calls.filter(
-      (call) =>
-        call.subject?.toLowerCase().includes(search) ||
-        call.managerName?.toLowerCase().includes(search),
-    );
+    const snapshot = {
+      managers,
+      calls,
+      statusBreakdown: buildCallStatusBreakdown(calls),
+    };
+    filteredCallsCache.set(cacheKey, {
+      expiresAt: Date.now() + FILTERED_CALLS_CACHE_TTL_MS,
+      snapshot,
+    });
+    return snapshot;
+  })();
+
+  filteredCallsSnapshotInFlight.set(cacheKey, snapshotPromise);
+  try {
+    return await snapshotPromise;
+  } finally {
+    filteredCallsSnapshotInFlight.delete(cacheKey);
   }
-
-  if (query.onlyRecorded === "true") {
-    calls = calls.filter((call) => call.hasRecording);
-  }
-
-  calls = applyClientSideCallFilters(calls, query);
-  calls.sort(compareCallsForReport);
-
-  const snapshot = {
-    managers,
-    calls,
-    statusBreakdown: buildCallStatusBreakdown(calls),
-  };
-  filteredCallsCache.set(cacheKey, {
-    expiresAt: Date.now() + FILTERED_CALLS_CACHE_TTL_MS,
-    snapshot,
-  });
-  return snapshot;
 }
 
 async function downloadCallAudio(fileId) {
@@ -2805,17 +2882,21 @@ app.get("/api/reports/summary", async (req, res, next) => {
 
 app.get("/api/dashboard", async (_req, res, next) => {
   try {
-    const [snapshot, store] = await Promise.all([
-      buildCallsSnapshot({ onlyRecorded: "false" }),
-      readAnalysisStore(),
-    ]);
-    const analyses = uniqueLatestAnalyses(store.analyses || []);
+    const snapshot = await buildCallsSnapshot({ onlyRecorded: "false" });
+    const dashboardCalls = snapshot.calls.map((call) => createDashboardCallSnapshot(call));
     res.json({
       success: true,
       data: {
-        summary: summarizeDashboardData(snapshot.calls, analyses),
-        calls: snapshot.calls,
-        analyses,
+        summary: {
+          ...summarizeAnalysesFromCalls(dashboardCalls),
+          totalCalls: dashboardCalls.length,
+          pendingCalls: Number(snapshot.statusBreakdown.find((item) => item.key === "pending")?.count || 0),
+          awaitingAnalysisCalls:
+            Number(snapshot.statusBreakdown.find((item) => item.key === "pending")?.count || 0) +
+            Number(snapshot.statusBreakdown.find((item) => item.key === "queued")?.count || 0),
+          statusBreakdown: snapshot.statusBreakdown,
+        },
+        calls: dashboardCalls,
         statusBreakdown: snapshot.statusBreakdown,
       },
     });

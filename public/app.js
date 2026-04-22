@@ -32,6 +32,8 @@ const state = {
   analysisPollingTimer: null,
   callsNextCursor: "",
   callsCursorByPage: {},
+  reportDataLoaded: false,
+  reportDataLoading: null,
   callsVirtual: {
     scrollTop: 0,
     viewportHeight: 0,
@@ -1447,7 +1449,49 @@ function setCurrentView(view) {
   if (view !== "report") {
     setAnalysisDrawerOpen(false);
     setAutoTranscriptionModalOpen(false);
+    return;
   }
+
+  ensureReportDataLoaded().catch((error) => {
+    notifyLoadError(error);
+  });
+}
+
+function analysisFromCall(call) {
+  const analysis = effectiveAnalysis(call);
+  if (!analysis) return null;
+  return {
+    ...analysis,
+    managerId: call?.managerId ?? analysis.managerId ?? null,
+    managerName: call?.managerName || analysis.managerName || "",
+  };
+}
+
+function dashboardAnalysesFromCalls(calls = []) {
+  return calls.map((call) => analysisFromCall(call)).filter(Boolean);
+}
+
+async function ensureReportDataLoaded(options = {}) {
+  const force = Boolean(options.force);
+  if (!force && state.reportDataLoaded) return null;
+  if (!force && state.reportDataLoading) return state.reportDataLoading;
+
+  const task = (async () => {
+    if (el.statusText) {
+      el.statusText.textContent = "Загружаю отчет...";
+    }
+    await Promise.all([
+      loadCalls({ refreshDashboard: false }),
+      loadSummary({ refreshDashboard: false }),
+    ]);
+    state.reportDataLoaded = true;
+  })();
+
+  state.reportDataLoading = task.finally(() => {
+    state.reportDataLoading = null;
+  });
+
+  return state.reportDataLoading;
 }
 
 function analysisStateKey(call) {
@@ -1977,7 +2021,10 @@ function dashboardCallsWithAnalysis() {
 }
 
 function dashboardAnalysesList() {
-  return Array.isArray(state.dashboardAnalyses) ? state.dashboardAnalyses : [];
+  if (Array.isArray(state.dashboardAnalyses) && state.dashboardAnalyses.length) {
+    return state.dashboardAnalyses;
+  }
+  return dashboardAnalysesFromCalls(state.dashboardCalls);
 }
 
 function isCheckpointViolation(status) {
@@ -2712,7 +2759,9 @@ async function loadDashboardData(options = {}) {
   const data = await api("/api/dashboard");
   state.dashboardSummary = data.summary || null;
   state.dashboardCalls = Array.isArray(data.calls) ? data.calls : [];
-  state.dashboardAnalyses = Array.isArray(data.analyses) ? data.analyses : [];
+  state.dashboardAnalyses = Array.isArray(data.analyses) && data.analyses.length
+    ? data.analyses
+    : dashboardAnalysesFromCalls(state.dashboardCalls);
   state.dashboardStatusBreakdown = Array.isArray(data.statusBreakdown) ? data.statusBreakdown : [];
   renderSummary();
   if (options.refreshDashboard !== false) {
@@ -2731,6 +2780,7 @@ async function reloadReportData(options = {}) {
     tasks.push(loadDashboardData({ refreshDashboard: false }));
   }
   await Promise.all(tasks);
+  state.reportDataLoaded = true;
   if (refreshDashboard) {
     renderDashboard();
   }
@@ -3269,8 +3319,6 @@ document.addEventListener("change", (event) => {
       loadManagers(),
       loadSettings(),
       loadScenarios(),
-      loadCalls({ refreshDashboard: false }),
-      loadSummary({ refreshDashboard: false }),
       loadDashboardData({ refreshDashboard: false }),
     ]);
     renderDashboard();
