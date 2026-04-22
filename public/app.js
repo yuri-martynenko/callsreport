@@ -20,9 +20,6 @@ const state = {
   managers: [],
   scenarioRuleOptions: {
     entityTypes: [],
-    pipelines: [],
-    stages: [],
-    lineNumbers: [],
   },
   settings: {
     autoTranscriptionMode: "disabled",
@@ -97,15 +94,6 @@ const el = {
   scenarioEntityTypeIdsDropdown: document.getElementById("scenarioEntityTypeIdsDropdown"),
   scenarioEntityTypeIdsLabel: document.getElementById("scenarioEntityTypeIdsLabel"),
   scenarioEntityTypeIdsOptions: document.getElementById("scenarioEntityTypeIdsOptions"),
-  scenarioPipelineIdsDropdown: document.getElementById("scenarioPipelineIdsDropdown"),
-  scenarioPipelineIdsLabel: document.getElementById("scenarioPipelineIdsLabel"),
-  scenarioPipelineIdsOptions: document.getElementById("scenarioPipelineIdsOptions"),
-  scenarioStageIdsDropdown: document.getElementById("scenarioStageIdsDropdown"),
-  scenarioStageIdsLabel: document.getElementById("scenarioStageIdsLabel"),
-  scenarioStageIdsOptions: document.getElementById("scenarioStageIdsOptions"),
-  scenarioLineNumbersDropdown: document.getElementById("scenarioLineNumbersDropdown"),
-  scenarioLineNumbersLabel: document.getElementById("scenarioLineNumbersLabel"),
-  scenarioLineNumbersOptions: document.getElementById("scenarioLineNumbersOptions"),
   scenarioKeywords: document.getElementById("scenarioKeywords"),
   scenarioMinDuration: document.getElementById("scenarioMinDuration"),
   scenarioMaxDuration: document.getElementById("scenarioMaxDuration"),
@@ -189,9 +177,6 @@ function selectedScenarioRuleValues(kind) {
   const map = {
     "scenario-manager": el.scenarioManagerIdsOptions,
     "scenario-entity-type": el.scenarioEntityTypeIdsOptions,
-    "scenario-pipeline": el.scenarioPipelineIdsOptions,
-    "scenario-stage": el.scenarioStageIdsOptions,
-    "scenario-line": el.scenarioLineNumbersOptions,
   };
   return selectedCheckboxValues(map[kind], `input[data-filter-option="${kind}"]`);
 }
@@ -264,39 +249,11 @@ function refreshFilterLabels() {
       input.dataset.label || input.value,
     ]),
   );
-  const scenarioPipelineMap = new Map(
-    Array.from(el.scenarioPipelineIdsOptions?.querySelectorAll('input[data-filter-option="scenario-pipeline"]') || []).map((input) => [
-      input.value,
-      input.dataset.label || input.value,
-    ]),
-  );
-  const scenarioStageMap = new Map(
-    Array.from(el.scenarioStageIdsOptions?.querySelectorAll('input[data-filter-option="scenario-stage"]') || []).map((input) => [
-      input.value,
-      input.dataset.label || input.value,
-    ]),
-  );
-  const scenarioLineMap = new Map(
-    Array.from(el.scenarioLineNumbersOptions?.querySelectorAll('input[data-filter-option="scenario-line"]') || []).map((input) => [
-      input.value,
-      input.dataset.label || input.value,
-    ]),
-  );
-
   if (el.scenarioManagerIdsLabel) {
     el.scenarioManagerIdsLabel.textContent = selectedItemsLabel(selectedScenarioRuleValues("scenario-manager"), "Все менеджеры", scenarioManagerMap);
   }
   if (el.scenarioEntityTypeIdsLabel) {
     el.scenarioEntityTypeIdsLabel.textContent = selectedItemsLabel(selectedScenarioRuleValues("scenario-entity-type"), "Любой тип", scenarioEntityTypeMap);
-  }
-  if (el.scenarioPipelineIdsLabel) {
-    el.scenarioPipelineIdsLabel.textContent = selectedItemsLabel(selectedScenarioRuleValues("scenario-pipeline"), "Все воронки", scenarioPipelineMap);
-  }
-  if (el.scenarioStageIdsLabel) {
-    el.scenarioStageIdsLabel.textContent = selectedItemsLabel(selectedScenarioRuleValues("scenario-stage"), "Все стадии", scenarioStageMap);
-  }
-  if (el.scenarioLineNumbersLabel) {
-    el.scenarioLineNumbersLabel.textContent = selectedItemsLabel(selectedScenarioRuleValues("scenario-line"), "Все линии", scenarioLineMap);
   }
 }
 
@@ -308,9 +265,6 @@ function closeFilterDropdowns(except = null) {
     el.scenarioFilterDropdown,
     el.scenarioManagerIdsDropdown,
     el.scenarioEntityTypeIdsDropdown,
-    el.scenarioPipelineIdsDropdown,
-    el.scenarioStageIdsDropdown,
-    el.scenarioLineNumbersDropdown,
   ].forEach((dropdown) => {
     if (!dropdown || dropdown === except) return;
     dropdown.open = false;
@@ -566,12 +520,6 @@ function scenarioMatchesCall(call, scenario) {
   if (rules.directions?.length && !rules.directions.includes(call.direction)) return false;
   if (rules.managerIds?.length && !rules.managerIds.includes(Number(call.managerId))) return false;
   if (rules.entityTypeIds?.length && !rules.entityTypeIds.includes(Number(call.ownerTypeId))) return false;
-  if (rules.pipelineIds?.length && !rules.pipelineIds.includes(Number(call.pipelineId))) return false;
-  if (rules.stageIds?.length && !rules.stageIds.includes(String(call.stageId || ""))) return false;
-  if (rules.lineNumbers?.length) {
-    const lineValue = String(call.lineNumber || "").trim();
-    if (!lineValue || !rules.lineNumbers.includes(lineValue)) return false;
-  }
   if (Number.isFinite(rules.minDurationSeconds) && Number(call.durationSeconds || 0) < Number(rules.minDurationSeconds)) return false;
   if (Number.isFinite(rules.maxDurationSeconds) && Number(call.durationSeconds || 0) > Number(rules.maxDurationSeconds)) return false;
   if (rules.subjectKeywords?.length) {
@@ -586,9 +534,6 @@ function scenarioPriorityScore(call, scenario) {
   let score = 0;
   if (rules.entityTypeIds?.length) score += 5;
   if (rules.managerIds?.length) score += 4;
-  if (rules.pipelineIds?.length) score += 4;
-  if (rules.stageIds?.length) score += 4;
-  if (rules.lineNumbers?.length) score += 4;
   if (rules.subjectKeywords?.length) score += 3;
   if (rules.directions?.length) score += 2;
   if (Number.isFinite(rules.minDurationSeconds) || Number.isFinite(rules.maxDurationSeconds)) score += 1;
@@ -596,9 +541,6 @@ function scenarioPriorityScore(call, scenario) {
   if (call.ownerTypeId && rules.entityTypeIds?.includes(Number(call.ownerTypeId))) score += 2;
   if (call.direction && rules.directions?.includes(call.direction)) score += 1;
   if (call.managerId && rules.managerIds?.includes(Number(call.managerId))) score += 2;
-  if (call.pipelineId && rules.pipelineIds?.includes(Number(call.pipelineId))) score += 2;
-  if (call.stageId && rules.stageIds?.includes(String(call.stageId))) score += 2;
-  if (call.lineNumber && rules.lineNumbers?.includes(String(call.lineNumber))) score += 2;
   return score;
 }
 
@@ -1396,9 +1338,6 @@ function collectScenarioPayload() {
       directions: el.scenarioDirection.value ? [el.scenarioDirection.value] : [],
       managerIds: selectedScenarioRuleValues("scenario-manager").map((value) => Number(value)).filter(Number.isFinite),
       entityTypeIds: selectedScenarioRuleValues("scenario-entity-type").map((value) => Number(value)).filter(Number.isFinite),
-      pipelineIds: selectedScenarioRuleValues("scenario-pipeline").map((value) => Number(value)).filter(Number.isFinite),
-      stageIds: selectedScenarioRuleValues("scenario-stage"),
-      lineNumbers: selectedScenarioRuleValues("scenario-line"),
       subjectKeywords: parseTextList(el.scenarioKeywords.value),
       minDurationSeconds: el.scenarioMinDuration.value.trim() === "" ? null : Number(el.scenarioMinDuration.value),
       maxDurationSeconds: el.scenarioMaxDuration.value.trim() === "" ? null : Number(el.scenarioMaxDuration.value),
@@ -1424,9 +1363,6 @@ function scenarioRuleSummaries(scenario) {
   if (scenario.matchRules?.entityTypeIds?.length) {
     rules.push(`CRM: ${scenario.matchRules.entityTypeIds.map((item) => ownerTypeLabel(item)).join(", ")}`);
   }
-  if (scenario.matchRules?.pipelineIds?.length) rules.push(`Воронки: ${scenario.matchRules.pipelineIds.join(", ")}`);
-  if (scenario.matchRules?.stageIds?.length) rules.push(`Стадии: ${scenario.matchRules.stageIds.join(", ")}`);
-  if (scenario.matchRules?.lineNumbers?.length) rules.push(`Линии: ${scenario.matchRules.lineNumbers.join(", ")}`);
   if (scenario.matchRules?.subjectKeywords?.length) rules.push(`Ключи: ${scenario.matchRules.subjectKeywords.join(", ")}`);
   if (scenario.matchRules?.minDurationSeconds != null) rules.push(`От ${scenario.matchRules.minDurationSeconds} сек`);
   if (scenario.matchRules?.maxDurationSeconds != null) rules.push(`До ${scenario.matchRules.maxDurationSeconds} сек`);
@@ -1499,9 +1435,6 @@ function resetScenarioForm() {
   el.scenarioDirection.value = "";
   setCheckedValues(el.scenarioManagerIdsOptions, 'input[data-filter-option="scenario-manager"]', []);
   setCheckedValues(el.scenarioEntityTypeIdsOptions, 'input[data-filter-option="scenario-entity-type"]', []);
-  setCheckedValues(el.scenarioPipelineIdsOptions, 'input[data-filter-option="scenario-pipeline"]', []);
-  setCheckedValues(el.scenarioStageIdsOptions, 'input[data-filter-option="scenario-stage"]', []);
-  setCheckedValues(el.scenarioLineNumbersOptions, 'input[data-filter-option="scenario-line"]', []);
   el.scenarioKeywords.value = "";
   el.scenarioMinDuration.value = "";
   el.scenarioMaxDuration.value = "";
@@ -1524,9 +1457,6 @@ function applyScenarioToForm(scenario) {
   el.scenarioDirection.value = scenario.matchRules?.directions?.[0] || "";
   setCheckedValues(el.scenarioManagerIdsOptions, 'input[data-filter-option="scenario-manager"]', scenario.matchRules?.managerIds || []);
   setCheckedValues(el.scenarioEntityTypeIdsOptions, 'input[data-filter-option="scenario-entity-type"]', scenario.matchRules?.entityTypeIds || []);
-  setCheckedValues(el.scenarioPipelineIdsOptions, 'input[data-filter-option="scenario-pipeline"]', scenario.matchRules?.pipelineIds || []);
-  setCheckedValues(el.scenarioStageIdsOptions, 'input[data-filter-option="scenario-stage"]', scenario.matchRules?.stageIds || []);
-  setCheckedValues(el.scenarioLineNumbersOptions, 'input[data-filter-option="scenario-line"]', scenario.matchRules?.lineNumbers || []);
   el.scenarioKeywords.value = (scenario.matchRules?.subjectKeywords || []).join(", ");
   el.scenarioMinDuration.value = scenario.matchRules?.minDurationSeconds ?? "";
   el.scenarioMaxDuration.value = scenario.matchRules?.maxDurationSeconds ?? "";
@@ -1571,13 +1501,12 @@ function renderScenarioList() {
       const managerLabel = scenario.matchRules?.managerIds?.length
         ? scenario.matchRules.managerIds.map((item) => managerNameById(item)).join(", ")
         : "Все";
-      const crmParts = [];
-      if (scenario.matchRules?.entityTypeIds?.length) crmParts.push(scenario.matchRules.entityTypeIds.map((item) => ownerTypeLabel(item)).join(", "));
-      if (scenario.matchRules?.pipelineIds?.length) crmParts.push(`воронки: ${scenario.matchRules.pipelineIds.join(", ")}`);
-      if (scenario.matchRules?.stageIds?.length) crmParts.push(`стадии: ${scenario.matchRules.stageIds.join(", ")}`);
-      const keywordParts = [];
-      if (scenario.matchRules?.subjectKeywords?.length) keywordParts.push(`ключи: ${scenario.matchRules.subjectKeywords.join(", ")}`);
-      if (scenario.matchRules?.lineNumbers?.length) keywordParts.push(`линии: ${scenario.matchRules.lineNumbers.join(", ")}`);
+      const crmLabel = scenario.matchRules?.entityTypeIds?.length
+        ? scenario.matchRules.entityTypeIds.map((item) => ownerTypeLabel(item)).join(", ")
+        : "Без ограничений";
+      const keywordLabel = scenario.matchRules?.subjectKeywords?.length
+        ? scenario.matchRules.subjectKeywords.join(", ")
+        : "Без ограничений";
       const durationParts = [];
       if (scenario.matchRules?.minDurationSeconds != null) durationParts.push(`от ${scenario.matchRules.minDurationSeconds} сек`);
       if (scenario.matchRules?.maxDurationSeconds != null) durationParts.push(`до ${scenario.matchRules.maxDurationSeconds} сек`);
@@ -1593,8 +1522,8 @@ function renderScenarioList() {
           <td>${scenario.isDefault ? "Да" : "Нет"}</td>
           <td>${escapeHtml(directionLabel)}</td>
           <td>${escapeHtml(managerLabel)}</td>
-          <td>${escapeHtml(crmParts.join(" • ") || "Без ограничений")}</td>
-          <td>${escapeHtml(keywordParts.join(" • ") || "Без ограничений")}</td>
+          <td>${escapeHtml(crmLabel)}</td>
+          <td>${escapeHtml(keywordLabel)}</td>
           <td>${escapeHtml(durationParts.join(" • ") || "Любая")}</td>
         </tr>`;
     })
@@ -2747,9 +2676,6 @@ async function loadScenarioRuleOptions() {
   const data = await api("/api/scenario-options");
   state.scenarioRuleOptions = {
     entityTypes: data.entityTypes || [],
-    pipelines: data.pipelines || [],
-    stages: data.stages || [],
-    lineNumbers: data.lineNumbers || [],
   };
 
   if (el.scenarioEntityTypeIdsOptions) {
@@ -2757,27 +2683,6 @@ async function loadScenarioRuleOptions() {
       state.scenarioRuleOptions.entityTypes,
       "scenario-entity-type",
       new Set(selectedScenarioRuleValues("scenario-entity-type")),
-    );
-  }
-  if (el.scenarioPipelineIdsOptions) {
-    el.scenarioPipelineIdsOptions.innerHTML = scenarioRuleOptionMarkup(
-      state.scenarioRuleOptions.pipelines,
-      "scenario-pipeline",
-      new Set(selectedScenarioRuleValues("scenario-pipeline")),
-    );
-  }
-  if (el.scenarioStageIdsOptions) {
-    el.scenarioStageIdsOptions.innerHTML = scenarioRuleOptionMarkup(
-      state.scenarioRuleOptions.stages,
-      "scenario-stage",
-      new Set(selectedScenarioRuleValues("scenario-stage")),
-    );
-  }
-  if (el.scenarioLineNumbersOptions) {
-    el.scenarioLineNumbersOptions.innerHTML = scenarioRuleOptionMarkup(
-      state.scenarioRuleOptions.lineNumbers,
-      "scenario-line",
-      new Set(selectedScenarioRuleValues("scenario-line")),
     );
   }
   refreshFilterLabels();
@@ -3350,7 +3255,7 @@ document.addEventListener("change", (event) => {
 
   if (
     event.target.matches(
-      'input[data-filter-option="scenario-manager"], input[data-filter-option="scenario-entity-type"], input[data-filter-option="scenario-pipeline"], input[data-filter-option="scenario-stage"], input[data-filter-option="scenario-line"]',
+      'input[data-filter-option="scenario-manager"], input[data-filter-option="scenario-entity-type"]',
     )
   ) {
     refreshFilterLabels();
@@ -3363,7 +3268,7 @@ document.addEventListener("change", (event) => {
   }
 });
 
-[el.managerIdsDropdown, el.directionsDropdown, el.analysisStatesDropdown, el.scenarioFilterDropdown, el.scenarioManagerIdsDropdown, el.scenarioEntityTypeIdsDropdown, el.scenarioPipelineIdsDropdown, el.scenarioStageIdsDropdown, el.scenarioLineNumbersDropdown].forEach((dropdown) => {
+[el.managerIdsDropdown, el.directionsDropdown, el.analysisStatesDropdown, el.scenarioFilterDropdown, el.scenarioManagerIdsDropdown, el.scenarioEntityTypeIdsDropdown].forEach((dropdown) => {
   if (!dropdown) return;
   dropdown.addEventListener("toggle", () => {
     if (dropdown.open) {

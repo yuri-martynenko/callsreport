@@ -260,28 +260,6 @@ function createId(prefix = "id") {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function extractLineNumber(activity = {}) {
-  const candidates = [
-    activity.lineNumber,
-    activity.lineId,
-    activity.LINE_NUMBER,
-    activity.LINE_ID,
-    activity.phoneNumber,
-    activity.PHONE_NUMBER,
-    activity.SETTINGS?.LINE_NUMBER,
-    activity.SETTINGS?.LINE_ID,
-    activity.SETTINGS?.PHONE_NUMBER,
-    activity.SETTINGS?.PHONE,
-    activity.PROVIDER_DATA?.lineNumber,
-    activity.PROVIDER_DATA?.phoneNumber,
-  ];
-  for (const candidate of candidates) {
-    const normalized = String(candidate || "").trim();
-    if (normalized) return normalized;
-  }
-  return "";
-}
-
 function sanitizeStringList(value) {
   if (!Array.isArray(value)) return [];
   return value.map((item) => String(item || "").trim()).filter(Boolean);
@@ -315,9 +293,6 @@ function sanitizeScenario(input = {}) {
       managerIds: sanitizePositiveIntList(input.matchRules?.managerIds),
       subjectKeywords: sanitizeStringList(input.matchRules?.subjectKeywords),
       entityTypeIds: sanitizePositiveIntList(input.matchRules?.entityTypeIds),
-      pipelineIds: sanitizePositiveIntList(input.matchRules?.pipelineIds),
-      stageIds: sanitizeStringList(input.matchRules?.stageIds),
-      lineNumbers: sanitizeStringList(input.matchRules?.lineNumbers),
       minDurationSeconds: hasMinDuration && Number.isFinite(Number(minDurationRaw))
         ? Number(minDurationRaw)
         : null,
@@ -347,12 +322,6 @@ function matchesScenario(call, scenario) {
   if (rules.directions?.length && !rules.directions.includes(call.direction)) return false;
   if (rules.managerIds?.length && !rules.managerIds.includes(call.managerId)) return false;
   if (rules.entityTypeIds?.length && !rules.entityTypeIds.includes(Number(call.ownerTypeId))) return false;
-  if (rules.pipelineIds?.length && !rules.pipelineIds.includes(Number(call.pipelineId))) return false;
-  if (rules.stageIds?.length && !rules.stageIds.includes(String(call.stageId || ""))) return false;
-  if (rules.lineNumbers?.length) {
-    const lineValue = String(call.lineNumber || "").trim();
-    if (!lineValue || !rules.lineNumbers.includes(lineValue)) return false;
-  }
   if (
     Number.isFinite(rules.minDurationSeconds) &&
     Number(call.durationSeconds || 0) < Number(rules.minDurationSeconds)
@@ -378,9 +347,6 @@ function scenarioPriority(call, scenario) {
   let score = 0;
   if (rules.entityTypeIds?.length) score += 5;
   if (rules.managerIds?.length) score += 4;
-  if (rules.pipelineIds?.length) score += 4;
-  if (rules.stageIds?.length) score += 4;
-  if (rules.lineNumbers?.length) score += 4;
   if (rules.subjectKeywords?.length) score += 3;
   if (rules.directions?.length) score += 2;
   if (Number.isFinite(rules.minDurationSeconds) || Number.isFinite(rules.maxDurationSeconds)) score += 1;
@@ -388,9 +354,6 @@ function scenarioPriority(call, scenario) {
   if (call.ownerTypeId && rules.entityTypeIds?.includes(Number(call.ownerTypeId))) score += 2;
   if (call.direction && rules.directions?.includes(call.direction)) score += 1;
   if (call.managerId && rules.managerIds?.includes(call.managerId)) score += 2;
-  if (call.pipelineId && rules.pipelineIds?.includes(Number(call.pipelineId))) score += 2;
-  if (call.stageId && rules.stageIds?.includes(String(call.stageId))) score += 2;
-  if (call.lineNumber && rules.lineNumbers?.includes(String(call.lineNumber))) score += 2;
   return score;
 }
 
@@ -409,93 +372,6 @@ function pickScenarioForCall(call, scenarios, requestedScenarioId) {
   }
 
   return getDefaultScenario(scenarios);
-}
-
-async function resolveCrmContextForCall(call = {}) {
-  const ownerTypeId = Number(call.ownerTypeId || 0);
-  const ownerId = Number(call.ownerId || 0);
-  const lineNumber = String(call.lineNumber || "").trim();
-
-  if (!ownerTypeId || !ownerId) {
-    return {
-      pipelineId: null,
-      stageId: "",
-      lineNumber,
-    };
-  }
-
-  if (ownerTypeId === 2) {
-    const deal = await readCrmEntityCached(`deal:${ownerId}`, async () => {
-      const payload = await vibeJson(`/v1/deals/${ownerId}`);
-      return payload?.data || null;
-    });
-    return {
-      pipelineId: Number(deal?.categoryId || 0) || null,
-      stageId: String(deal?.stageId || "").trim(),
-      lineNumber,
-    };
-  }
-
-  if (ownerTypeId === 1) {
-    const lead = await readCrmEntityCached(`lead:${ownerId}`, async () => {
-      const payload = await vibeJson(`/v1/leads/${ownerId}`);
-      return payload?.data || null;
-    });
-    return {
-      pipelineId: null,
-      stageId: String(lead?.stageId || "").trim(),
-      lineNumber,
-    };
-  }
-
-  return {
-    pipelineId: null,
-    stageId: "",
-    lineNumber,
-  };
-}
-
-async function hydrateCallsCrmContext(calls = []) {
-  if (!Array.isArray(calls) || !calls.length) return calls;
-  const uniqueCalls = Array.from(
-    new Map(
-      calls
-        .filter(Boolean)
-        .map((call) => [`${Number(call.ownerTypeId || 0)}:${Number(call.ownerId || 0)}:${String(call.lineNumber || "").trim()}`, call]),
-    ).values(),
-  );
-
-  for (let index = 0; index < uniqueCalls.length; index += 25) {
-    const batch = uniqueCalls.slice(index, index + 25);
-    await Promise.all(
-      batch.map(async (call) => {
-        const context = await resolveCrmContextForCall(call);
-        call.pipelineId = context.pipelineId;
-        call.stageId = context.stageId;
-        call.lineNumber = context.lineNumber;
-      }),
-    );
-  }
-
-  const contextByKey = new Map(
-    uniqueCalls.map((call) => [
-      `${Number(call.ownerTypeId || 0)}:${Number(call.ownerId || 0)}:${String(call.lineNumber || "").trim()}`,
-      {
-        pipelineId: call.pipelineId,
-        stageId: call.stageId,
-        lineNumber: call.lineNumber,
-      },
-    ]),
-  );
-
-  for (const call of calls) {
-    const context = contextByKey.get(`${Number(call.ownerTypeId || 0)}:${Number(call.ownerId || 0)}:${String(call.lineNumber || "").trim()}`);
-    if (!context) continue;
-    call.pipelineId = context.pipelineId;
-    call.stageId = context.stageId;
-    call.lineNumber = context.lineNumber;
-  }
-  return calls;
 }
 
 function buildLatestRecordsMap(items = [], keySelector) {
@@ -1958,8 +1834,6 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
         : analysis.sourceUpdatedAt !== activity.updatedAt
           ? "outdated"
           : deriveAnalysisResultState(analysis);
-  const lineNumber = extractLineNumber(activity);
-
   return {
     id: activity.id,
     subject: activity.subject,
@@ -1978,9 +1852,6 @@ function normalizeCall(activity, managersById, analysis, failure, latestJob = nu
     ownerTypeId: activity.ownerTypeId,
     ownerTypeLabel: ownerTypeLabel(activity.ownerTypeId),
     crmEntityUrl: buildCrmEntityUrl(activity.ownerTypeId, activity.ownerId),
-    pipelineId: null,
-    stageId: "",
-    lineNumber,
     missedCall: Boolean(activity.SETTINGS?.MISSED_CALL),
     hasRecording: files.length > 0,
     recordingFileId: files[0]?.id || null,
@@ -2153,8 +2024,6 @@ async function buildCallsSnapshot(query = {}) {
       return normalizedCall;
     });
 
-    await hydrateCallsCrmContext(calls);
-
     if (query.search) {
       const search = query.search.toLowerCase();
       calls = calls.filter(
@@ -2211,29 +2080,17 @@ async function buildScenarioOptions() {
   const scenarios = Array.isArray(scenarioStore?.scenarios) ? scenarioStore.scenarios : [];
   const calls = Array.isArray(snapshot?.calls) ? snapshot.calls : [];
   const entityTypes = new Set(["1", "2", "3", "4", "31"]);
-  const pipelineIds = new Set();
-  const stageIds = new Set();
-  const lineNumbers = new Set();
 
   for (const scenario of scenarios) {
     for (const value of scenario?.matchRules?.entityTypeIds || []) entityTypes.add(String(value));
-    for (const value of scenario?.matchRules?.pipelineIds || []) pipelineIds.add(String(value));
-    for (const value of scenario?.matchRules?.stageIds || []) stageIds.add(String(value));
-    for (const value of scenario?.matchRules?.lineNumbers || []) lineNumbers.add(String(value));
   }
 
   for (const call of calls) {
     if (Number(call?.ownerTypeId || 0) > 0) entityTypes.add(String(call.ownerTypeId));
-    if (Number(call?.pipelineId || 0) > 0) pipelineIds.add(String(call.pipelineId));
-    if (String(call?.stageId || "").trim()) stageIds.add(String(call.stageId));
-    if (String(call?.lineNumber || "").trim()) lineNumbers.add(String(call.lineNumber));
   }
 
   return {
     entityTypes: sortedOptionList(entityTypes, (value) => ownerTypeLabel(Number(value)), true),
-    pipelines: sortedOptionList(pipelineIds, (value) => `Воронка ${value}`, true),
-    stages: sortedOptionList(stageIds, (value) => value),
-    lineNumbers: sortedOptionList(lineNumbers, (value) => value),
   };
 }
 
@@ -2438,7 +2295,6 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
   const managersById = new Map(managers.map((manager) => [manager.id, manager]));
   const rawCall = callPayload.data;
   const call = normalizeCall(rawCall, managersById, null);
-  await hydrateCallsCrmContext([call]);
   const selectedScenario = pickScenarioForCall(call, scenarioStore.scenarios || [], scenarioId);
   const effectiveScriptChecklist = String(scriptChecklist || selectedScenario?.scriptChecklist || "").trim();
   const effectiveCustomMetrics =
@@ -2589,7 +2445,6 @@ async function buildAnalysisJobContext(activityId, scriptChecklist, customMetric
   const managersById = new Map(managers.map((manager) => [manager.id, manager]));
   const rawCall = callPayload.data;
   const call = normalizeCall(rawCall, managersById, null, null);
-  await hydrateCallsCrmContext([call]);
   const selectedScenario = pickScenarioForCall(call, scenarioStore.scenarios || [], scenarioId);
   const effectiveScriptChecklist = String(scriptChecklist || selectedScenario?.scriptChecklist || "").trim();
   const effectiveCustomMetrics =
