@@ -24,6 +24,12 @@
 
 ## Записи
 
+## 2026-04-22 12:31 VLAT
+
+- Задача: deploy переработанного UX страницы `Сценарии анализа` с переходом от таблицы к карточной библиотеке сценариев, поиску, summary-метрикам и пошаговому редактору сценария.
+- Длительность: около 20 минут.
+- Результат: `push` коммита `550f3ad` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production-версии `index.html`, `styles.css` и `app.js` на `127.0.0.1:3000` подтвердили наличие `scenarioSearch`, `scenarioList`, `scenarioFormTitle`, `scenario-overview-grid`, `scenario-card`, `scenario-action-stack`, `filteredScenarios` и `updateScenarioSummaryCards`.
+
 ## 2026-04-22 12:18 VLAT
 
 - Задача: deploy увеличения размеров клеток heatmap до значения в 2 раза больше квадратов легенды.
