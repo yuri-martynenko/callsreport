@@ -17,6 +17,12 @@
 - Длительность: около 55 минут.
 - Примечание: локальный smoke показал сокращение payload `/api/dashboard` примерно с 1.9 MB до 0.57 MB; production deploy выполнен с коммита `8942a82`, шаги `stop_existing`, `clean`, `download`, `normalize_windows_paths`, `cleanup_metadata`, `runtime`, `install`, `systemd`, `start`, `healthcheck` завершились со статусом `ok`.
 
+## 2026-04-22 17:13 VLAT
+
+- Задача: устранение остаточной медленной загрузки после рестарта; добавлен persistent activity snapshot cache в SQLite и чтение стартового списка звонков из локального snapshot вместо обязательного внешнего full-fetch к Vibe API.
+- Длительность: около 35 минут.
+- Примечание: локальный smoke показал `dashboard` около `8.8 s` на полностью пустом cache и около `2.0 s` после рестарта с уже сохранённым snapshot; warm path `managers/settings/scenarios/dashboard` составил примерно `88 ms / 11 ms / 9 ms / 352 ms`. Production deploy выполнен с коммита `6ea9400`, шаги `stop_existing`, `clean`, `download`, `normalize_windows_paths`, `cleanup_metadata`, `runtime`, `install`, `systemd`, `start`, `healthcheck` завершились со статусом `ok`.
+
 ## Формат записи
 
 ```text
