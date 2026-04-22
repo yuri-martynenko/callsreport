@@ -297,121 +297,40 @@
                 <div class="section-head">
                   <div class="section-head-main">
                     <h2>Настройка сценариев анализа</h2>
-                    <span class="muted">Разделите сценарий на понятный чек-лист разговора и правила автоподбора, чтобы быстрее поддерживать библиотеку.</span>
+                    <span class="muted">Библиотека сценариев отображается как реестр с основными параметрами. Просмотр и редактирование выполняются в отдельном окне.</span>
+                  </div>
+                  <div class="section-head-actions">
+                    <button id="newScenario" class="primary-action" type="button">Новый сценарий</button>
                   </div>
                 </div>
 
-                <section class="scenario-overview-grid">
-                  <article class="summary-card scenario-summary-card">
-                    <div class="muted">Всего сценариев</div>
-                    <div id="scenarioCountValue" class="value">0</div>
-                    <div class="hint">Активная библиотека для ручного и автоматического анализа.</div>
-                  </article>
-                  <article class="summary-card scenario-summary-card">
-                    <div class="muted">Автоподбор включён</div>
-                    <div id="scenarioAutoApplyValue" class="value">0</div>
-                    <div class="hint">Сценарии, которые участвуют в выборе без ручного указания.</div>
-                  </article>
-                  <article class="summary-card scenario-summary-card">
-                    <div class="muted">Есть правила</div>
-                    <div id="scenarioRulesValue" class="value">0</div>
-                    <div class="hint">Сценарии, где уже настроены условия направления, CRM или длительности.</div>
-                  </article>
-                </section>
+                <div class="scenario-library-toolbar">
+                  <label class="scenario-search-field">
+                    <span>Поиск по названию, описанию и правилам</span>
+                    <input id="scenarioSearch" type="search" placeholder="Например: входящие, сделка, консультация" />
+                  </label>
+                  <div id="scenarioLibraryMeta" class="muted scenario-library-meta">Загрузите список, чтобы выбрать сценарий для просмотра или редактирования.</div>
+                </div>
 
-                <div class="scenario-layout">
-                  <section class="scenario-library">
-                    <div class="section-head scenario-library-head">
-                      <div class="section-head-main">
-                        <h2>Библиотека сценариев</h2>
-                        <span id="scenarioLibraryMeta" class="muted">Загрузите список, чтобы выбрать сценарий для редактирования.</span>
-                      </div>
-                      <button id="newScenario" type="button">Новый сценарий</button>
-                    </div>
-                    <label class="scenario-search-field">
-                      <span>Поиск по названию, описанию и правилам</span>
-                      <input id="scenarioSearch" type="search" placeholder="Например: входящие, сделка, консультация" />
-                    </label>
-                    <div id="scenarioList" class="scenario-list" aria-live="polite"></div>
-                  </section>
-
-                  <div class="scenario-form">
-                    <section class="scenario-form-section scenario-form-intro">
-                      <div class="scenario-form-heading">
-                        <div>
-                          <div id="scenarioFormEyebrow" class="scenario-form-eyebrow">Новый сценарий</div>
-                          <h3 id="scenarioFormTitle">Соберите логику анализа</h3>
-                        </div>
-                        <div id="scenarioSelectedBadge" class="badge neutral">Черновик</div>
-                      </div>
-                      <div id="scenarioSelectionSummary" class="scenario-selection-summary muted">
-                        Выберите сценарий слева или создайте новый, чтобы заполнить чек-лист разговора и правила автоподбора.
-                      </div>
-                    </section>
-
-                    <section class="scenario-form-section">
-                      <div class="section-head section-head-compact">
-                        <div class="section-head-main">
-                          <h3>1. Основа сценария</h3>
-                          <span class="muted">Сначала зафиксируйте, что это за разговор и какие этапы обязательны.</span>
-                        </div>
-                      </div>
-                      <div class="scenario-core-grid">
-                        <label><span>Название сценария</span><input id="scenarioName" type="text" placeholder="Например: Продажи первичных консультаций" /></label>
-                        <label><span>Описание</span><input id="scenarioDescription" type="text" placeholder="Кратко опишите, когда использовать этот сценарий" /></label>
-                      </div>
-                      <label><span>Сценарий для проверки</span><textarea id="scenarioScriptChecklist" rows="11" placeholder="Опишите этапы скрипта: приветствие, квалификация, презентация, работа с возражениями, следующий шаг."></textarea></label>
-                      <div class="scenario-form-tip">
-                        Хороший сценарий обычно содержит 5-8 проверяемых этапов, явные критерии прохождения и понятный следующий шаг.
-                      </div>
-                    </section>
-
-                    <section class="scenario-form-section">
-                      <div class="section-head section-head-compact">
-                        <div class="section-head-main">
-                          <h3>2. Дополнительные метрики</h3>
-                          <span class="muted">Используйте только специальные проверки, которые нельзя удобно выразить в основном чек-листе.</span>
-                        </div>
-                      </div>
-                      <label><span>Индивидуальные параметры</span><textarea id="scenarioCustomMetrics" rows="7" placeholder='Например: ["Юридическая точность", "Эмпатия", "Чёткость следующего шага"]'></textarea></label>
-                    </section>
-
-                    <section class="scenario-form-section">
-                      <div class="section-head section-head-compact">
-                        <div class="section-head-main">
-                          <h3>3. Правила автоподбора</h3>
-                          <span class="muted">Эти поля нужны только для автоматического выбора сценария. Для ручного запуска их можно оставить пустыми.</span>
-                        </div>
-                      </div>
-                      <div class="rules-grid">
-                        <label>
-                          <span>Направление</span>
-                          <select id="scenarioDirection">
-                            <option value="">Любое</option>
-                            <option value="incoming">Входящие</option>
-                            <option value="outgoing">Исходящие</option>
-                          </select>
-                        </label>
-                        <label><span>Менеджеры</span><input id="scenarioManagerIds" type="text" placeholder="ID через запятую" /></label>
-                        <label><span>Тип CRM-сущности</span><input id="scenarioEntityTypeIds" type="text" placeholder="1 лид, 2 сделка, 3 контакт, 4 компания" /></label>
-                        <label><span>ID воронок</span><input id="scenarioPipelineIds" type="text" placeholder="ID через запятую" /></label>
-                        <label><span>Коды стадий</span><input id="scenarioStageIds" type="text" placeholder="Например: NEW, PREPAYMENT_INVOICE" /></label>
-                        <label><span>Номера линий</span><input id="scenarioLineNumbers" type="text" placeholder="Когда номер линии доступен в звонке" /></label>
-                        <label><span>Ключевые слова</span><input id="scenarioKeywords" type="text" placeholder="Например: банкротство, консультация" /></label>
-                        <label><span>Мин. длительность, сек</span><input id="scenarioMinDuration" type="number" min="0" step="1" /></label>
-                        <label><span>Макс. длительность, сек</span><input id="scenarioMaxDuration" type="number" min="0" step="1" /></label>
-                      </div>
-                      <div class="rules-grid rules-grid-compact">
-                        <label class="checkbox"><input id="scenarioAutoApply" type="checkbox" checked /><span>Участвует в автоподборе</span></label>
-                        <label class="checkbox"><input id="scenarioIsDefault" type="checkbox" /><span>Сценарий по умолчанию</span></label>
-                      </div>
-                    </section>
-
-                    <div class="action-stack scenario-action-stack">
-                      <button id="saveScenario" class="accent" type="button">Сохранить сценарий</button>
-                      <button id="deleteScenario" type="button">Удалить сценарий</button>
-                    </div>
-                  </div>
+                <div class="table-wrap scenario-table-wrap">
+                  <table class="scenario-registry-table">
+                    <thead>
+                      <tr>
+                        <th class="scenario-name-column">Сценарий</th>
+                        <th class="scenario-description-column">Описание</th>
+                        <th>Чек-лист</th>
+                        <th>Метрики</th>
+                        <th>Авто</th>
+                        <th>По умолчанию</th>
+                        <th>Направление</th>
+                        <th>Менеджеры</th>
+                        <th>CRM / воронки / стадии</th>
+                        <th>Ключи / линии</th>
+                        <th>Длительность</th>
+                      </tr>
+                    </thead>
+                    <tbody id="scenarioList"></tbody>
+                  </table>
                 </div>
               </section>
             </div>
@@ -496,6 +415,91 @@
             </div>
             <div class="action-stack">
               <button id="saveSettings" class="accent" type="button" disabled>Сохранить</button>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+
+    <div id="scenarioModal" class="analysis-drawer">
+      <button id="scenarioModalBackdrop" class="analysis-drawer-backdrop" type="button" aria-label="Закрыть сценарий"></button>
+      <aside class="analysis-drawer-panel scenario-modal-panel" aria-label="Детализация сценария">
+        <div class="analysis-drawer-head">
+          <div class="section-head analysis-drawer-section-head">
+            <div class="section-head-main analysis-drawer-heading">
+              <div class="analysis-title-stack">
+                <h2 id="scenarioModalTitle">Новый сценарий</h2>
+                <span id="scenarioSelectedBadge" class="badge neutral">Черновик</span>
+              </div>
+              <div id="scenarioSelectionSummary" class="analysis-header-meta scenario-modal-meta">
+                Выберите сценарий из таблицы или создайте новый, чтобы заполнить детальные параметры.
+              </div>
+            </div>
+            <div class="analysis-drawer-head-actions">
+              <button id="closeScenarioModal" class="analysis-drawer-close" type="button" aria-label="Закрыть">×</button>
+            </div>
+          </div>
+        </div>
+        <div class="analysis-detail scenario-modal-body">
+          <section class="detail-block scenario-modal-section">
+            <div class="section-head section-head-compact">
+              <div class="section-head-main">
+                <h3>Основная информация</h3>
+                <span class="muted">Что это за сценарий и какие пункты должны проверяться в разговоре.</span>
+              </div>
+            </div>
+            <div class="scenario-core-grid">
+              <label><span>Название сценария</span><input id="scenarioName" type="text" placeholder="Например: Продажи первичных консультаций" /></label>
+              <label><span>Описание</span><input id="scenarioDescription" type="text" placeholder="Кратко опишите, когда использовать этот сценарий" /></label>
+            </div>
+            <label><span>Сценарий для проверки</span><textarea id="scenarioScriptChecklist" rows="11" placeholder="Опишите этапы скрипта: приветствие, квалификация, презентация, работа с возражениями, следующий шаг."></textarea></label>
+          </section>
+
+          <section class="detail-block scenario-modal-section">
+            <div class="section-head section-head-compact">
+              <div class="section-head-main">
+                <h3>Индивидуальные параметры</h3>
+                <span class="muted">Отдельные метрики, которые нужно оценивать дополнительно к основному сценарию.</span>
+              </div>
+            </div>
+            <label><span>Индивидуальные параметры</span><textarea id="scenarioCustomMetrics" rows="7" placeholder='Например: ["Юридическая точность", "Эмпатия", "Чёткость следующего шага"]'></textarea></label>
+          </section>
+
+          <section class="detail-block scenario-modal-section">
+            <div class="section-head section-head-compact">
+              <div class="section-head-main">
+                <h3>Правила автоподбора</h3>
+                <span class="muted">По этим полям система может автоматически выбирать сценарий для звонка.</span>
+              </div>
+            </div>
+            <div class="rules-grid">
+              <label>
+                <span>Направление</span>
+                <select id="scenarioDirection">
+                  <option value="">Любое</option>
+                  <option value="incoming">Входящие</option>
+                  <option value="outgoing">Исходящие</option>
+                </select>
+              </label>
+              <label><span>Менеджеры</span><input id="scenarioManagerIds" type="text" placeholder="ID через запятую" /></label>
+              <label><span>Тип CRM-сущности</span><input id="scenarioEntityTypeIds" type="text" placeholder="1 лид, 2 сделка, 3 контакт, 4 компания" /></label>
+              <label><span>ID воронок</span><input id="scenarioPipelineIds" type="text" placeholder="ID через запятую" /></label>
+              <label><span>Коды стадий</span><input id="scenarioStageIds" type="text" placeholder="Например: NEW, PREPAYMENT_INVOICE" /></label>
+              <label><span>Номера линий</span><input id="scenarioLineNumbers" type="text" placeholder="Когда номер линии доступен в звонке" /></label>
+              <label><span>Ключевые слова</span><input id="scenarioKeywords" type="text" placeholder="Например: банкротство, консультация" /></label>
+              <label><span>Мин. длительность, сек</span><input id="scenarioMinDuration" type="number" min="0" step="1" /></label>
+              <label><span>Макс. длительность, сек</span><input id="scenarioMaxDuration" type="number" min="0" step="1" /></label>
+            </div>
+            <div class="rules-grid rules-grid-compact">
+              <label class="checkbox"><input id="scenarioAutoApply" type="checkbox" checked /><span>Участвует в автоподборе</span></label>
+              <label class="checkbox"><input id="scenarioIsDefault" type="checkbox" /><span>Сценарий по умолчанию</span></label>
+            </div>
+          </section>
+
+          <section class="detail-block scenario-modal-actions">
+            <div class="action-stack">
+              <button id="saveScenario" class="accent" type="button">Сохранить сценарий</button>
+              <button id="deleteScenario" type="button">Удалить сценарий</button>
             </div>
           </section>
         </div>

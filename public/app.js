@@ -99,12 +99,11 @@ const el = {
   deleteScenario: document.getElementById("deleteScenario"),
   scenarioList: document.getElementById("scenarioList"),
   scenarioSearch: document.getElementById("scenarioSearch"),
-  scenarioCountValue: document.getElementById("scenarioCountValue"),
-  scenarioAutoApplyValue: document.getElementById("scenarioAutoApplyValue"),
-  scenarioRulesValue: document.getElementById("scenarioRulesValue"),
   scenarioLibraryMeta: document.getElementById("scenarioLibraryMeta"),
-  scenarioFormEyebrow: document.getElementById("scenarioFormEyebrow"),
-  scenarioFormTitle: document.getElementById("scenarioFormTitle"),
+  scenarioModal: document.getElementById("scenarioModal"),
+  scenarioModalBackdrop: document.getElementById("scenarioModalBackdrop"),
+  closeScenarioModal: document.getElementById("closeScenarioModal"),
+  scenarioModalTitle: document.getElementById("scenarioModalTitle"),
   scenarioSelectedBadge: document.getElementById("scenarioSelectedBadge"),
   scenarioSelectionSummary: document.getElementById("scenarioSelectionSummary"),
   summaryCards: document.getElementById("summaryCards"),
@@ -504,7 +503,8 @@ function callClientTitle(call = {}) {
 function updateOverlayState() {
   const hasOpenOverlay =
     Boolean(el.analysisDrawer?.classList.contains("open")) ||
-    Boolean(el.autoTranscriptionModal?.classList.contains("open"));
+    Boolean(el.autoTranscriptionModal?.classList.contains("open")) ||
+    Boolean(el.scenarioModal?.classList.contains("open"));
   document.body.classList.toggle("drawer-open", hasOpenOverlay);
 }
 
@@ -517,6 +517,12 @@ function setAnalysisDrawerOpen(open) {
 function setAutoTranscriptionModalOpen(open) {
   if (!el.autoTranscriptionModal) return;
   el.autoTranscriptionModal.classList.toggle("open", Boolean(open));
+  updateOverlayState();
+}
+
+function setScenarioModalOpen(open) {
+  if (!el.scenarioModal) return;
+  el.scenarioModal.classList.toggle("open", Boolean(open));
   updateOverlayState();
 }
 
@@ -1307,22 +1313,14 @@ function filteredScenarios() {
 }
 
 function updateScenarioSummaryCards() {
-  const scenarios = Array.isArray(state.scenarios) ? state.scenarios : [];
-  const autoApplyCount = scenarios.filter((scenario) => scenario.autoApply).length;
-  const withRulesCount = scenarios.filter((scenario) => scenarioRuleSummaries(scenario).length > 0).length;
-  if (el.scenarioCountValue) el.scenarioCountValue.textContent = String(scenarios.length);
-  if (el.scenarioAutoApplyValue) el.scenarioAutoApplyValue.textContent = String(autoApplyCount);
-  if (el.scenarioRulesValue) el.scenarioRulesValue.textContent = String(withRulesCount);
+  return;
 }
 
 function updateScenarioFormMeta(scenario = null) {
   const selected = scenario || state.scenarios.find((item) => String(item.id) === String(state.selectedScenarioId)) || null;
   const isDraft = !selected;
-  if (el.scenarioFormEyebrow) {
-    el.scenarioFormEyebrow.textContent = isDraft ? "Новый сценарий" : "Редактирование сценария";
-  }
-  if (el.scenarioFormTitle) {
-    el.scenarioFormTitle.textContent = isDraft ? "Соберите логику анализа" : (selected.name || "Сценарий без названия");
+  if (el.scenarioModalTitle) {
+    el.scenarioModalTitle.textContent = isDraft ? "Новый сценарий" : (selected.name || "Сценарий без названия");
   }
   if (el.scenarioSelectedBadge) {
     el.scenarioSelectedBadge.textContent = isDraft ? "Черновик" : (selected.isDefault ? "По умолчанию" : "Сохранён");
@@ -1338,7 +1336,7 @@ function updateScenarioFormMeta(scenario = null) {
     const metricCount = scenarioCustomMetricCount(selected);
     const rulesCount = scenarioRuleSummaries(selected).length;
     el.scenarioSelectionSummary.textContent =
-      `${checklistCount} пунктов в чек-листе, ${metricCount} доп. метрик и ${rulesCount} правил автоподбора.`;
+      `${checklistCount} пунктов в чек-листе, ${metricCount} доп. метрик и ${rulesCount} правил автоподбора. Окно используется для просмотра и редактирования сценария.`;
   }
 }
 
@@ -1394,44 +1392,57 @@ function renderScenarioList() {
   if (el.scenarioLibraryMeta) {
     const baseText = query
       ? `Найдено ${scenarios.length} из ${state.scenarios.length} сценариев по запросу «${query}».`
-      : `Всего ${state.scenarios.length} сценариев. Выберите карточку слева, чтобы редактировать её без длинной таблицы.`;
+      : `Всего ${state.scenarios.length} сценариев. Нажмите строку таблицы, чтобы открыть сценарий в модальном окне.`;
     el.scenarioLibraryMeta.textContent = baseText;
   }
 
   if (!scenarios.length) {
     el.scenarioList.innerHTML = `
-      <article class="scenario-empty-state">
-        <h3>Сценарии не найдены</h3>
-        <p class="muted">${query ? "Измените поисковый запрос или создайте новый сценарий." : "Создайте первый сценарий, чтобы настроить правила анализа."}</p>
-      </article>`;
+      <tr>
+        <td colspan="11">
+          <div class="scenario-empty-state">
+            <h3>Сценарии не найдены</h3>
+            <p class="muted">${query ? "Измените поисковый запрос или создайте новый сценарий." : "Создайте первый сценарий, чтобы настроить правила анализа."}</p>
+          </div>
+        </td>
+      </tr>`;
     return;
   }
 
   el.scenarioList.innerHTML = scenarios
     .map((scenario) => {
-      const tags = scenarioTags(scenario);
-      const rules = scenarioRuleSummaries(scenario);
       const checklistCount = scenarioChecklistCount(scenario);
       const metricCount = scenarioCustomMetricCount(scenario);
+      const directionLabel = scenario.matchRules?.directions?.length
+        ? scenario.matchRules.directions.map((item) => localizeDirection(item)).join(", ")
+        : "Любое";
+      const managerLabel = scenario.matchRules?.managerIds?.length ? scenario.matchRules.managerIds.join(", ") : "Все";
+      const crmParts = [];
+      if (scenario.matchRules?.entityTypeIds?.length) crmParts.push(scenario.matchRules.entityTypeIds.map((item) => ownerTypeLabel(item)).join(", "));
+      if (scenario.matchRules?.pipelineIds?.length) crmParts.push(`воронки: ${scenario.matchRules.pipelineIds.join(", ")}`);
+      if (scenario.matchRules?.stageIds?.length) crmParts.push(`стадии: ${scenario.matchRules.stageIds.join(", ")}`);
+      const keywordParts = [];
+      if (scenario.matchRules?.subjectKeywords?.length) keywordParts.push(`ключи: ${scenario.matchRules.subjectKeywords.join(", ")}`);
+      if (scenario.matchRules?.lineNumbers?.length) keywordParts.push(`линии: ${scenario.matchRules.lineNumbers.join(", ")}`);
+      const durationParts = [];
+      if (scenario.matchRules?.minDurationSeconds != null) durationParts.push(`от ${scenario.matchRules.minDurationSeconds} сек`);
+      if (scenario.matchRules?.maxDurationSeconds != null) durationParts.push(`до ${scenario.matchRules.maxDurationSeconds} сек`);
       return `
-        <article class="scenario-card ${String(state.selectedScenarioId) === String(scenario.id) ? "is-selected" : ""}" data-action="pick-scenario" data-id="${scenario.id}">
-          <div class="scenario-card-head">
-            <div class="scenario-card-title-block">
-              <button type="button" class="scenario-link" data-action="pick-scenario" data-id="${scenario.id}">${escapeHtml(scenario.name)}</button>
-              <p class="scenario-card-description">${escapeHtml(scenario.description || "Без описания")}</p>
-            </div>
-            <div class="scenario-card-metrics">
-              <span class="scenario-chip">${checklistCount} этап.</span>
-              <span class="scenario-chip">${metricCount} метрик</span>
-            </div>
-          </div>
-          <div class="scenario-chip-row">
-            ${(tags.length ? tags : ["Ручной запуск"]).map((tag) => `<span class="scenario-chip">${escapeHtml(tag)}</span>`).join("")}
-          </div>
-          <div class="scenario-rule-list">
-            ${(rules.length ? rules : ["Правила автоподбора не заданы"]).map((rule) => `<span class="scenario-rule-pill">${escapeHtml(rule)}</span>`).join("")}
-          </div>
-        </article>`;
+        <tr class="${String(state.selectedScenarioId) === String(scenario.id) ? "is-selected" : ""}" data-action="pick-scenario" data-id="${scenario.id}">
+          <td class="scenario-name-column">
+            <button type="button" class="scenario-link" data-action="pick-scenario" data-id="${scenario.id}">${escapeHtml(scenario.name)}</button>
+          </td>
+          <td class="scenario-description-column">${escapeHtml(scenario.description || "Без описания")}</td>
+          <td>${checklistCount}</td>
+          <td>${metricCount}</td>
+          <td>${scenario.autoApply ? '<span class="badge success">Да</span>' : '<span class="badge neutral">Нет</span>'}</td>
+          <td>${scenario.isDefault ? '<span class="badge success">Да</span>' : '<span class="badge neutral">Нет</span>'}</td>
+          <td>${escapeHtml(directionLabel)}</td>
+          <td>${escapeHtml(managerLabel)}</td>
+          <td>${escapeHtml(crmParts.join(" • ") || "Без ограничений")}</td>
+          <td>${escapeHtml(keywordParts.join(" • ") || "Без ограничений")}</td>
+          <td>${escapeHtml(durationParts.join(" • ") || "Любая")}</td>
+        </tr>`;
     })
     .join("");
 }
@@ -1449,6 +1460,11 @@ function setCurrentView(view) {
   if (view !== "report") {
     setAnalysisDrawerOpen(false);
     setAutoTranscriptionModalOpen(false);
+  }
+  if (view !== "scenarios") {
+    setScenarioModalOpen(false);
+  }
+  if (view !== "report") {
     return;
   }
 
@@ -2643,6 +2659,7 @@ async function saveScenario() {
   state.selectedScenarioId = data.scenario.id;
   await loadScenarios();
   applyScenarioToForm(data.scenario);
+  setScenarioModalOpen(true);
   if (el.statusText) {
     el.statusText.textContent = `Сценарий «${data.scenario.name}» сохранён.`;
   }
@@ -2654,6 +2671,7 @@ async function deleteScenario() {
   await api(`/api/scenarios/${state.selectedScenarioId}`, { method: "DELETE" });
   await loadScenarios();
   resetScenarioForm();
+  setScenarioModalOpen(false);
   if (el.statusText) {
     el.statusText.textContent = current?.name
       ? `Сценарий «${current.name}» удалён.`
@@ -3017,6 +3035,11 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  if (event.target === el.scenarioModalBackdrop || event.target === el.closeScenarioModal) {
+    setScenarioModalOpen(false);
+    return;
+  }
+
   const internalAnalysisLink = event.target.closest('.analysis-header-link[href^="#"]');
   if (internalAnalysisLink) {
     event.preventDefault();
@@ -3040,8 +3063,11 @@ document.addEventListener("click", async (event) => {
 
   const pickScenarioButton = event.target.closest("[data-action='pick-scenario']");
   if (pickScenarioButton) {
-    const scenario = state.scenarios.find((item) => item.id === pickScenarioButton.getAttribute("data-id"));
-    if (scenario) applyScenarioToForm(scenario);
+    const scenario = state.scenarios.find((item) => String(item.id) === String(pickScenarioButton.getAttribute("data-id")));
+    if (scenario) {
+      applyScenarioToForm(scenario);
+      setScenarioModalOpen(true);
+    }
     renderScenarioList();
     return;
   }
@@ -3162,6 +3188,7 @@ if (el.newScenario) {
   el.newScenario.addEventListener("click", () => {
     resetScenarioForm();
     renderScenarioList();
+    setScenarioModalOpen(true);
   });
 }
 
@@ -3283,9 +3310,9 @@ window.addEventListener("resize", () => {
 
 document.addEventListener("input", (event) => {
   if (event.target === el.scenarioName) {
-    const draftTitle = el.scenarioName.value.trim() || "Соберите логику анализа";
-    if (el.scenarioFormTitle && !state.selectedScenarioId) {
-      el.scenarioFormTitle.textContent = draftTitle;
+    const draftTitle = el.scenarioName.value.trim() || "Новый сценарий";
+    if (el.scenarioModalTitle && !state.selectedScenarioId) {
+      el.scenarioModalTitle.textContent = draftTitle;
     }
   }
 
