@@ -16,6 +16,8 @@ const {
   writeSettingsStore: persistenceWriteSettingsStore,
   readCrmClientCache: persistenceReadCrmClientCache,
   upsertCrmClientCache: persistenceUpsertCrmClientCache,
+  readActivitySnapshotCache: persistenceReadActivitySnapshotCache,
+  writeActivitySnapshotCache: persistenceWriteActivitySnapshotCache,
 } = require("./db");
 
 const app = express();
@@ -34,6 +36,12 @@ const ANALYSIS_AUTO_SCAN_BATCH = Math.max(1, Number(envValue("ANALYSIS_AUTO_SCAN
 const ANALYSIS_ACTIVE_JOB_STALE_MS = Math.max(300000, Number(envValue("ANALYSIS_ACTIVE_JOB_STALE_MS", "900000")));
 const VIBE_REQUEST_TIMEOUT_MS = Math.max(5000, Number(envValue("VIBE_REQUEST_TIMEOUT_MS", "60000")));
 const AI_TRANSCRIPTION_TIMEOUT_MS = Math.max(15000, Number(envValue("AI_TRANSCRIPTION_TIMEOUT_MS", "180000")));
+const ACTIVITY_SNAPSHOT_REMOTE_LIMIT = Math.max(1000, Number(envValue("ACTIVITY_SNAPSHOT_REMOTE_LIMIT", "5000")));
+const ACTIVITY_SNAPSHOT_FRESH_MS = Math.max(15000, Number(envValue("ACTIVITY_SNAPSHOT_FRESH_MS", "120000")));
+const ACTIVITY_SNAPSHOT_MAX_STALE_MS = Math.max(
+  ACTIVITY_SNAPSHOT_FRESH_MS,
+  Number(envValue("ACTIVITY_SNAPSHOT_MAX_STALE_MS", "1800000")),
+);
 
 const ACTIVE_ANALYSIS_JOB_STATUSES = new Set(["queued", "processing"]);
 const TERMINAL_ANALYSIS_JOB_STATUSES = new Set(["ready", "partial", "technical", "error"]);
@@ -50,6 +58,8 @@ const crmClientWarmupInFlight = new Set();
 let managersCache = { expiresAt: 0, data: null };
 const filteredCallsCache = new Map();
 const filteredCallsSnapshotInFlight = new Map();
+let activitySnapshotCache = { loaded: false, updatedAt: 0, activities: [] };
+let activitySnapshotRefreshInFlight = null;
 let staleJobsCleanupCheckedAt = 0;
 let staleJobsCleanupInFlight = null;
 const analysisLocalizationRepairInFlight = new Map();
@@ -233,6 +243,17 @@ async function readCrmClientCache(entries) {
 
 async function upsertCrmClientCache(entry) {
   return persistenceUpsertCrmClientCache(entry);
+}
+
+async function readActivitySnapshotCache() {
+  return persistenceReadActivitySnapshotCache("latest-calls");
+}
+
+async function writeActivitySnapshotCache(entry) {
+  return persistenceWriteActivitySnapshotCache({
+    cacheKey: "latest-calls",
+    activities: Array.isArray(entry?.activities) ? entry.activities : [],
+  });
 }
 
 function createId(prefix = "id") {
@@ -1383,6 +1404,24 @@ function applyClientSideCallFilters(calls, query) {
     .filter(Boolean);
 
   let filtered = calls;
+  if (query.dateFrom) {
+    const from = new Date(`${query.dateFrom}T00:00:00`).getTime();
+    if (Number.isFinite(from)) {
+      filtered = filtered.filter((call) => {
+        const start = new Date(call.startTime || 0).getTime();
+        return Number.isFinite(start) && start >= from;
+      });
+    }
+  }
+  if (query.dateTo) {
+    const to = new Date(`${query.dateTo}T23:59:59`).getTime();
+    if (Number.isFinite(to)) {
+      filtered = filtered.filter((call) => {
+        const start = new Date(call.startTime || 0).getTime();
+        return Number.isFinite(start) && start <= to;
+      });
+    }
+  }
   if (managerIds.length) {
     filtered = filtered.filter((call) => managerIds.includes(Number(call.managerId)));
   }
@@ -1401,6 +1440,86 @@ function applyClientSideCallFilters(calls, query) {
     filtered = filtered.filter((call) => scenarioIds.includes(String(call.analysis?.selectedScenarioId || "")));
   }
   return filtered;
+}
+
+function activitySnapshotAgeMs() {
+  return activitySnapshotCache.updatedAt > 0 ? Date.now() - activitySnapshotCache.updatedAt : Number.POSITIVE_INFINITY;
+}
+
+async function ensureActivitySnapshotLoaded() {
+  if (activitySnapshotCache.loaded) return;
+  const persisted = await readActivitySnapshotCache();
+  activitySnapshotCache = {
+    loaded: true,
+    updatedAt: persisted?.updatedAt ? new Date(persisted.updatedAt).getTime() : 0,
+    activities: Array.isArray(persisted?.activities) ? persisted.activities : [],
+  };
+}
+
+async function refreshActivitySnapshotCache(options = {}) {
+  const force = Boolean(options.force);
+  if (activitySnapshotRefreshInFlight && !force) {
+    return activitySnapshotRefreshInFlight;
+  }
+
+  const refreshPromise = (async () => {
+    const managers = await listManagers();
+    let rawActivities = await searchActivities({ typeId: 2 }, ACTIVITY_SNAPSHOT_REMOTE_LIMIT, 0);
+    if (!rawActivities.length && managers.length) {
+      rawActivities = await searchActivitiesByManagers(
+        { typeId: 2 },
+        managers.map((manager) => manager.id),
+        ACTIVITY_SNAPSHOT_REMOTE_LIMIT,
+        0,
+      );
+    }
+    const unique = uniqueActivities(rawActivities).slice(0, ACTIVITY_SNAPSHOT_REMOTE_LIMIT);
+    const persisted = await writeActivitySnapshotCache({ activities: unique });
+    activitySnapshotCache = {
+      loaded: true,
+      updatedAt: persisted?.updatedAt ? new Date(persisted.updatedAt).getTime() : Date.now(),
+      activities: unique,
+    };
+    invalidateFilteredCallsCache();
+    return unique;
+  })().finally(() => {
+    activitySnapshotRefreshInFlight = null;
+  });
+
+  activitySnapshotRefreshInFlight = refreshPromise;
+  return refreshPromise;
+}
+
+function refreshActivitySnapshotInBackground() {
+  if (activitySnapshotRefreshInFlight) return;
+  refreshActivitySnapshotCache().catch((error) => {
+    console.error("Failed to refresh activity snapshot cache", error);
+  });
+}
+
+async function getRawActivitiesSnapshot() {
+  await ensureActivitySnapshotLoaded();
+
+  if (!activitySnapshotCache.activities.length) {
+    return refreshActivitySnapshotCache({ force: true });
+  }
+
+  const ageMs = activitySnapshotAgeMs();
+  if (ageMs <= ACTIVITY_SNAPSHOT_FRESH_MS) {
+    return activitySnapshotCache.activities;
+  }
+
+  if (ageMs <= ACTIVITY_SNAPSHOT_MAX_STALE_MS) {
+    refreshActivitySnapshotInBackground();
+    return activitySnapshotCache.activities;
+  }
+
+  try {
+    return await refreshActivitySnapshotCache({ force: true });
+  } catch (error) {
+    console.warn("Using stale activity snapshot cache after refresh failure", error);
+    return activitySnapshotCache.activities;
+  }
 }
 
 function matchesSummaryFilters(item, query) {
@@ -1880,23 +1999,7 @@ async function buildCallsSnapshot(query = {}) {
     );
     const jobsByActivityId = buildLatestJobMap(analysisStore.jobs || []);
     const defaultScenario = getDefaultScenario(scenarioStore.scenarios || []);
-    const { filter, managerIds } = buildCallFilter(query);
-    const activityFetchLimit = 5000;
-
-    let rawActivities = [];
-    if (managerIds.length > 1) {
-      rawActivities = await searchActivitiesByManagers(filter, managerIds, activityFetchLimit, 0);
-    } else {
-      rawActivities = await searchActivities(filter, activityFetchLimit, 0);
-      if (!rawActivities.length && !managerIds.length) {
-        rawActivities = await searchActivitiesByManagers(
-          filter,
-          managers.map((manager) => manager.id),
-          activityFetchLimit,
-          0,
-        );
-      }
-    }
+    const rawActivities = await getRawActivitiesSnapshot();
 
     const candidateAnalyses = Array.from(
       new Set(
@@ -2920,6 +3023,7 @@ ensureDataFiles()
     app.listen(PORT, () => {
       console.log(`CallsReport listening on port ${PORT}`);
     });
+    refreshActivitySnapshotInBackground();
     startAnalysisQueueScheduler();
   })
   .catch((error) => {

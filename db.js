@@ -28,6 +28,7 @@ let writeChain = Promise.resolve();
 let analysisStoreCache = null;
 let scenarioStoreCache = null;
 let settingsStoreCache = null;
+let activitySnapshotCache = null;
 
 const DEFAULT_SCENARIO_FIXED = {
   id: "default-sales",
@@ -183,6 +184,12 @@ function createSchema(db) {
       payload TEXT NOT NULL,
       PRIMARY KEY (owner_type_id, owner_id)
     );
+
+    CREATE TABLE IF NOT EXISTS activity_snapshot_cache (
+      cache_key TEXT PRIMARY KEY,
+      updated_at TEXT NOT NULL,
+      payload TEXT NOT NULL
+    );
   `);
 }
 
@@ -211,6 +218,29 @@ function readSettingsStoreFromDb(db) {
       settings: payload.settings,
       updatedAt: metadataValue(db, "settings_store_updated_at"),
     });
+  } finally {
+    statement.free();
+  }
+}
+
+function readActivitySnapshotCacheFromDb(db, cacheKey = "latest-calls") {
+  const statement = db.prepare("SELECT payload FROM activity_snapshot_cache WHERE cache_key = ?");
+  try {
+    statement.bind([String(cacheKey)]);
+    if (!statement.step()) {
+      return {
+        cacheKey: String(cacheKey),
+        updatedAt: null,
+        activities: [],
+      };
+    }
+    const row = statement.getAsObject();
+    const payload = JSON.parse(String(row.payload || "{}"));
+    return {
+      cacheKey: String(payload.cacheKey || cacheKey),
+      updatedAt: payload.updatedAt || null,
+      activities: Array.isArray(payload.activities) ? payload.activities : [],
+    };
   } finally {
     statement.free();
   }
@@ -516,6 +546,38 @@ async function upsertCrmClientCache(entry) {
   });
 }
 
+async function readActivitySnapshotCache(cacheKey = "latest-calls") {
+  if (activitySnapshotCache && String(activitySnapshotCache.cacheKey) === String(cacheKey)) {
+    return activitySnapshotCache;
+  }
+  const db = await ensureDatabase();
+  activitySnapshotCache = readActivitySnapshotCacheFromDb(db, cacheKey);
+  return activitySnapshotCache;
+}
+
+async function writeActivitySnapshotCache(entry) {
+  return queueWrite(async () => {
+    const db = await ensureDatabase();
+    const normalized = {
+      cacheKey: String(entry?.cacheKey || "latest-calls"),
+      updatedAt: new Date().toISOString(),
+      activities: Array.isArray(entry?.activities) ? entry.activities : [],
+    };
+
+    db.run(
+      "INSERT INTO activity_snapshot_cache (cache_key, updated_at, payload) VALUES (?, ?, ?) ON CONFLICT(cache_key) DO UPDATE SET updated_at = excluded.updated_at, payload = excluded.payload",
+      [
+        normalized.cacheKey,
+        normalized.updatedAt,
+        JSON.stringify(normalized),
+      ],
+    );
+    await persistDatabase(db);
+    activitySnapshotCache = normalized;
+    return normalized;
+  });
+}
+
 module.exports = {
   DB_PATH,
   ensurePersistence,
@@ -528,4 +590,6 @@ module.exports = {
   writeSettingsStore,
   readCrmClientCache,
   upsertCrmClientCache,
+  readActivitySnapshotCache,
+  writeActivitySnapshotCache,
 };

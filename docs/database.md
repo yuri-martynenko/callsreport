@@ -163,3 +163,9 @@ Legacy JSON-файлы больше не должны использоватьс
 - добавить таблицу миграций;
 - вынести payload-поля в частично нормализованную структуру, если потребуется сложная аналитика;
 - подготовить путь перехода на внешнюю СУБД, если появится несколько экземпляров сервиса.
+## 2026-04 Activity Snapshot Cache
+
+- SQLite now stores a persistent raw activity snapshot in `activity_snapshot_cache`.
+- The cache keeps the latest unfiltered calls payload received from Vibe API and survives restart and deploy.
+- Application startup and dashboard loading now read this local snapshot first and refresh it in background when it becomes stale.
+- This table is an acceleration layer for call browsing. It does not replace `analyses`, `failures`, `jobs`, `scenarios`, or `settings` as the source of truth.
