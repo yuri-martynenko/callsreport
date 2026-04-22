@@ -2224,7 +2224,7 @@ function renderRecognizedMinutesChart() {
 function renderHighRiskChart() {
   const series = buildCountSeriesByDay(
     filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
-    (call) => String(effectiveAnalysis(call)?.overview?.riskLevel || "").toLowerCase() === "high" || localizeRiskLevel(effectiveAnalysis(call)?.overview?.riskLevel) === "Высокий",
+    (call) => String(effectiveAnalysis(call)?.overview?.riskLevel || "").toLowerCase() === "high" || localizeRisk(effectiveAnalysis(call)?.overview?.riskLevel) === "Высокий",
     90,
   );
   renderSeriesChart(el.highRiskChart, series, {
