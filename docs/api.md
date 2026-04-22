@@ -157,6 +157,21 @@
 - в `docs/logic.md`, если меняется поведение;
 - в ADR, если меняется архитектурный подход.
 
+### `GET /api/dashboard`
+
+Возвращает отдельный dataset для дашборда без привязки к фильтрам страницы расшифровки.
+
+Включает:
+
+- `summary` по всему доступному набору звонков;
+- `summary.totalCalls` — общее количество звонков;
+- `summary.pendingCalls` — количество звонков в статусе `pending`;
+- `summary.awaitingAnalysisCalls` — сумма `pending + queued`;
+- `summary.statusBreakdown` — breakdown статусов по всему набору;
+- `summary.managers` — средний `overallScore` по менеджерам;
+- `calls` — полный список нормализованных звонков для построения dashboard-графиков;
+- `statusBreakdown` — общий breakdown статусов на верхнем уровне ответа.
+
 ## Summary Response Notes
 
 `GET /api/reports/summary` now returns only `data.summary` by default for dashboard and report rendering.
@@ -164,6 +179,11 @@
 If a caller needs the full filtered analyses array, it must request it explicitly with:
 
 - `includeAnalyses=true`
+
+## 2026-04 Dashboard Data Note
+
+- `GET /api/reports/summary` остаётся фильтрованным по текущим параметрам страницы расшифровки.
+- `GET /api/dashboard` возвращает агрегаты и звонки за весь доступный период и должен использоваться для карточек и графиков дашборда, которые не должны зависеть от report-фильтров.
 
 ## 2026-04 Transcript Playback Note
 

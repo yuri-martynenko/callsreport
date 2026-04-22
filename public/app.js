@@ -12,6 +12,9 @@ const state = {
   callsHasMore: false,
   callsStatusBreakdown: [],
   summary: null,
+  dashboardCalls: [],
+  dashboardSummary: null,
+  dashboardStatusBreakdown: [],
   scenarios: [],
   settings: {
     autoTranscriptionMode: "disabled",
@@ -1361,7 +1364,9 @@ function renderSummaryInto(container, summary) {
     return;
   }
   container.innerHTML = [
+    summaryCard("Всего звонков", summary.totalCalls || 0, "Общий объём звонков за весь период"),
     summaryCard("Проанализировано звонков", summary.analyzedCalls, "Все сохранённые AI-разборы"),
+    summaryCard("Ожидает анализа", summary.awaitingAnalysisCalls ?? summary.pendingCalls ?? 0, "Ожидают запуска или стоят в очереди"),
     summaryCard("Средний score", summary.averageScore || "0", "Оценка соблюдения сценария"),
     summaryCard("Высокий риск", summary.highRisk, "Требует ручного разбора"),
     summaryCard(
@@ -1373,7 +1378,7 @@ function renderSummaryInto(container, summary) {
 }
 
 function renderSummary() {
-  renderSummaryInto(el.dashboardSummaryCards, state.summary);
+  renderSummaryInto(el.dashboardSummaryCards, state.dashboardSummary);
 }
 
 function autoModeLabel(mode) {
@@ -1746,6 +1751,8 @@ function lineSeriesSvg(series, options = {}) {
     yTickFormatter = valueFormatter,
     strokeClass = "",
     areaClass = "",
+    maxXAxisLabels = 10,
+    maxPointLabels = 14,
   } = options;
 
   const width = 760;
@@ -1762,17 +1769,19 @@ function lineSeriesSvg(series, options = {}) {
   });
   const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
   const areaPoints = [`${paddingX},${height - paddingBottom}`, polyline, `${width - paddingX},${height - paddingBottom}`].join(" ");
+  const labelStep = Math.max(1, Math.ceil(points.length / Math.max(1, maxXAxisLabels)));
   const labels = points
-    .map(
-      (point) =>
-        `<text class="line-chart-axis-text" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(point.label)}</text>`,
-    )
+    .map((point, index) => {
+      const shouldShow = index === points.length - 1 || index % labelStep === 0;
+      if (!shouldShow) return "";
+      return `<text class="line-chart-axis-text" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(point.label)}</text>`;
+    })
     .join("");
+  const pointLabelStep = Math.max(1, Math.ceil(points.length / Math.max(1, maxPointLabels)));
   const pointLabels = points
-    .map(
-      (point) => `
+    .map((point, index) => `
         <circle cx="${point.x}" cy="${point.y}" r="4"></circle>
-        <text class="line-chart-point-text" x="${point.x}" y="${point.y - 12}" text-anchor="middle">${escapeHtml(valueFormatter(point.value, point))}</text>`,
+        ${index === points.length - 1 || index % pointLabelStep === 0 ? `<text class="line-chart-point-text" x="${point.x}" y="${point.y - 12}" text-anchor="middle">${escapeHtml(valueFormatter(point.value, point))}</text>` : ""}`,
     )
     .join("");
   const yTicks = Array.from({ length: 4 }, (_, index) => {
@@ -1823,8 +1832,15 @@ function callsWithAnalysis() {
   });
 }
 
+function dashboardCallsWithAnalysis() {
+  return state.dashboardCalls.filter((call) => {
+    const analysis = effectiveAnalysis(call);
+    return analysis && ["ready", "partial", "technical"].includes(String(analysis.state || ""));
+  });
+}
+
 function renderManagerScoreChart() {
-  const rows = (state.summary?.managers || []).filter((item) => Number.isFinite(Number(item.averageScore)));
+  const rows = (state.dashboardSummary?.managers || []).filter((item) => Number.isFinite(Number(item.averageScore)));
   renderHorizontalBars(
     el.managerScoreChart,
     rows.map((item) => ({
@@ -1841,7 +1857,7 @@ function renderManagerScoreChart() {
 }
 
 function renderSentimentChart() {
-  const summary = state.summary;
+  const summary = state.dashboardSummary;
   if (!summary) {
     renderEmptyChart(el.sentimentChart, "Нет данных по тональности.");
     return;
@@ -1882,7 +1898,7 @@ function renderSentimentChart() {
 
 function scenarioComplianceRows() {
   const buckets = new Map();
-  for (const call of callsWithAnalysis()) {
+  for (const call of dashboardCallsWithAnalysis()) {
     const analysis = effectiveAnalysis(call);
     const compliance = Number(analysis?.scriptAnalysis?.compliancePercent);
     if (!Number.isFinite(compliance)) continue;
@@ -1919,10 +1935,10 @@ function renderScenarioAverageChart() {
   });
 }
 
-function buildLast7DaysSeries(metricResolver) {
+function buildLast7DaysSeries(calls, metricResolver) {
   const keys = lastNDaysKeys(7);
   const buckets = new Map(keys.map((key) => [key, 0]));
-  for (const call of callsWithAnalysis()) {
+  for (const call of calls) {
     const key = callDayKey(call);
     if (!key || !buckets.has(key)) continue;
     buckets.set(key, buckets.get(key) + Number(metricResolver(call) || 0));
@@ -1932,6 +1948,30 @@ function buildLast7DaysSeries(metricResolver) {
     label: formatDay(key),
     value: buckets.get(key) || 0,
   }));
+}
+
+function buildAverageSeriesByDay(calls, metricResolver) {
+  const buckets = new Map();
+  for (const call of calls) {
+    const key = callDayKey(call);
+    if (!key) continue;
+    const value = Number(metricResolver(call));
+    if (!Number.isFinite(value)) continue;
+    if (!buckets.has(key)) {
+      buckets.set(key, { total: 0, count: 0 });
+    }
+    const bucket = buckets.get(key);
+    bucket.total += value;
+    bucket.count += 1;
+  }
+
+  return Array.from(buckets.entries())
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([key, bucket]) => ({
+      key,
+      label: formatDay(key),
+      value: bucket.count ? roundedMetric(bucket.total / bucket.count, 1) : 0,
+    }));
 }
 
 function renderSeriesChart(container, series, options = {}) {
@@ -1949,7 +1989,7 @@ function renderSeriesChart(container, series, options = {}) {
 }
 
 function renderRecognizedCallsChart() {
-  const series = buildLast7DaysSeries(() => 1);
+  const series = buildLast7DaysSeries(dashboardCallsWithAnalysis(), () => 1);
   renderSeriesChart(el.recognizedCallsChart, series, {
     emptyMessage: "Нет распознанных звонков за последние 7 дней.",
     ariaLabel: "График распознанных звонков за последние 7 дней",
@@ -1961,7 +2001,10 @@ function renderRecognizedCallsChart() {
 }
 
 function renderTokensUsageChart() {
-  const series = buildLast7DaysSeries((call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0));
+  const series = buildLast7DaysSeries(
+    dashboardCallsWithAnalysis(),
+    (call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0),
+  );
   renderSeriesChart(el.tokensUsageChart, series, {
     emptyMessage: "Нет расхода токенов за последние 7 дней.",
     ariaLabel: "График расхода токенов за последние 7 дней",
@@ -1973,7 +2016,7 @@ function renderTokensUsageChart() {
 }
 
 function renderRecognizedMinutesChart() {
-  const series = buildLast7DaysSeries((call) => Number(call.durationSeconds || 0) / 60).map((item) => ({
+  const series = buildLast7DaysSeries(dashboardCallsWithAnalysis(), (call) => Number(call.durationSeconds || 0) / 60).map((item) => ({
     ...item,
     value: roundedMetric(item.value, 1),
   }));
@@ -1987,34 +2030,14 @@ function renderRecognizedMinutesChart() {
   });
 }
 
-function buildLast7DaysAverageSeries(metricResolver) {
-  const keys = lastNDaysKeys(7);
-  const buckets = new Map(keys.map((key) => [key, { total: 0, count: 0 }]));
-  for (const call of callsWithAnalysis()) {
-    const key = callDayKey(call);
-    if (!key || !buckets.has(key)) continue;
-    const value = Number(metricResolver(call));
-    if (!Number.isFinite(value)) continue;
-    const bucket = buckets.get(key);
-    bucket.total += value;
-    bucket.count += 1;
-  }
-  return keys.map((key) => {
-    const bucket = buckets.get(key);
-    const average = bucket.count ? roundedMetric(bucket.total / bucket.count, 1) : 0;
-    return {
-      key,
-      label: formatDay(key),
-      value: average,
-    };
-  });
-}
-
 function renderDailyScoreChart() {
-  const series = buildLast7DaysAverageSeries((call) => effectiveAnalysis(call)?.scriptAnalysis?.overallScore);
+  const series = buildAverageSeriesByDay(
+    dashboardCallsWithAnalysis(),
+    (call) => effectiveAnalysis(call)?.scriptAnalysis?.overallScore,
+  );
   renderSeriesChart(el.dailyScoreChart, series, {
     emptyMessage: "Нет данных по среднему score.",
-    ariaLabel: "График среднего score за последние 7 дней",
+    ariaLabel: "График среднего score за весь период",
     valueFormatter: (value) => `${value.toFixed(1)}`,
     yTickFormatter: (value) => `${value.toFixed(1)}`,
     strokeClass: "is-score",
@@ -2251,6 +2274,16 @@ async function loadCalls(options = {}) {
 async function loadSummary(options = {}) {
   const data = await api(`/api/reports/summary?${filtersQuery()}`);
   state.summary = data.summary;
+  if (options.refreshDashboard !== false) {
+    renderDashboard();
+  }
+}
+
+async function loadDashboardData(options = {}) {
+  const data = await api("/api/dashboard");
+  state.dashboardSummary = data.summary || null;
+  state.dashboardCalls = Array.isArray(data.calls) ? data.calls : [];
+  state.dashboardStatusBreakdown = Array.isArray(data.statusBreakdown) ? data.statusBreakdown : [];
   renderSummary();
   if (options.refreshDashboard !== false) {
     renderDashboard();
@@ -2260,10 +2293,14 @@ async function loadSummary(options = {}) {
 async function reloadReportData(options = {}) {
   const refreshDashboard = options.refreshDashboard !== false;
   clearCallsPageCache();
-  await Promise.all([
+  const tasks = [
     loadCalls({ refreshDashboard: false }),
     loadSummary({ refreshDashboard: false }),
-  ]);
+  ];
+  if (refreshDashboard) {
+    tasks.push(loadDashboardData({ refreshDashboard: false }));
+  }
+  await Promise.all(tasks);
   if (refreshDashboard) {
     renderDashboard();
   }
@@ -2791,6 +2828,7 @@ document.addEventListener("change", (event) => {
       loadScenarios(),
       loadCalls({ refreshDashboard: false }),
       loadSummary({ refreshDashboard: false }),
+      loadDashboardData({ refreshDashboard: false }),
     ]);
     renderDashboard();
     renderAnalysis(null);

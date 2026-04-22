@@ -1688,93 +1688,7 @@ async function fetchCalls(query) {
   const requestedPage = Math.max(1, Number(query.page || 1));
   const page = useCursorPaging ? requestedPage : explicitOffset > 0 ? Math.floor(explicitOffset / pageSize) + 1 : requestedPage;
   const offset = useCursorPaging ? 0 : explicitOffset > 0 ? explicitOffset : (page - 1) * pageSize;
-  const cacheKey = buildFilteredCallsCacheKey(query);
-  const cachedEntry = filteredCallsCache.get(cacheKey);
-  const hasFreshCache = cachedEntry && cachedEntry.expiresAt > Date.now();
-
-  let snapshot;
-  if (hasFreshCache) {
-    snapshot = cachedEntry.snapshot;
-  } else {
-    const [managers, analysisStore, scenarioStore] = await Promise.all([
-      listManagers(),
-      readAnalysisStore(),
-      readScenarioStore(),
-    ]);
-    const managersById = new Map(managers.map((manager) => [manager.id, manager]));
-    const analysesByActivityId = buildLatestRecordsMap(analysisStore.analyses, (analysis) => analysis.activityId);
-    const failuresByActivityId = buildLatestRecordsMap(
-      analysisStore.failures || [],
-      (failure) => failure.activityId,
-    );
-    const jobsByActivityId = buildLatestJobMap(analysisStore.jobs || []);
-    const defaultScenario = getDefaultScenario(scenarioStore.scenarios || []);
-    const { filter, managerIds } = buildCallFilter(query);
-    const activityFetchLimit = 5000;
-
-    let rawActivities = [];
-    if (managerIds.length > 1) {
-      rawActivities = await searchActivitiesByManagers(filter, managerIds, activityFetchLimit, 0);
-    } else {
-      rawActivities = await searchActivities(filter, activityFetchLimit, 0);
-      if (!rawActivities.length && !managerIds.length) {
-        rawActivities = await searchActivitiesByManagers(
-          filter,
-          managers.map((manager) => manager.id),
-          activityFetchLimit,
-          0,
-        );
-      }
-    }
-
-    let calls = rawActivities.map((activity) => {
-      const analysis = analysesByActivityId.get(String(activity.id));
-      const failure = failuresByActivityId.get(String(activity.id));
-      const latestJob = jobsByActivityId.get(String(activity.id));
-      const normalizedCall = normalizeCall(activity, managersById, analysis, failure, latestJob);
-
-      if (
-        normalizedCall.analysis &&
-        !normalizedCall.analysis.selectedScenarioId &&
-        !normalizedCall.analysis.selectedScenarioName &&
-        defaultScenario
-      ) {
-        normalizedCall.analysis = {
-          ...normalizedCall.analysis,
-          selectedScenarioId: defaultScenario.id,
-          selectedScenarioName: defaultScenario.name,
-        };
-      }
-
-      return normalizedCall;
-    });
-
-    if (query.search) {
-      const search = query.search.toLowerCase();
-      calls = calls.filter(
-        (call) =>
-          call.subject?.toLowerCase().includes(search) ||
-          call.managerName?.toLowerCase().includes(search),
-      );
-    }
-
-    if (query.onlyRecorded === "true") {
-      calls = calls.filter((call) => call.hasRecording);
-    }
-
-    calls = applyClientSideCallFilters(calls, query);
-    calls.sort(compareCallsForReport);
-
-    snapshot = {
-      managers,
-      calls,
-      statusBreakdown: buildCallStatusBreakdown(calls),
-    };
-    filteredCallsCache.set(cacheKey, {
-      expiresAt: Date.now() + FILTERED_CALLS_CACHE_TTL_MS,
-      snapshot,
-    });
-  }
+  const snapshot = await buildCallsSnapshot(query);
 
   const total = snapshot.calls.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -1796,6 +1710,95 @@ async function fetchCalls(query) {
     hasMore: cursorStartIndex + pagedCalls.length < total,
     nextCursor,
   };
+}
+
+async function buildCallsSnapshot(query = {}) {
+  const cacheKey = buildFilteredCallsCacheKey(query);
+  const cachedEntry = filteredCallsCache.get(cacheKey);
+  const hasFreshCache = cachedEntry && cachedEntry.expiresAt > Date.now();
+  if (hasFreshCache) {
+    return cachedEntry.snapshot;
+  }
+
+  const [managers, analysisStore, scenarioStore] = await Promise.all([
+    listManagers(),
+    readAnalysisStore(),
+    readScenarioStore(),
+  ]);
+  const managersById = new Map(managers.map((manager) => [manager.id, manager]));
+  const analysesByActivityId = buildLatestRecordsMap(analysisStore.analyses, (analysis) => analysis.activityId);
+  const failuresByActivityId = buildLatestRecordsMap(
+    analysisStore.failures || [],
+    (failure) => failure.activityId,
+  );
+  const jobsByActivityId = buildLatestJobMap(analysisStore.jobs || []);
+  const defaultScenario = getDefaultScenario(scenarioStore.scenarios || []);
+  const { filter, managerIds } = buildCallFilter(query);
+  const activityFetchLimit = 5000;
+
+  let rawActivities = [];
+  if (managerIds.length > 1) {
+    rawActivities = await searchActivitiesByManagers(filter, managerIds, activityFetchLimit, 0);
+  } else {
+    rawActivities = await searchActivities(filter, activityFetchLimit, 0);
+    if (!rawActivities.length && !managerIds.length) {
+      rawActivities = await searchActivitiesByManagers(
+        filter,
+        managers.map((manager) => manager.id),
+        activityFetchLimit,
+        0,
+      );
+    }
+  }
+
+  let calls = rawActivities.map((activity) => {
+    const analysis = analysesByActivityId.get(String(activity.id));
+    const failure = failuresByActivityId.get(String(activity.id));
+    const latestJob = jobsByActivityId.get(String(activity.id));
+    const normalizedCall = normalizeCall(activity, managersById, analysis, failure, latestJob);
+
+    if (
+      normalizedCall.analysis &&
+      !normalizedCall.analysis.selectedScenarioId &&
+      !normalizedCall.analysis.selectedScenarioName &&
+      defaultScenario
+    ) {
+      normalizedCall.analysis = {
+        ...normalizedCall.analysis,
+        selectedScenarioId: defaultScenario.id,
+        selectedScenarioName: defaultScenario.name,
+      };
+    }
+
+    return normalizedCall;
+  });
+
+  if (query.search) {
+    const search = query.search.toLowerCase();
+    calls = calls.filter(
+      (call) =>
+        call.subject?.toLowerCase().includes(search) ||
+        call.managerName?.toLowerCase().includes(search),
+    );
+  }
+
+  if (query.onlyRecorded === "true") {
+    calls = calls.filter((call) => call.hasRecording);
+  }
+
+  calls = applyClientSideCallFilters(calls, query);
+  calls.sort(compareCallsForReport);
+
+  const snapshot = {
+    managers,
+    calls,
+    statusBreakdown: buildCallStatusBreakdown(calls),
+  };
+  filteredCallsCache.set(cacheKey, {
+    expiresAt: Date.now() + FILTERED_CALLS_CACHE_TTL_MS,
+    snapshot,
+  });
+  return snapshot;
 }
 
 async function downloadCallAudio(fileId) {
@@ -2478,6 +2481,25 @@ function summarizeAnalyses(analyses) {
   };
 }
 
+function summarizeDashboardCalls(calls = []) {
+  const summary = summarizeAnalyses(
+    calls
+      .map((call) => call.analysis)
+      .filter((analysis) => analysis && matchesSummaryFilters(analysis, {})),
+  );
+  const statusBreakdown = buildCallStatusBreakdown(calls);
+  const pendingCalls = Number(statusBreakdown.find((item) => item.key === "pending")?.count || 0);
+  const queuedCalls = Number(statusBreakdown.find((item) => item.key === "queued")?.count || 0);
+
+  return {
+    ...summary,
+    totalCalls: calls.length,
+    pendingCalls,
+    awaitingAnalysisCalls: pendingCalls + queuedCalls,
+    statusBreakdown,
+  };
+}
+
 app.get("/api/health", async (_req, res) => {
   const store = await readAnalysisStore();
   res.json({ ok: true, configured: Boolean(VIBE_API_KEY), updatedAt: store.updatedAt });
@@ -2678,6 +2700,22 @@ app.get("/api/reports/summary", async (req, res, next) => {
     res.json({
       success: true,
       data: includeAnalyses ? { summary: summarizeAnalyses(analyses), analyses } : { summary: summarizeAnalyses(analyses) },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/dashboard", async (_req, res, next) => {
+  try {
+    const snapshot = await buildCallsSnapshot({ onlyRecorded: "false" });
+    res.json({
+      success: true,
+      data: {
+        summary: summarizeDashboardCalls(snapshot.calls),
+        calls: snapshot.calls,
+        statusBreakdown: snapshot.statusBreakdown,
+      },
     });
   } catch (error) {
     next(error);
