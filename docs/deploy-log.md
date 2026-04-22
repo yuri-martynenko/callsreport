@@ -24,6 +24,12 @@
 
 ## Записи
 
+## 2026-04-22 12:12 VLAT
+
+- Задача: deploy полного перестроения heatmap на dashboard: перейти с растягиваемой CSS-сетки на фиксированные компактные клетки и отдельные month-group блоки, чтобы реально уменьшить размер квадратов и убрать вертикальные линии внутри карты.
+- Длительность: около 15 минут.
+- Результат: `push` коммита `57d4960` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production `styles.css` и `app.js` на `127.0.0.1:3000` подтвердили наличие `.heatmap-groups`, `.heatmap-column`, фиксированных клеток `4px`, увеличенного `.line-chart-axis-text.is-medium { font-size: 16px !important; }` и JS-маркеров `heatmap-group`, `heatmap-column`, `monthGroups`.
+
 ## 2026-04-22 11:59 VLAT
 
 - Задача: deploy дополнительного уплотнения heatmap за 3 месяца, замены бордер-разделителей месяцев на увеличенные межмесячные отступы и увеличения подписей осей на целевых line-chart графиках.
