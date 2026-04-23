@@ -642,10 +642,11 @@ function deriveAnalysisResultState(analysis = {}) {
   const structuredErrorMessage = String(analysis?.processingNotes?.structuredAnalysisErrorMessage || "").trim();
   const localizationErrorMessage = String(analysis?.processingNotes?.localizationErrorMessage || "").trim();
   const localizationPending = Boolean(analysis?.processingNotes?.localizationPending);
-  if (analysis?.transcriptText && (structuredErrorMessage || localizationErrorMessage || localizationPending)) {
+  const hasStructuredContent = analysisHasMeaningfulContent(analysis);
+  if (analysis?.transcriptText && !hasStructuredContent && (structuredErrorMessage || localizationErrorMessage || localizationPending)) {
     return "outdated";
   }
-  if (analysisHasMeaningfulContent(analysis)) return "ready";
+  if (hasStructuredContent) return "ready";
   if (analysis?.transcriptText) return "partial";
   return "technical";
 }
@@ -2399,12 +2400,19 @@ async function analyzeCall(activityId, scriptChecklist, customMetrics, scenarioI
       }
     }
 
+    const localizationSourceAnalysis = normalizedAnalysis;
     const localization = await ensureRussianStructuredAnalysis(normalizedAnalysis, { maxAttempts: 2 });
     normalizedAnalysis = localization.analysis;
     if (localization.localizationPending) {
       structuredAnalysisErrorMessage =
         structuredAnalysisErrorMessage || localization.localizationErrorMessage || "Не удалось локализовать analysis на русский язык";
-      normalizedAnalysis = emptyStructuredAnalysis();
+      normalizedAnalysis = analysisHasMeaningfulContent(localization.analysis)
+        ? localization.analysis
+        : localizationSourceAnalysis;
+    }
+
+    if (localization.localizationPending && analysisHasMeaningfulContent(normalizedAnalysis)) {
+      structuredAnalysisErrorMessage = "";
     }
 
     hasMeaningfulStructuredResult = analysisHasMeaningfulContent(normalizedAnalysis);

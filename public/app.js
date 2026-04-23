@@ -1668,15 +1668,13 @@ function renderScenarioList() {
         <tr class="${String(state.selectedScenarioId) === String(scenario.id) ? "is-selected" : ""}" data-action="pick-scenario" data-id="${scenario.id}">
           <td class="scenario-index-column">${scenarioNumber}</td>
           <td class="scenario-flag-column">
-            <label class="scenario-table-toggle" aria-label="Участвует в автоподборе">
+            <label class="scenario-table-toggle" aria-label="Участвует в автоподборе" title="${scenario.autoApply ? "Участвует в автоподборе" : "Не участвует в автоподборе"}">
               <input type="checkbox" data-action="toggle-scenario-auto" data-id="${scenario.id}" ${scenario.autoApply ? "checked" : ""} />
-              <span>${scenario.autoApply ? "Да" : "Нет"}</span>
             </label>
           </td>
           <td class="scenario-flag-column">
-            <label class="scenario-table-toggle" aria-label="Сценарий по умолчанию">
+            <label class="scenario-table-toggle" aria-label="Сценарий по умолчанию" title="${scenario.isDefault ? "Сценарий по умолчанию" : "Не сценарий по умолчанию"}">
               <input type="radio" name="scenarioDefaultTable" data-action="toggle-scenario-default" data-id="${scenario.id}" ${scenario.isDefault ? "checked" : ""} />
-              <span>${scenario.isDefault ? "Да" : "Нет"}</span>
             </label>
           </td>
           <td class="scenario-name-column">

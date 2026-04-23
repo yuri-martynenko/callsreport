@@ -640,7 +640,7 @@ tbody tr.is-clickable { cursor: pointer; }
   overflow: auto;
 }
 .scenario-registry-table {
-  min-width: 1510px;
+  min-width: 1400px;
 }
 .scenario-registry-table tbody tr {
   cursor: pointer;
@@ -653,16 +653,16 @@ tbody tr.is-clickable { cursor: pointer; }
   line-height: 1.45;
 }
 .scenario-index-column {
-  width: 28px;
-  min-width: 28px;
+  width: 24px;
+  min-width: 24px;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  padding-left: 10px;
-  padding-right: 10px;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 .scenario-flag-column {
-  width: 92px;
-  min-width: 92px;
+  width: 54px;
+  min-width: 54px;
   text-align: center;
 }
 .scenario-count-column {
@@ -746,14 +746,22 @@ tbody tr.is-clickable { cursor: pointer; }
   justify-content: flex-start;
 }
 .scenario-table-toggle {
-  display: inline-flex;
-  flex-direction: row;
+  display: inline-grid;
   align-items: center;
+  justify-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 0;
   font-size: 12px;
   white-space: nowrap;
   width: 100%;
+}
+.scenario-registry-table th.scenario-flag-column,
+.scenario-registry-table th.scenario-index-column,
+.scenario-registry-table th.scenario-count-column,
+.scenario-registry-table td.scenario-flag-column,
+.scenario-registry-table td.scenario-index-column,
+.scenario-registry-table td.scenario-count-column {
+  text-align: center;
 }
 .scenario-table-toggle input {
   width: 16px;

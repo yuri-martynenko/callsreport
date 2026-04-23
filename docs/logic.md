@@ -314,3 +314,7 @@ After `/api/settings` persists the new mode, backend schedules the auto-enqueue 
 The calls table keeps a temporary UI selection for the scenario dropdown. If the operator switches the scenario for an already recognized call, the rerun action becomes available immediately without waiting for a full data reload.
 
 If transcription exists but structured AI analysis or Russian localization fails, backend now exposes that result as `outdated`, so the UI shows `Нужен повтор` instead of `Готово`.
+
+## 2026-04 Localization Fallback
+
+Russian localization of the structured AI result is now best-effort. If the extra localization pass cannot fully remove Latin fragments, backend keeps the meaningful structured analysis instead of wiping it and degrading the whole call to an empty retry-only result.
