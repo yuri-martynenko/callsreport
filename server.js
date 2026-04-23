@@ -639,6 +639,12 @@ async function cancelQueuedAutoJobs() {
 }
 
 function deriveAnalysisResultState(analysis = {}) {
+  const structuredErrorMessage = String(analysis?.processingNotes?.structuredAnalysisErrorMessage || "").trim();
+  const localizationErrorMessage = String(analysis?.processingNotes?.localizationErrorMessage || "").trim();
+  const localizationPending = Boolean(analysis?.processingNotes?.localizationPending);
+  if (analysis?.transcriptText && (structuredErrorMessage || localizationErrorMessage || localizationPending)) {
+    return "outdated";
+  }
   if (analysisHasMeaningfulContent(analysis)) return "ready";
   if (analysis?.transcriptText) return "partial";
   return "technical";

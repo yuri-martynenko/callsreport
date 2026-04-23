@@ -308,3 +308,9 @@ The call detail modal now supports playback for each transcript line:
 Saving `autoTranscriptionMode` no longer waits for the full automatic queue rescan to finish.
 
 After `/api/settings` persists the new mode, backend schedules the auto-enqueue refresh in the background so the UI can close the modal immediately and continue with lightweight data reloads.
+
+## 2026-04 Scenario Rerun and Status
+
+The calls table keeps a temporary UI selection for the scenario dropdown. If the operator switches the scenario for an already recognized call, the rerun action becomes available immediately without waiting for a full data reload.
+
+If transcription exists but structured AI analysis or Russian localization fails, backend now exposes that result as `outdated`, so the UI shows `Нужен повтор` instead of `Готово`.
