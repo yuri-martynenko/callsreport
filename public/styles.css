@@ -632,6 +632,7 @@ tbody tr.is-clickable { cursor: pointer; }
   gap: 8px;
 }
 .scenario-library-meta {
+  min-height: 18px;
   padding-bottom: 11px;
 }
 .scenario-table-wrap {
@@ -639,7 +640,7 @@ tbody tr.is-clickable { cursor: pointer; }
   overflow: auto;
 }
 .scenario-registry-table {
-  min-width: 1580px;
+  min-width: 1320px;
 }
 .scenario-registry-table tbody tr {
   cursor: pointer;
@@ -664,6 +665,9 @@ tbody tr.is-clickable { cursor: pointer; }
 }
 .scenario-modal-meta {
   gap: 8px;
+}
+.scenario-summary-pills {
+  align-items: center;
 }
 .scenario-modal-body {
   gap: 14px;
@@ -690,17 +694,24 @@ tbody tr.is-clickable { cursor: pointer; }
 .scenario-core-grid {
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
 }
+.scenario-field-hint {
+  display: block;
+  margin-top: -2px;
+  line-height: 1.45;
+}
 .rules-grid {
   margin-top: 12px;
 }
 .rules-grid-duration {
   margin-top: 12px;
 }
+.scenario-modal-section .section-head-actions {
+  margin-left: auto;
+}
 .scenario-toggle-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 12px;
 }
 .scenario-toggle-grid .filter-recorded-option {
   gap: 8px;
@@ -708,11 +719,44 @@ tbody tr.is-clickable { cursor: pointer; }
 .scenario-toggle-grid .filter-recorded-control {
   background: rgba(255, 255, 255, 0.92);
 }
+.scenario-modal-actions .action-stack {
+  justify-content: flex-start;
+}
 .section-head-compact {
   margin-bottom: 10px;
 }
-.scenario-link { padding: 0; background: transparent; color: var(--primary); border-radius: 0; font-weight: 600; text-align: left; }
-.scenario-link:hover { transform: none; text-decoration: underline; }
+.scenario-registry-table .scenario-link,
+button.scenario-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  box-shadow: none;
+  color: #163b8f;
+  font-weight: 600;
+  text-align: left;
+  line-height: 1.35;
+}
+.scenario-registry-table .scenario-link:hover,
+button.scenario-link:hover {
+  transform: none;
+  text-decoration: underline;
+  background: transparent;
+}
+.scenario-registry-table .scenario-link:focus-visible,
+button.scenario-link:focus-visible {
+  outline: 2px solid rgba(31, 94, 255, 0.35);
+  outline-offset: 2px;
+}
+.scenario-modal-panel button:disabled,
+.scenario-editor-panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+}
 .chart-host { min-height: 260px; }
 .chart-host-compact { min-height: 232px; }
 .chart-host-slim { min-height: 200px; }

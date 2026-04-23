@@ -25,6 +25,8 @@ const state = {
     autoTranscriptionMode: "disabled",
   },
   settingsDirty: false,
+  scenarioDirty: false,
+  scenarioFormBaseline: "",
   selectedCallId: null,
   selectedAnalysis: null,
   selectedScenarioId: "",
@@ -99,7 +101,9 @@ const el = {
   scenarioMaxDuration: document.getElementById("scenarioMaxDuration"),
   scenarioAutoApply: document.getElementById("scenarioAutoApply"),
   scenarioIsDefault: document.getElementById("scenarioIsDefault"),
+  resetScenarioRules: document.getElementById("resetScenarioRules"),
   saveScenario: document.getElementById("saveScenario"),
+  copyScenario: document.getElementById("copyScenario"),
   newScenario: document.getElementById("newScenario"),
   deleteScenario: document.getElementById("deleteScenario"),
   scenarioList: document.getElementById("scenarioList"),
@@ -1325,9 +1329,7 @@ if (transcriptPlayback.audio) {
 }
 
 function collectScenarioPayload() {
-  const existing = state.scenarios.find((item) => String(item.id) === String(state.selectedScenarioId));
   return {
-    id: existing?.id,
     name: el.scenarioName.value.trim(),
     description: el.scenarioDescription.value.trim(),
     scriptChecklist: el.scenarioScriptChecklist.value.trim(),
@@ -1342,6 +1344,14 @@ function collectScenarioPayload() {
       minDurationSeconds: el.scenarioMinDuration.value.trim() === "" ? null : Number(el.scenarioMinDuration.value),
       maxDurationSeconds: el.scenarioMaxDuration.value.trim() === "" ? null : Number(el.scenarioMaxDuration.value),
     },
+  };
+}
+
+function collectScenarioSubmitPayload() {
+  const existing = state.scenarios.find((item) => String(item.id) === String(state.selectedScenarioId));
+  return {
+    id: existing?.id,
+    ...collectScenarioPayload(),
   };
 }
 
@@ -1380,6 +1390,89 @@ function scenarioCustomMetricCount(scenario) {
   return Array.isArray(scenario?.customMetrics) ? scenario.customMetrics.filter(Boolean).length : 0;
 }
 
+function pluralizeRu(value, one, few, many) {
+  const normalized = Math.abs(Number(value) || 0);
+  const lastTwo = normalized % 100;
+  const last = normalized % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+}
+
+function scenarioSummaryPill(value, label, tone = "") {
+  return `<span class="analysis-status-badge ${tone}">${value} ${escapeHtml(label)}</span>`;
+}
+
+function scenarioSummaryMarkup(scenario = null) {
+  const selected = scenario || collectScenarioPayload();
+  const checklistCount = scenarioChecklistCount(selected);
+  const metricCount = scenarioCustomMetricCount(selected);
+  const rulesCount = scenarioRuleSummaries(selected).length;
+  return `
+    <div class="analysis-header-pills scenario-summary-pills">
+      ${scenarioSummaryPill(checklistCount, pluralizeRu(checklistCount, "пункт", "пункта", "пунктов"), "success")}
+      ${scenarioSummaryPill(metricCount, pluralizeRu(metricCount, "метрика", "метрики", "метрик"), "neutral")}
+      ${scenarioSummaryPill(rulesCount, pluralizeRu(rulesCount, "правило", "правила", "правил"), "warning")}
+    </div>`;
+}
+
+function scenarioFormSignature() {
+  return JSON.stringify(collectScenarioPayload());
+}
+
+function updateScenarioDirtyState() {
+  state.scenarioDirty = scenarioFormSignature() !== state.scenarioFormBaseline;
+  if (el.saveScenario) el.saveScenario.disabled = !state.scenarioDirty;
+  if (el.deleteScenario) el.deleteScenario.disabled = !state.selectedScenarioId;
+  if (el.copyScenario) el.copyScenario.disabled = !state.selectedScenarioId;
+}
+
+function setScenarioFormBaseline(scenario = null) {
+  state.scenarioFormBaseline = JSON.stringify(
+    scenario
+      ? {
+          name: scenario.name || "",
+          description: scenario.description || "",
+          scriptChecklist: scenario.scriptChecklist || "",
+          customMetrics: Array.isArray(scenario.customMetrics) ? scenario.customMetrics.filter(Boolean) : [],
+          autoApply: Boolean(scenario.autoApply),
+          isDefault: Boolean(scenario.isDefault),
+          matchRules: {
+            directions: scenario.matchRules?.directions || [],
+            managerIds: scenario.matchRules?.managerIds || [],
+            entityTypeIds: scenario.matchRules?.entityTypeIds || [],
+            subjectKeywords: scenario.matchRules?.subjectKeywords || [],
+            minDurationSeconds: scenario.matchRules?.minDurationSeconds ?? null,
+            maxDurationSeconds: scenario.matchRules?.maxDurationSeconds ?? null,
+          },
+        }
+      : collectScenarioPayload(),
+  );
+  updateScenarioDirtyState();
+}
+
+function resetScenarioRules() {
+  el.scenarioDirection.value = "";
+  setCheckedValues(el.scenarioManagerIdsOptions, 'input[data-filter-option="scenario-manager"]', []);
+  setCheckedValues(el.scenarioEntityTypeIdsOptions, 'input[data-filter-option="scenario-entity-type"]', []);
+  el.scenarioKeywords.value = "";
+  el.scenarioMinDuration.value = "";
+  el.scenarioMaxDuration.value = "";
+  refreshFilterLabels();
+  updateScenarioDirtyState();
+}
+
+function copyScenarioToDraft() {
+  if (!state.selectedScenarioId) return;
+  const currentDraft = collectScenarioPayload();
+  state.selectedScenarioId = "";
+  el.scenarioName.value = `${currentDraft.name || "Сценарий"} (копия)`;
+  updateScenarioFormMeta(null);
+  setScenarioFormBaseline(currentDraft);
+  updateScenarioDirtyState();
+}
+
 function filteredScenarios() {
   const query = String(el.scenarioSearch?.value || "").trim().toLowerCase();
   if (!query) return state.scenarios;
@@ -1403,27 +1496,21 @@ function updateScenarioSummaryCards() {
 }
 
 function updateScenarioFormMeta(scenario = null) {
-  const selected = scenario || state.scenarios.find((item) => String(item.id) === String(state.selectedScenarioId)) || null;
-  const isDraft = !selected;
+  const persisted = state.scenarios.find((item) => String(item.id) === String(state.selectedScenarioId)) || null;
+  const formScenario = scenario || collectScenarioPayload();
+  const isDraft = !persisted;
   if (el.scenarioModalTitle) {
-    el.scenarioModalTitle.textContent = isDraft ? "Новый сценарий" : (selected.name || "Сценарий без названия");
+    const draftTitle = el.scenarioName?.value.trim() || "Новый сценарий";
+    el.scenarioModalTitle.textContent = isDraft ? draftTitle : (el.scenarioName?.value.trim() || persisted.name || "Сценарий без названия");
   }
   if (el.scenarioSelectedBadge) {
-    el.scenarioSelectedBadge.textContent = isDraft ? "Черновик" : (selected.isDefault ? "По умолчанию" : "Сохранён");
-    el.scenarioSelectedBadge.className = `badge ${selected?.isDefault ? "success" : "neutral"}`;
+    el.scenarioSelectedBadge.textContent = isDraft ? "Черновик" : (el.scenarioIsDefault.checked ? "По умолчанию" : "Сохранён");
+    el.scenarioSelectedBadge.className = `badge ${el.scenarioIsDefault.checked ? "success" : "neutral"}`;
   }
   if (el.scenarioSelectionSummary) {
-    if (!selected) {
-      el.scenarioSelectionSummary.textContent =
-        "Выберите сценарий из таблицы или создайте новый, чтобы заполнить чек-лист разговора и правила автоподбора.";
-      return;
-    }
-    const checklistCount = scenarioChecklistCount(selected);
-    const metricCount = scenarioCustomMetricCount(selected);
-    const rulesCount = scenarioRuleSummaries(selected).length;
-    el.scenarioSelectionSummary.textContent =
-      `${checklistCount} пунктов в чек-листе, ${metricCount} доп. метрик и ${rulesCount} правил автоподбора. Окно используется для просмотра и редактирования сценария.`;
+    el.scenarioSelectionSummary.innerHTML = scenarioSummaryMarkup(formScenario);
   }
+  updateScenarioDirtyState();
 }
 
 function resetScenarioForm() {
@@ -1442,6 +1529,7 @@ function resetScenarioForm() {
   el.scenarioIsDefault.checked = false;
   refreshFilterLabels();
   updateScenarioFormMeta(null);
+  setScenarioFormBaseline(null);
 }
 
 function applyScenarioToForm(scenario) {
@@ -1464,6 +1552,7 @@ function applyScenarioToForm(scenario) {
   el.scenarioIsDefault.checked = Boolean(scenario.isDefault);
   refreshFilterLabels();
   updateScenarioFormMeta(scenario);
+  setScenarioFormBaseline(scenario);
 }
 
 function renderScenarioList() {
@@ -1472,16 +1561,14 @@ function renderScenarioList() {
   const query = String(el.scenarioSearch?.value || "").trim();
 
   if (el.scenarioLibraryMeta) {
-    const baseText = query
-      ? `Найдено ${scenarios.length} из ${state.scenarios.length} сценариев по запросу «${query}».`
-      : `Всего ${state.scenarios.length} сценариев. Нажмите строку таблицы, чтобы открыть сценарий в модальном окне.`;
+    const baseText = query ? `Найдено ${scenarios.length} из ${state.scenarios.length} сценариев по запросу «${query}».` : "";
     el.scenarioLibraryMeta.textContent = baseText;
   }
 
   if (!scenarios.length) {
     el.scenarioList.innerHTML = `
       <tr>
-        <td colspan="11">
+        <td colspan="9">
           <div class="scenario-empty-state">
             <h3>Сценарии не найдены</h3>
             <p class="muted">${query ? "Измените поисковый запрос или создайте новый сценарий." : "Создайте первый сценарий, чтобы настроить правила анализа."}</p>
@@ -1518,8 +1605,6 @@ function renderScenarioList() {
           <td class="scenario-description-column">${escapeHtml(scenario.description || "Без описания")}</td>
           <td>${checklistCount}</td>
           <td>${metricCount}</td>
-          <td>${scenario.autoApply ? "Да" : "Нет"}</td>
-          <td>${scenario.isDefault ? "Да" : "Нет"}</td>
           <td>${escapeHtml(directionLabel)}</td>
           <td>${escapeHtml(managerLabel)}</td>
           <td>${escapeHtml(crmLabel)}</td>
@@ -2711,7 +2796,7 @@ async function loadScenarios() {
       resetScenarioForm();
     }
   } else {
-    updateScenarioFormMeta(null);
+    resetScenarioForm();
   }
 }
 
@@ -2766,7 +2851,7 @@ async function saveSettings() {
 }
 
 async function saveScenario() {
-  const payload = collectScenarioPayload();
+  const payload = collectScenarioSubmitPayload();
   if (!payload.name) throw new Error("Укажите название сценария");
   const data = await api("/api/scenarios", {
     method: "POST",
@@ -2786,6 +2871,9 @@ async function saveScenario() {
 async function deleteScenario() {
   if (!state.selectedScenarioId) return;
   const current = state.scenarios.find((item) => String(item.id) === String(state.selectedScenarioId));
+  if (!confirm(`Удалить сценарий «${current?.name || "без названия"}»? Это действие нельзя отменить.`)) {
+    return;
+  }
   await api(`/api/scenarios/${state.selectedScenarioId}`, { method: "DELETE" });
   await loadScenarios();
   resetScenarioForm();
@@ -3259,6 +3347,18 @@ document.addEventListener("change", (event) => {
     )
   ) {
     refreshFilterLabels();
+    updateScenarioDirtyState();
+    updateScenarioFormMeta();
+    return;
+  }
+
+  if (
+    event.target === el.scenarioDirection ||
+    event.target === el.scenarioAutoApply ||
+    event.target === el.scenarioIsDefault
+  ) {
+    updateScenarioDirtyState();
+    updateScenarioFormMeta();
     return;
   }
 
@@ -3303,6 +3403,7 @@ if (el.openAutoTranscriptionSettings) {
 
 if (el.saveScenario) {
   el.saveScenario.addEventListener("click", async () => {
+    if (!state.scenarioDirty) return;
     try {
       await saveScenario();
     } catch (error) {
@@ -3332,6 +3433,19 @@ if (el.deleteScenario) {
     } catch (error) {
       notifyLoadError(error);
     }
+  });
+}
+
+if (el.copyScenario) {
+  el.copyScenario.addEventListener("click", () => {
+    copyScenarioToDraft();
+  });
+}
+
+if (el.resetScenarioRules) {
+  el.resetScenarioRules.addEventListener("click", () => {
+    resetScenarioRules();
+    updateScenarioFormMeta();
   });
 }
 
@@ -3441,6 +3555,21 @@ document.addEventListener("input", (event) => {
     if (el.scenarioModalTitle && !state.selectedScenarioId) {
       el.scenarioModalTitle.textContent = draftTitle;
     }
+    updateScenarioDirtyState();
+    return;
+  }
+
+  if (
+    event.target === el.scenarioDescription ||
+    event.target === el.scenarioScriptChecklist ||
+    event.target === el.scenarioCustomMetrics ||
+    event.target === el.scenarioKeywords ||
+    event.target === el.scenarioMinDuration ||
+    event.target === el.scenarioMaxDuration
+  ) {
+    updateScenarioDirtyState();
+    updateScenarioFormMeta();
+    return;
   }
 
   const audioRange = event.target.closest('[data-action="seek-call-audio"]');
