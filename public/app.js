@@ -1642,12 +1642,6 @@ function renderScenarioList() {
       return `
         <tr class="${String(state.selectedScenarioId) === String(scenario.id) ? "is-selected" : ""}" data-action="pick-scenario" data-id="${scenario.id}">
           <td class="scenario-index-column">${scenarioNumber}</td>
-          <td class="scenario-name-column">
-            <button type="button" class="scenario-link" data-action="pick-scenario" data-id="${scenario.id}">${escapeHtml(scenario.name)}</button>
-          </td>
-          <td class="scenario-description-column">${escapeHtml(scenario.description || "Без описания")}</td>
-          <td>${checklistCount}</td>
-          <td>${metricCount}</td>
           <td>
             <label class="scenario-table-toggle" aria-label="Участвует в автоподборе">
               <input type="checkbox" data-action="toggle-scenario-auto" data-id="${scenario.id}" ${scenario.autoApply ? "checked" : ""} />
@@ -1656,10 +1650,16 @@ function renderScenarioList() {
           </td>
           <td>
             <label class="scenario-table-toggle" aria-label="Сценарий по умолчанию">
-              <input type="checkbox" data-action="toggle-scenario-default" data-id="${scenario.id}" ${scenario.isDefault ? "checked" : ""} />
+              <input type="radio" name="scenarioDefaultTable" data-action="toggle-scenario-default" data-id="${scenario.id}" ${scenario.isDefault ? "checked" : ""} />
               <span>${scenario.isDefault ? "Да" : "Нет"}</span>
             </label>
           </td>
+          <td class="scenario-name-column">
+            <button type="button" class="scenario-link" data-action="pick-scenario" data-id="${scenario.id}">${escapeHtml(scenario.name)}</button>
+          </td>
+          <td class="scenario-description-column">${escapeHtml(scenario.description || "Без описания")}</td>
+          <td class="scenario-count-column">${checklistCount}</td>
+          <td class="scenario-count-column">${metricCount}</td>
           <td>${escapeHtml(directionLabel)}</td>
           <td>${escapeHtml(managerLabel)}</td>
           <td>${escapeHtml(crmLabel)}</td>

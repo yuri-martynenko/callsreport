@@ -2868,8 +2868,14 @@ app.post("/api/scenarios", async (req, res, next) => {
   try {
     const store = await readScenarioStore();
     const scenario = sanitizeScenario(req.body || {});
-    store.scenarios = (store.scenarios || []).filter((item) => String(item.id) !== String(scenario.id));
-    store.scenarios.unshift(scenario);
+    const currentScenarios = Array.isArray(store.scenarios) ? store.scenarios : [];
+    const existingIndex = currentScenarios.findIndex((item) => String(item.id) === String(scenario.id));
+    store.scenarios = currentScenarios.filter((item) => String(item.id) !== String(scenario.id));
+    if (existingIndex >= 0) {
+      store.scenarios.splice(existingIndex, 0, scenario);
+    } else {
+      store.scenarios.unshift(scenario);
+    }
     store.scenarios = ensureSingleDefaultScenario(
       store.scenarios,
       scenario.isDefault ? scenario.id : (store.scenarios.find((item) => item.isDefault)?.id || null),

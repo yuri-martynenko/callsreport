@@ -653,8 +653,14 @@ tbody tr.is-clickable { cursor: pointer; }
   line-height: 1.45;
 }
 .scenario-index-column {
-  width: 52px;
-  min-width: 52px;
+  width: 40px;
+  min-width: 40px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.scenario-count-column {
+  width: 62px;
+  min-width: 62px;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -706,6 +712,9 @@ tbody tr.is-clickable { cursor: pointer; }
   margin-bottom: 4px;
   line-height: 1.45;
 }
+.scenario-checklist-field {
+  margin-top: 12px;
+}
 .rules-grid {
   margin-top: 12px;
 }
@@ -735,6 +744,7 @@ tbody tr.is-clickable { cursor: pointer; }
   align-items: center;
   gap: 8px;
   font-size: 12px;
+  white-space: nowrap;
 }
 .scenario-table-toggle input {
   width: 16px;
