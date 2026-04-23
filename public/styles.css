@@ -640,7 +640,7 @@ tbody tr.is-clickable { cursor: pointer; }
   overflow: auto;
 }
 .scenario-registry-table {
-  min-width: 1320px;
+  min-width: 1510px;
 }
 .scenario-registry-table tbody tr {
   cursor: pointer;
@@ -651,6 +651,12 @@ tbody tr.is-clickable { cursor: pointer; }
 .scenario-registry-table td {
   font-size: 12px;
   line-height: 1.45;
+}
+.scenario-index-column {
+  width: 52px;
+  min-width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .scenario-name-column {
   width: 220px;
@@ -696,7 +702,8 @@ tbody tr.is-clickable { cursor: pointer; }
 }
 .scenario-field-hint {
   display: block;
-  margin-top: -2px;
+  margin-top: 0;
+  margin-bottom: 4px;
   line-height: 1.45;
 }
 .rules-grid {
@@ -721,6 +728,19 @@ tbody tr.is-clickable { cursor: pointer; }
 }
 .scenario-modal-actions .action-stack {
   justify-content: flex-start;
+}
+.scenario-table-toggle {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.scenario-table-toggle input {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0;
 }
 .section-head-compact {
   margin-bottom: 10px;

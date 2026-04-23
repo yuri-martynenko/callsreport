@@ -113,7 +113,6 @@ const el = {
   scenarioModalBackdrop: document.getElementById("scenarioModalBackdrop"),
   closeScenarioModal: document.getElementById("closeScenarioModal"),
   scenarioModalTitle: document.getElementById("scenarioModalTitle"),
-  scenarioSelectedBadge: document.getElementById("scenarioSelectedBadge"),
   scenarioSelectionSummary: document.getElementById("scenarioSelectionSummary"),
   summaryCards: document.getElementById("summaryCards"),
   dashboardSummaryCards: document.getElementById("dashboardSummaryCards"),
@@ -1355,6 +1354,19 @@ function collectScenarioSubmitPayload() {
   };
 }
 
+function scenarioById(id) {
+  return state.scenarios.find((item) => String(item.id) === String(id)) || null;
+}
+
+function defaultScenarioCount() {
+  return state.scenarios.filter((scenario) => scenario.isDefault).length;
+}
+
+function isOnlyDefaultScenario(id) {
+  const current = scenarioById(id);
+  return Boolean(current?.isDefault) && defaultScenarioCount() === 1;
+}
+
 function scenarioTags(scenario) {
   const tags = [];
   if (scenario.autoApply) tags.push("Автоподбор");
@@ -1473,6 +1485,39 @@ function copyScenarioToDraft() {
   updateScenarioDirtyState();
 }
 
+async function saveScenarioInline(id, patch = {}) {
+  const current = scenarioById(id);
+  if (!current) return;
+  if (patch.isDefault === false && isOnlyDefaultScenario(id)) {
+    alert("Сценарий по умолчанию должен быть ровно один. Сначала назначьте другой сценарий по умолчанию.");
+    renderScenarioList();
+    return;
+  }
+  const payload = {
+    ...current,
+    ...patch,
+    matchRules: {
+      ...(current.matchRules || {}),
+      ...(patch.matchRules || {}),
+    },
+  };
+  const data = await api("/api/scenarios", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  state.scenarios = data.scenarios || [];
+  if (String(state.selectedScenarioId) === String(id)) {
+    applyScenarioToForm(data.scenario);
+  } else {
+    renderScenarioList();
+    updateScenarioDirtyState();
+  }
+  if (el.statusText) {
+    el.statusText.textContent = `Сценарий «${data.scenario.name}» обновлён.`;
+  }
+}
+
 function filteredScenarios() {
   const query = String(el.scenarioSearch?.value || "").trim().toLowerCase();
   if (!query) return state.scenarios;
@@ -1502,10 +1547,6 @@ function updateScenarioFormMeta(scenario = null) {
   if (el.scenarioModalTitle) {
     const draftTitle = el.scenarioName?.value.trim() || "Новый сценарий";
     el.scenarioModalTitle.textContent = isDraft ? draftTitle : (el.scenarioName?.value.trim() || persisted.name || "Сценарий без названия");
-  }
-  if (el.scenarioSelectedBadge) {
-    el.scenarioSelectedBadge.textContent = isDraft ? "Черновик" : (el.scenarioIsDefault.checked ? "По умолчанию" : "Сохранён");
-    el.scenarioSelectedBadge.className = `badge ${el.scenarioIsDefault.checked ? "success" : "neutral"}`;
   }
   if (el.scenarioSelectionSummary) {
     el.scenarioSelectionSummary.innerHTML = scenarioSummaryMarkup(formScenario);
@@ -1568,7 +1609,7 @@ function renderScenarioList() {
   if (!scenarios.length) {
     el.scenarioList.innerHTML = `
       <tr>
-        <td colspan="9">
+        <td colspan="12">
           <div class="scenario-empty-state">
             <h3>Сценарии не найдены</h3>
             <p class="muted">${query ? "Измените поисковый запрос или создайте новый сценарий." : "Создайте первый сценарий, чтобы настроить правила анализа."}</p>
@@ -1580,6 +1621,7 @@ function renderScenarioList() {
 
   el.scenarioList.innerHTML = scenarios
     .map((scenario) => {
+      const scenarioNumber = state.scenarios.findIndex((item) => String(item.id) === String(scenario.id)) + 1;
       const checklistCount = scenarioChecklistCount(scenario);
       const metricCount = scenarioCustomMetricCount(scenario);
       const directionLabel = scenario.matchRules?.directions?.length
@@ -1599,12 +1641,25 @@ function renderScenarioList() {
       if (scenario.matchRules?.maxDurationSeconds != null) durationParts.push(`до ${scenario.matchRules.maxDurationSeconds} сек`);
       return `
         <tr class="${String(state.selectedScenarioId) === String(scenario.id) ? "is-selected" : ""}" data-action="pick-scenario" data-id="${scenario.id}">
+          <td class="scenario-index-column">${scenarioNumber}</td>
           <td class="scenario-name-column">
             <button type="button" class="scenario-link" data-action="pick-scenario" data-id="${scenario.id}">${escapeHtml(scenario.name)}</button>
           </td>
           <td class="scenario-description-column">${escapeHtml(scenario.description || "Без описания")}</td>
           <td>${checklistCount}</td>
           <td>${metricCount}</td>
+          <td>
+            <label class="scenario-table-toggle" aria-label="Участвует в автоподборе">
+              <input type="checkbox" data-action="toggle-scenario-auto" data-id="${scenario.id}" ${scenario.autoApply ? "checked" : ""} />
+              <span>${scenario.autoApply ? "Да" : "Нет"}</span>
+            </label>
+          </td>
+          <td>
+            <label class="scenario-table-toggle" aria-label="Сценарий по умолчанию">
+              <input type="checkbox" data-action="toggle-scenario-default" data-id="${scenario.id}" ${scenario.isDefault ? "checked" : ""} />
+              <span>${scenario.isDefault ? "Да" : "Нет"}</span>
+            </label>
+          </td>
           <td>${escapeHtml(directionLabel)}</td>
           <td>${escapeHtml(managerLabel)}</td>
           <td>${escapeHtml(crmLabel)}</td>
@@ -3226,6 +3281,11 @@ function resetFilters() {
 }
 
 document.addEventListener("click", async (event) => {
+  const inlineToggle = event.target.closest('[data-action="toggle-scenario-auto"], [data-action="toggle-scenario-default"]');
+  if (inlineToggle) {
+    event.stopPropagation();
+    return;
+  }
   if (event.target === el.analysisDrawerBackdrop || event.target === el.closeAnalysisDrawer) {
     stopTranscriptPlayback();
     state.selectedCallId = null;
@@ -3331,7 +3391,7 @@ document.addEventListener("click", async (event) => {
   control.addEventListener("change", handleFilterControlsChanged);
 });
 
-document.addEventListener("change", (event) => {
+document.addEventListener("change", async (event) => {
   if (
     event.target.matches(
       'input[data-filter-option="manager"], input[data-filter-option="direction"], input[data-filter-option="analysis-state"], input[data-filter-option="scenario"]',
@@ -3357,8 +3417,33 @@ document.addEventListener("change", (event) => {
     event.target === el.scenarioAutoApply ||
     event.target === el.scenarioIsDefault
   ) {
+    if (event.target === el.scenarioIsDefault && !event.target.checked && isOnlyDefaultScenario(state.selectedScenarioId)) {
+      event.target.checked = true;
+      alert("Сценарий по умолчанию должен быть ровно один. Сначала назначьте другой сценарий по умолчанию.");
+      return;
+    }
     updateScenarioDirtyState();
     updateScenarioFormMeta();
+    return;
+  }
+
+  if (event.target.matches('[data-action="toggle-scenario-auto"]')) {
+    try {
+      await saveScenarioInline(event.target.getAttribute("data-id"), { autoApply: event.target.checked });
+    } catch (error) {
+      event.target.checked = !event.target.checked;
+      notifyLoadError(error);
+    }
+    return;
+  }
+
+  if (event.target.matches('[data-action="toggle-scenario-default"]')) {
+    try {
+      await saveScenarioInline(event.target.getAttribute("data-id"), { isDefault: event.target.checked });
+    } catch (error) {
+      event.target.checked = !event.target.checked;
+      notifyLoadError(error);
+    }
     return;
   }
 

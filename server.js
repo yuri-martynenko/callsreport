@@ -306,6 +306,21 @@ function sanitizeScenario(input = {}) {
   };
 }
 
+function ensureSingleDefaultScenario(scenarios = [], preferredId = null) {
+  if (!Array.isArray(scenarios) || !scenarios.length) return scenarios;
+  let defaultId = scenarios.find((scenario) => scenario.isDefault)?.id || null;
+  if (preferredId && scenarios.some((scenario) => String(scenario.id) === String(preferredId))) {
+    defaultId = preferredId;
+  }
+  if (!defaultId) {
+    defaultId = scenarios[0].id;
+  }
+  return scenarios.map((scenario, index) => ({
+    ...scenario,
+    isDefault: String(scenario.id) === String(defaultId) && index >= 0,
+  }));
+}
+
 function sanitizeSettings(input = {}) {
   const allowedModes = new Set(["disabled", "all", "incoming", "outgoing"]);
   const autoTranscriptionMode = allowedModes.has(String(input.autoTranscriptionMode || ""))
@@ -2854,14 +2869,14 @@ app.post("/api/scenarios", async (req, res, next) => {
     const store = await readScenarioStore();
     const scenario = sanitizeScenario(req.body || {});
     store.scenarios = (store.scenarios || []).filter((item) => String(item.id) !== String(scenario.id));
-
-    if (scenario.isDefault) {
-      store.scenarios = store.scenarios.map((item) => ({ ...item, isDefault: false }));
-    }
-
     store.scenarios.unshift(scenario);
+    store.scenarios = ensureSingleDefaultScenario(
+      store.scenarios,
+      scenario.isDefault ? scenario.id : (store.scenarios.find((item) => item.isDefault)?.id || null),
+    );
+    const savedScenario = store.scenarios.find((item) => String(item.id) === String(scenario.id)) || scenario;
     await writeScenarioStore(store);
-    res.json({ success: true, data: { scenario, scenarios: store.scenarios } });
+    res.json({ success: true, data: { scenario: savedScenario, scenarios: store.scenarios } });
   } catch (error) {
     next(error);
   }
@@ -2877,9 +2892,7 @@ app.delete("/api/scenarios/:id", async (req, res, next) => {
       error.statusCode = 404;
       throw error;
     }
-    if (!store.scenarios.some((item) => item.isDefault) && store.scenarios[0]) {
-      store.scenarios[0].isDefault = true;
-    }
+    store.scenarios = ensureSingleDefaultScenario(store.scenarios);
     await writeScenarioStore(store);
     res.json({ success: true, data: { scenarios: store.scenarios } });
   } catch (error) {
