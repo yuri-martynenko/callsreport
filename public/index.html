@@ -41,6 +41,16 @@
                 <article class="panel chart-panel">
                   <div class="section-head">
                     <div class="section-head-main">
+                      <h2>Риски звонков</h2>
+                      <span class="muted">Распределение по уровням риска от общего числа распознанных звонков.</span>
+                    </div>
+                  </div>
+                  <div id="riskChart" class="chart-host chart-host-compact"></div>
+                </article>
+
+                <article class="panel chart-panel">
+                  <div class="section-head">
+                    <div class="section-head-main">
                       <h2>Средний процент по сценариям</h2>
                       <span class="muted">Метрика: средний процент соблюдения скрипта.</span>
                     </div>
@@ -110,11 +120,11 @@
                 <article class="panel chart-panel">
                   <div class="section-head">
                     <div class="section-head-main">
-                      <h2>Динамика высокого риска</h2>
-                      <span class="muted">Количество звонков с высоким риском по дням за 3 месяца.</span>
+                      <h2>Количество звонков без записи</h2>
+                      <span class="muted">Динамика звонков, по которым нет записи, за 3 месяца.</span>
                     </div>
                   </div>
-                  <div id="highRiskChart" class="chart-host chart-host-compact"></div>
+                  <div id="noRecordingChart" class="chart-host chart-host-compact"></div>
                 </article>
 
                 <article class="panel chart-panel">
@@ -130,7 +140,7 @@
                 <article class="panel chart-panel">
                   <div class="section-head">
                     <div class="section-head-main">
-                      <h2>Топ нарушаемых checkpoint’ов</h2>
+                      <h2>Топ нарушений</h2>
                       <span class="muted">Чаще всего проблемные пункты сценария за весь период.</span>
                     </div>
                   </div>

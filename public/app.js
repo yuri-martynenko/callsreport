@@ -141,11 +141,12 @@ const el = {
   pageInfo: document.getElementById("pageInfo"),
   managerScoreChart: document.getElementById("managerScoreChart"),
   sentimentChart: document.getElementById("sentimentChart"),
+  riskChart: document.getElementById("riskChart"),
   scenarioAverageChart: document.getElementById("scenarioAverageChart"),
   recognizedCallsChart: document.getElementById("recognizedCallsChart"),
   tokensUsageChart: document.getElementById("tokensUsageChart"),
   recognizedMinutesChart: document.getElementById("recognizedMinutesChart"),
-  highRiskChart: document.getElementById("highRiskChart"),
+  noRecordingChart: document.getElementById("noRecordingChart"),
   tokensPerMinuteChart: document.getElementById("tokensPerMinuteChart"),
   violatedCheckpointsChart: document.getElementById("violatedCheckpointsChart"),
   callsHeatmap: document.getElementById("callsHeatmap"),
@@ -1798,17 +1799,14 @@ function renderSummaryInto(container, summary) {
     container.innerHTML = "";
     return;
   }
+  const missingCalls = Number(summary?.statusBreakdown?.find((item) => item.key === "missing")?.count || state.dashboardStatusBreakdown.find((item) => item.key === "missing")?.count || 0);
   container.innerHTML = [
     summaryCard("Всего звонков", summary.totalCalls || 0, "Общий объём звонков за весь период"),
     summaryCard("Проанализировано звонков", summary.analyzedCalls, "Все сохранённые AI-разборы"),
     summaryCard("Ожидает анализа", summary.awaitingAnalysisCalls ?? summary.pendingCalls ?? 0, "Ожидают запуска или стоят в очереди"),
     summaryCard("Средний score", summary.averageScore || "0", "Оценка соблюдения сценария"),
     summaryCard("Высокий риск", summary.highRisk, "Требует ручного разбора"),
-    summaryCard(
-      "Позитив / нейтрал / негатив",
-      `${summary.positive} / ${summary.neutral} / ${summary.negative}`,
-      "Сентимент разговора",
-    ),
+    summaryCard("Без записи", missingCalls, "Звонки, которые нельзя распознать"),
   ].join("");
 }
 
@@ -2367,6 +2365,42 @@ function renderSentimentChart() {
   );
 }
 
+function renderRiskChart() {
+  const parts = [
+    { label: "Низкий", count: 0, trackClassName: "is-low-risk" },
+    { label: "Средний", count: 0, trackClassName: "is-medium-risk" },
+    { label: "Высокий", count: 0, trackClassName: "is-high-risk" },
+  ];
+
+  for (const call of dashboardCallsWithAnalysis()) {
+    const risk = localizeRisk(effectiveAnalysis(call)?.overview?.riskLevel);
+    const bucket = parts.find((item) => item.label === risk);
+    if (bucket) bucket.count += 1;
+  }
+
+  const total = parts.reduce((sum, item) => sum + item.count, 0);
+  if (!total) {
+    renderEmptyChart(el.riskChart, "Нет данных по рискам.");
+    return;
+  }
+
+  renderHorizontalBars(
+    el.riskChart,
+    parts.map((item) => ({
+      label: item.label,
+      value: roundedMetric((item.count / total) * 100, 1),
+      rawValue: item.count,
+      trackClassName: item.trackClassName,
+    })),
+    {
+      emptyMessage: "Нет данных по рискам.",
+      usePercentScale: true,
+      formatter: (value, item) =>
+        `<span>${escapeHtml(`${item.rawValue}`)}</span><span class="muted">${escapeHtml(`(${value.toFixed(1)}%)`)}</span>`,
+    },
+  );
+}
+
 function scenarioComplianceRows() {
   const buckets = new Map();
   for (const call of dashboardCallsWithAnalysis()) {
@@ -2577,10 +2611,7 @@ function renderHeatmap(container, data, options = {}) {
     <div class="heatmap">
       <div class="heatmap-months">
         ${monthGroups
-          .map(
-            (group) =>
-              `<span class="heatmap-month-label" style="--columns:${group.columns.length}">${escapeHtml(group.label)}</span>`,
-          )
+          .map((group) => `<span class="heatmap-month-label">${escapeHtml(group.label)}</span>`)
           .join("")}
       </div>
       <div class="heatmap-groups">
@@ -2677,20 +2708,20 @@ function renderRecognizedMinutesChart() {
   });
 }
 
-function renderHighRiskChart() {
+function renderNoRecordingChart() {
   const series = buildCountSeriesByDay(
-    filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
-    (call) => String(effectiveAnalysis(call)?.overview?.riskLevel || "").toLowerCase() === "high" || localizeRisk(effectiveAnalysis(call)?.overview?.riskLevel) === "Высокий",
+    filterCallsByLastNDays(state.dashboardCalls, 90),
+    (call) => !call.hasRecording,
     90,
   );
-  renderSeriesChart(el.highRiskChart, series, {
-    emptyMessage: "Нет данных по высокому риску.",
-    zeroMessage: "За последние 3 месяца звонков с высоким риском не было.",
-    ariaLabel: "График динамики высокого риска за последние 3 месяца",
+  renderSeriesChart(el.noRecordingChart, series, {
+    emptyMessage: "Нет данных по звонкам без записи.",
+    zeroMessage: "За последние 3 месяца звонков без записи не было.",
+    ariaLabel: "График звонков без записи за последние 3 месяца",
     valueFormatter: (value) => `${Math.round(value)}`,
     yTickFormatter: (value) => `${Math.round(value)}`,
-    strokeClass: "is-tokens",
-    areaClass: "is-tokens",
+    strokeClass: "is-missing",
+    areaClass: "is-missing",
     maxXAxisLabels: 8,
     maxPointLabels: 10,
     pointTextClass: "is-medium",
@@ -2762,13 +2793,14 @@ function renderDailyScoreChart() {
 
 function renderDashboard() {
   renderSentimentChart();
+  renderRiskChart();
   renderScenarioAverageChart();
   renderManagerScoreChart();
   renderHeatmaps();
   renderRecognizedCallsChart();
   renderTokensUsageChart();
   renderRecognizedMinutesChart();
-  renderHighRiskChart();
+  renderNoRecordingChart();
   renderTokensPerMinuteChart();
   renderViolatedCheckpointsChart();
   renderDailyScoreChart();
@@ -3726,7 +3758,8 @@ document.addEventListener("change", (event) => {
     renderEmptyChart(el.recognizedCallsChart, error.message);
     renderEmptyChart(el.tokensUsageChart, error.message);
     renderEmptyChart(el.recognizedMinutesChart, error.message);
-    renderEmptyChart(el.highRiskChart, error.message);
+    renderEmptyChart(el.riskChart, error.message);
+    renderEmptyChart(el.noRecordingChart, error.message);
     renderEmptyChart(el.tokensPerMinuteChart, error.message);
     renderEmptyChart(el.violatedCheckpointsChart, error.message);
     renderEmptyChart(el.callsHeatmap, error.message);
