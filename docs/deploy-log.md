@@ -11,6 +11,12 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-24 23:02 VLAT
+
+- Задача: deploy возврата heatmap `Тепловая карта вызовов за 3 месяца` к прежнему grouped-виду, удаления heatmap `Распознанные вызовы`, замены блока `Динамика среднего балла` на новый 3-месячный сравнительный график `Количество вызовов и распознанные вызовы`, а также синхронизации `docs/logic.md`.
+- Длительность: около 20 минут.
+- Результат: `push` коммита `12e2d64` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, внешний `GET https://app-2f37df5d.vibecode.bitrix24.tech/api/health` и локальный `GET http://127.0.0.1:3000/api/health` на сервере вернули `ok=true, configured=true`, а production-файлы в `/opt/app/callsreport-main/public` подтвердили наличие `callsVolumeChart`, `heatmap-groups`, `heatmap-column` и отсутствие отдельных dashboard-блоков `recognizedCallsHeatmap` и `dailyScoreChart`.
+
 ## 2026-04-24 22:54 VLAT
 
 - Задача: deploy переработки модалки `Детализация звонка` с выносом `Результат` в отдельный блок и раскладкой блоков `Резюме`, `Результат` и `Потребность клиента` в одну строку.
