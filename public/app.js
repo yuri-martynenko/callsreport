@@ -614,6 +614,14 @@ function formatDay(value) {
   return value ? new Date(value).toLocaleDateString("ru-RU") : "—";
 }
 
+function formatDayShort(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day}.${month}`;
+}
+
 function formatCallDateTime(value) {
   return value
     ? new Date(value).toLocaleString("ru-RU", {
@@ -2291,6 +2299,7 @@ function lineSeriesSvg(series, options = {}) {
     ariaLabel = "График",
     valueFormatter = (value) => String(value),
     yTickFormatter = valueFormatter,
+    xTickFormatter = (item) => item.label,
     strokeClass = "",
     areaClass = "",
     maxXAxisLabels = 10,
@@ -2318,7 +2327,7 @@ function lineSeriesSvg(series, options = {}) {
     .map((point, index) => {
       const shouldShow = index === points.length - 1 || index % labelStep === 0;
       if (!shouldShow) return "";
-      return `<text class="line-chart-axis-text ${axisTextClass}" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(point.label)}</text>`;
+      return `<text class="line-chart-axis-text ${axisTextClass}" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(xTickFormatter(point))}</text>`;
     })
     .join("");
   const pointLabelStep = Math.max(1, Math.ceil(points.length / Math.max(1, maxPointLabels)));
@@ -2357,6 +2366,7 @@ function multiLineSeriesSvg(seriesEntries, options = {}) {
     ariaLabel = "Многосерийный график",
     valueFormatter = (value) => String(value),
     yTickFormatter = valueFormatter,
+    xTickFormatter = (item) => item.label,
     maxXAxisLabels = 10,
     maxPointLabels = 10,
     axisTextClass = "",
@@ -2389,7 +2399,7 @@ function multiLineSeriesSvg(seriesEntries, options = {}) {
     .map((point, index) => {
       const shouldShow = index === renderedEntries[0].points.length - 1 || index % labelStep === 0;
       if (!shouldShow) return "";
-      return `<text class="line-chart-axis-text ${axisTextClass}" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(point.label)}</text>`;
+      return `<text class="line-chart-axis-text ${axisTextClass}" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(xTickFormatter(point))}</text>`;
     })
     .join("");
   const pointLabelStep = Math.max(1, Math.ceil(baseSeries.length / Math.max(1, maxPointLabels)));
@@ -2821,21 +2831,30 @@ function renderHeatmap(container, data, options = {}) {
   const weekColumns = [];
   for (let offset = 0; offset < paddedDays.length; offset += 7) {
     const items = paddedDays.slice(offset, offset + 7);
-    const firstActual = items.find(Boolean);
-    const monthLabel = firstActual
-      ? new Date(`${firstActual.key}T00:00:00`).toLocaleDateString("ru-RU", { month: "long" })
-      : "";
-    weekColumns.push({ monthLabel, items });
+    weekColumns.push({ items });
   }
-  const monthGroups = [];
-  for (const column of weekColumns) {
-    const lastGroup = monthGroups[monthGroups.length - 1];
-    if (!lastGroup || lastGroup.label !== column.monthLabel) {
-      monthGroups.push({ label: column.monthLabel, columns: [column] });
-    } else {
-      lastGroup.columns.push(column);
+  const monthStarts = [
+    {
+      weekIndex: 0,
+      label: new Date(`${data.days[0].key}T00:00:00`).toLocaleDateString("ru-RU", { month: "long" }),
+    },
+  ];
+  data.days.forEach((item, index) => {
+    const date = new Date(`${item.key}T00:00:00`);
+    if (index === 0 || date.getDate() !== 1) return;
+    const weekIndex = Math.floor((leadingEmpty + index) / 7);
+    const label = date.toLocaleDateString("ru-RU", { month: "long" });
+    const lastStart = monthStarts[monthStarts.length - 1];
+    if (lastStart?.weekIndex === weekIndex) {
+      lastStart.label = label;
+      return;
     }
-  }
+    monthStarts.push({ weekIndex, label });
+  });
+  const monthGroups = monthStarts.map((start, index) => ({
+    label: start.label,
+    columns: weekColumns.slice(start.weekIndex, monthStarts[index + 1]?.weekIndex ?? weekColumns.length),
+  }));
 
   container.innerHTML = `
     <div class="heatmap">
@@ -2906,6 +2925,8 @@ function renderRecognizedCallsChart() {
     areaClass: "is-calls",
     pointTextClass: "is-emphasis",
     axisTextClass: "is-medium",
+    maxXAxisLabels: 6,
+    xTickFormatter: (item) => formatDayShort(item.key),
   });
 }
 
@@ -2928,6 +2949,8 @@ function renderTokensUsageChart() {
     areaClass: "is-tokens",
     pointTextClass: "is-emphasis",
     axisTextClass: "is-medium",
+    maxXAxisLabels: 6,
+    xTickFormatter: (item) => formatDayShort(item.key),
   });
 }
 
@@ -2953,6 +2976,8 @@ function renderRecognizedMinutesChart() {
     areaClass: "is-minutes",
     pointTextClass: "is-emphasis",
     axisTextClass: "is-medium",
+    maxXAxisLabels: 6,
+    xTickFormatter: (item) => formatDayShort(item.key),
   });
 }
 
@@ -2996,10 +3021,11 @@ function renderTokensPerMinuteChart() {
     yTickFormatter: (value) => `${value.toFixed(1)}`,
     strokeClass: "is-score",
     areaClass: "is-score",
-    maxXAxisLabels: 8,
+    maxXAxisLabels: 6,
     maxPointLabels: 10,
     pointTextClass: "is-medium",
     axisTextClass: "is-medium",
+    xTickFormatter: (item) => formatDayShort(item.key),
   });
 }
 
