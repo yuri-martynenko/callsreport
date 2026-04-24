@@ -1324,6 +1324,14 @@ function uniqueActivities(items = []) {
   );
 }
 
+function activitiesFingerprint(items = []) {
+  let fingerprint = `${items.length}`;
+  for (const item of items) {
+    fingerprint += `|${String(item?.id || "")}:${String(item?.updatedAt || item?.startTime || item?.createdAt || "")}`;
+  }
+  return fingerprint;
+}
+
 async function searchActivitiesByManagers(baseFilter, managerIds, limit, offset) {
   const ids = Array.from(
     new Set(
@@ -1456,10 +1464,12 @@ function activitySnapshotAgeMs() {
 async function ensureActivitySnapshotLoaded() {
   if (activitySnapshotCache.loaded) return;
   const persisted = await readActivitySnapshotCache();
+  const activities = Array.isArray(persisted?.activities) ? persisted.activities : [];
   activitySnapshotCache = {
     loaded: true,
     updatedAt: persisted?.updatedAt ? new Date(persisted.updatedAt).getTime() : 0,
-    activities: Array.isArray(persisted?.activities) ? persisted.activities : [],
+    activities,
+    fingerprint: activitiesFingerprint(activities),
   };
 }
 
@@ -1481,13 +1491,18 @@ async function refreshActivitySnapshotCache(options = {}) {
       );
     }
     const unique = uniqueActivities(rawActivities).slice(0, ACTIVITY_SNAPSHOT_REMOTE_LIMIT);
+    const nextFingerprint = activitiesFingerprint(unique);
+    const previousFingerprint = String(activitySnapshotCache.fingerprint || "");
     const persisted = await writeActivitySnapshotCache({ activities: unique });
     activitySnapshotCache = {
       loaded: true,
       updatedAt: persisted?.updatedAt ? new Date(persisted.updatedAt).getTime() : Date.now(),
       activities: unique,
+      fingerprint: nextFingerprint,
     };
-    invalidateFilteredCallsCache();
+    if (nextFingerprint !== previousFingerprint) {
+      invalidateFilteredCallsCache();
+    }
     return unique;
   })().finally(() => {
     activitySnapshotRefreshInFlight = null;

@@ -41,6 +41,14 @@ const state = {
   callsCursorByPage: {},
   reportDataLoaded: false,
   reportDataLoading: null,
+  managersLoaded: false,
+  managersLoading: null,
+  settingsLoaded: false,
+  settingsLoading: null,
+  scenariosLoaded: false,
+  scenariosLoading: null,
+  scenarioRuleOptionsLoaded: false,
+  scenarioRuleOptionsLoading: null,
   callsVirtual: {
     scrollTop: 0,
     viewportHeight: 0,
@@ -1714,13 +1722,25 @@ function setCurrentView(view) {
   if (view !== "scenarios") {
     setScenarioModalOpen(false);
   }
-  if (view !== "report") {
+  if (view === "report") {
+    ensureReportViewReady().catch((error) => {
+      notifyLoadError(error);
+    });
     return;
   }
 
-  ensureReportDataLoaded().catch((error) => {
-    notifyLoadError(error);
-  });
+  if (view === "scenarios") {
+    ensureScenariosViewReady().catch((error) => {
+      notifyLoadError(error);
+    });
+    return;
+  }
+
+  if (view === "settings") {
+    ensureSettingsLoaded().catch((error) => {
+      notifyLoadError(error);
+    });
+  }
 }
 
 function analysisFromCall(call) {
@@ -1758,6 +1778,92 @@ async function ensureReportDataLoaded(options = {}) {
   });
 
   return state.reportDataLoading;
+}
+
+async function ensureManagersLoaded(options = {}) {
+  const force = Boolean(options.force);
+  if (!force && state.managersLoaded) return null;
+  if (!force && state.managersLoading) return state.managersLoading;
+  const task = (async () => {
+    await loadManagers();
+    state.managersLoaded = true;
+  })();
+  state.managersLoading = task.finally(() => {
+    state.managersLoading = null;
+  });
+  return state.managersLoading;
+}
+
+async function ensureSettingsLoaded(options = {}) {
+  const force = Boolean(options.force);
+  if (!force && state.settingsLoaded) return null;
+  if (!force && state.settingsLoading) return state.settingsLoading;
+  const task = (async () => {
+    await loadSettings();
+    state.settingsLoaded = true;
+  })();
+  state.settingsLoading = task.finally(() => {
+    state.settingsLoading = null;
+  });
+  return state.settingsLoading;
+}
+
+async function ensureScenariosLoaded(options = {}) {
+  const force = Boolean(options.force);
+  if (!force && state.scenariosLoaded) return null;
+  if (!force && state.scenariosLoading) return state.scenariosLoading;
+  const task = (async () => {
+    await loadScenarios();
+    state.scenariosLoaded = true;
+  })();
+  state.scenariosLoading = task.finally(() => {
+    state.scenariosLoading = null;
+  });
+  return state.scenariosLoading;
+}
+
+async function ensureScenarioRuleOptionsLoaded(options = {}) {
+  const force = Boolean(options.force);
+  if (!force && state.scenarioRuleOptionsLoaded) return null;
+  if (!force && state.scenarioRuleOptionsLoading) return state.scenarioRuleOptionsLoading;
+  const task = (async () => {
+    await loadScenarioRuleOptions();
+    state.scenarioRuleOptionsLoaded = true;
+  })();
+  state.scenarioRuleOptionsLoading = task.finally(() => {
+    state.scenarioRuleOptionsLoading = null;
+  });
+  return state.scenarioRuleOptionsLoading;
+}
+
+async function ensureReportViewReady() {
+  await Promise.all([
+    ensureManagersLoaded(),
+    ensureScenariosLoaded(),
+    ensureSettingsLoaded(),
+    ensureReportDataLoaded(),
+  ]);
+}
+
+async function ensureScenariosViewReady() {
+  await Promise.all([
+    ensureManagersLoaded(),
+    ensureScenarioRuleOptionsLoaded(),
+    ensureScenariosLoaded(),
+  ]);
+}
+
+function warmDeferredViewData() {
+  setTimeout(() => {
+    Promise.allSettled([
+      ensureManagersLoaded(),
+      ensureScenarioRuleOptionsLoaded(),
+      ensureSettingsLoaded(),
+      ensureScenariosLoaded(),
+    ]).catch(() => {
+      // Ignore best-effort warmup failures. Data will be loaded on demand.
+    });
+  }, 0);
 }
 
 function analysisStateKey(call) {
@@ -3742,14 +3848,11 @@ document.addEventListener("change", (event) => {
     refreshFilterLabels();
     updateApplyFiltersState();
     await Promise.all([
-      loadManagers(),
-      loadScenarioRuleOptions(),
-      loadSettings(),
-      loadScenarios(),
       loadDashboardData({ refreshDashboard: false }),
     ]);
     renderDashboard();
     renderAnalysis(null);
+    warmDeferredViewData();
   } catch (error) {
     if (el.statusText) el.statusText.textContent = error.message;
     renderEmptyChart(el.managerScoreChart, error.message);
