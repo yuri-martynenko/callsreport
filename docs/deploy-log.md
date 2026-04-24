@@ -11,6 +11,12 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-25 08:22 VLAT
+
+- Задача: deploy очередной переработки dashboard: добавить количество звонков прямо в клетки heatmap `Тепловая карта вызовов за 6 месяцев`, поставить heatmap и `Токены на 1 минуту звонка` в один ряд, оставить три 7-дневных графика в одном ряду, переименовать нижний блок в `Количество вызовов за 3 месяца` и перевести все три линии этого графика в сплошные с более различимыми цветами.
+- Длительность: около 20 минут.
+- Результат: `push` коммита `41df7a8` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, внешний `GET https://app-2f37df5d.vibecode.bitrix24.tech/api/health` и локальный `GET http://127.0.0.1:3000/api/health` на сервере вернули `ok=true, configured=true`, `systemctl status app` подтвердил `active (running)`, а production-файлы подтвердили `heatmap-cell-count`, порядок блоков `heatmap -> tokensPerMinute -> 7-day trio`, заголовок `Количество вызовов за 3 месяца`, а также классы `is-volume-total`, `is-volume-recognized`, `is-volume-missing` без пунктирных линий у этого графика.
+
 ## 2026-04-25 08:59 VLAT
 
 - Задача: deploy дополнительной оптимизации dashboard-графиков через новый backend endpoint `GET /api/dashboard-charts` с pre-aggregated series вместо тяжелого per-call dataset для фоновой прогрузки графиков.
