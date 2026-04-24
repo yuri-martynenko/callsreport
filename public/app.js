@@ -158,8 +158,7 @@ const el = {
   tokensPerMinuteChart: document.getElementById("tokensPerMinuteChart"),
   violatedCheckpointsChart: document.getElementById("violatedCheckpointsChart"),
   callsHeatmap: document.getElementById("callsHeatmap"),
-  recognizedCallsHeatmap: document.getElementById("recognizedCallsHeatmap"),
-  dailyScoreChart: document.getElementById("dailyScoreChart"),
+  callsVolumeChart: document.getElementById("callsVolumeChart"),
   saveSettings: document.getElementById("saveSettings"),
 };
 
@@ -2351,6 +2350,85 @@ function lineSeriesSvg(series, options = {}) {
     </svg>`;
 }
 
+function comparisonLineSeriesSvg(primarySeries, secondarySeries, options = {}) {
+  const {
+    ariaLabel = "Сравнительный график",
+    valueFormatter = (value) => String(value),
+    yTickFormatter = valueFormatter,
+    primaryLabel = "Основная серия",
+    secondaryLabel = "Вторая серия",
+    maxXAxisLabels = 10,
+    maxPointLabels = 10,
+    axisTextClass = "",
+    pointTextClass = "",
+  } = options;
+
+  const width = 760;
+  const height = 260;
+  const paddingX = 42;
+  const paddingTop = 28;
+  const paddingBottom = 42;
+  const chartHeight = height - paddingTop - paddingBottom;
+  const maxValue = Math.max(
+    ...primarySeries.map((item) => Number(item.value || 0)),
+    ...secondarySeries.map((item) => Number(item.value || 0)),
+    1,
+  );
+  const buildPoints = (series) =>
+    series.map((item, index) => {
+      const x = paddingX + (index * (width - paddingX * 2)) / Math.max(series.length - 1, 1);
+      const y = height - paddingBottom - (Number(item.value || 0) / maxValue) * chartHeight;
+      return { ...item, x, y };
+    });
+
+  const primaryPoints = buildPoints(primarySeries);
+  const secondaryPoints = buildPoints(secondarySeries);
+  const labelStep = Math.max(1, Math.ceil(primaryPoints.length / Math.max(1, maxXAxisLabels)));
+  const labels = primaryPoints
+    .map((point, index) => {
+      const shouldShow = index === primaryPoints.length - 1 || index % labelStep === 0;
+      if (!shouldShow) return "";
+      return `<text class="line-chart-axis-text ${axisTextClass}" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(point.label)}</text>`;
+    })
+    .join("");
+  const pointLabelStep = Math.max(1, Math.ceil(primaryPoints.length / Math.max(1, maxPointLabels)));
+  const renderPointSet = (points, seriesClass, labelRule = () => false) =>
+    points
+      .map(
+        (point, index) => `
+          <circle class="line-chart-dot ${seriesClass}" cx="${point.x}" cy="${point.y}" r="4"></circle>
+          ${labelRule(index, points.length) ? `<text class="line-chart-point-text ${pointTextClass}" x="${point.x}" y="${point.y - 12}" text-anchor="middle">${escapeHtml(valueFormatter(point.value, point))}</text>` : ""}`,
+      )
+      .join("");
+  const yTicks = Array.from({ length: 4 }, (_, index) => {
+    const ratio = index / 3;
+    const value = roundedMetric(maxValue - maxValue * ratio, maxValue >= 100 ? 0 : 1);
+    const y = paddingTop + chartHeight * ratio;
+    return `
+      <g class="line-chart-grid-line">
+        <line x1="${paddingX}" y1="${y}" x2="${width - paddingX}" y2="${y}"></line>
+        <text class="line-chart-axis-text ${axisTextClass}" x="${paddingX - 10}" y="${y + 4}" text-anchor="end">${escapeHtml(yTickFormatter(value))}</text>
+      </g>`;
+  }).join("");
+
+  return `
+    <div class="line-chart-legend">
+      <span class="line-chart-legend-item"><i class="line-chart-legend-swatch is-primary"></i>${escapeHtml(primaryLabel)}</span>
+      <span class="line-chart-legend-item"><i class="line-chart-legend-swatch is-secondary"></i>${escapeHtml(secondaryLabel)}</span>
+    </div>
+    <svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(ariaLabel)}">
+      <g class="line-chart-grid">
+        ${yTicks}
+        <line x1="${paddingX}" y1="${height - paddingBottom}" x2="${width - paddingX}" y2="${height - paddingBottom}"></line>
+      </g>
+      <polyline class="line-chart-polyline is-calls" points="${primaryPoints.map((point) => `${point.x},${point.y}`).join(" ")}"></polyline>
+      <polyline class="line-chart-polyline is-secondary" points="${secondaryPoints.map((point) => `${point.x},${point.y}`).join(" ")}"></polyline>
+      ${renderPointSet(primaryPoints, "is-calls", (index, length) => index === length - 1 || index % pointLabelStep === 0)}
+      ${renderPointSet(secondaryPoints, "is-secondary", (index, length) => index === length - 1)}
+      <g class="axis-labels">${labels}</g>
+    </svg>`;
+}
+
 function lastNDaysKeys(days = 7, endDate = new Date()) {
   const end = new Date(endDate);
   end.setHours(0, 0, 0, 0);
@@ -2680,60 +2758,74 @@ function buildHeatmapData(calls, predicate = () => true, days = 90) {
       key,
       label: formatDay(key),
       weekday: (date.getDay() + 6) % 7,
-      monthKey: key.slice(0, 7),
-      dayOfMonth: date.getDate(),
       value: buckets.get(key) || 0,
     };
   });
 
   const maxValue = Math.max(...daysData.map((item) => item.value), 0);
-  const months = [];
-  for (const item of daysData) {
-    let month = months[months.length - 1];
-    if (!month || month.key !== item.monthKey) {
-      month = {
-        key: item.monthKey,
-        label: new Date(`${item.monthKey}-01T00:00:00`).toLocaleDateString("ru-RU", {
-          month: "short",
-          year: "numeric",
-        }),
-        days: [],
-      };
-      months.push(month);
-    }
-    month.days.push(item);
-  }
-
-  return { days: daysData, months, maxValue };
+  return { days: daysData, maxValue };
 }
 
 function renderHeatmap(container, data, options = {}) {
   if (!container) return;
   const { emptyMessage = "Недостаточно данных для тепловой карты." } = options;
-  if (!data?.months?.length) {
+  if (!data?.days?.length) {
     renderEmptyChart(container, emptyMessage);
     return;
   }
 
+  const leadingEmpty = data.days[0]?.weekday || 0;
+  const paddedDays = [
+    ...Array.from({ length: leadingEmpty }, () => null),
+    ...data.days,
+  ];
+  const weekColumns = [];
+  for (let offset = 0; offset < paddedDays.length; offset += 7) {
+    const items = paddedDays.slice(offset, offset + 7);
+    const firstActual = items.find(Boolean);
+    const monthLabel = firstActual
+      ? new Date(`${firstActual.key}T00:00:00`).toLocaleDateString("ru-RU", { month: "short" })
+      : "";
+    weekColumns.push({ monthLabel, items });
+  }
+  const monthGroups = [];
+  for (const column of weekColumns) {
+    const lastGroup = monthGroups[monthGroups.length - 1];
+    if (!lastGroup || lastGroup.label !== column.monthLabel) {
+      monthGroups.push({ label: column.monthLabel, columns: [column] });
+    } else {
+      lastGroup.columns.push(column);
+    }
+  }
+
   container.innerHTML = `
     <div class="heatmap">
-      <div class="heatmap-rows">
-        ${data.months
-          .map((month) => {
-            const monthTitle = month.label.replace(".", "");
-            return `
-              <div class="heatmap-row">
-                <div class="heatmap-month-label">${escapeHtml(monthTitle)}</div>
-                <div class="heatmap-day-line">
-                  ${month.days
-                    .map((item) => {
-                      const intensity = data.maxValue > 0 ? Math.max(0.1, item.value / data.maxValue) : 0;
-                      return `<div class="heatmap-cell ${item.value ? "is-filled" : ""}" style="--heat:${intensity.toFixed(3)};" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
-                    })
-                    .join("")}
-                </div>
-              </div>`;
-          })
+      <div class="heatmap-months">
+        ${monthGroups
+          .map((group) => `<span class="heatmap-month-label">${escapeHtml(group.label)}</span>`)
+          .join("")}
+      </div>
+      <div class="heatmap-groups">
+        ${monthGroups
+          .map(
+            (group) => `
+              <div class="heatmap-group" style="--columns:${group.columns.length}">
+                ${group.columns
+                  .map(
+                    (column) => `
+                      <div class="heatmap-column">
+                        ${column.items
+                          .map((item) => {
+                            if (!item) return '<div class="heatmap-cell is-empty" aria-hidden="true"></div>';
+                            const intensity = data.maxValue > 0 ? Math.max(0.1, item.value / data.maxValue) : 0;
+                            return `<div class="heatmap-cell ${item.value ? "is-filled" : ""}" style="--heat:${intensity.toFixed(3)};" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
+                          })
+                          .join("")}
+                      </div>`,
+                  )
+                  .join("")}
+              </div>`,
+          )
           .join("")}
       </div>
       <div class="heatmap-legend">
@@ -2864,30 +2956,36 @@ function renderHeatmaps() {
   renderHeatmap(el.callsHeatmap, buildHeatmapData(state.dashboardCalls, () => true, 92), {
     emptyMessage: "Нет данных по всем вызовам.",
   });
-  renderHeatmap(el.recognizedCallsHeatmap, buildHeatmapData(dashboardCallsWithAnalysis(), () => true, 92), {
-    emptyMessage: "Нет данных по распознанным вызовам.",
-  });
 }
 
-function renderDailyScoreChart() {
-  const series = buildAverageSeriesByDay(
-    filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
-    (call) => effectiveAnalysis(call)?.scriptAnalysis?.overallScore,
+function renderCallsVolumeChart() {
+  const totalSeries = buildCountSeriesByDay(
+    filterCallsByLastNDays(state.dashboardCalls, 90),
+    () => true,
     90,
   );
-  renderSeriesChart(el.dailyScoreChart, series, {
-    emptyMessage: "Нет данных по среднему баллу.",
-    zeroMessage: "За последние 3 месяца значения среднего балла равны 0.",
-    ariaLabel: "График среднего балла за последние 3 месяца",
-    valueFormatter: (value) => `${value.toFixed(1)}`,
-    yTickFormatter: (value) => `${value.toFixed(1)}`,
-    strokeClass: "is-score",
-    areaClass: "is-score",
+  const recognizedSeries = buildCountSeriesByDay(
+    filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
+    () => true,
+    90,
+  );
+  if (!totalSeries.length) {
+    renderEmptyChart(el.callsVolumeChart, "Нет данных по количеству вызовов.");
+    return;
+  }
+  const hasValues = [...totalSeries, ...recognizedSeries].some((item) => Number(item.value || 0) > 0);
+  const note = hasValues ? "" : `<div class="chart-inline-note">За последние 3 месяца значения по обоим рядам равны 0.</div>`;
+  el.callsVolumeChart.innerHTML = `${note}${comparisonLineSeriesSvg(totalSeries, recognizedSeries, {
+    ariaLabel: "График количества вызовов и распознанных вызовов за последние 3 месяца",
+    primaryLabel: "Количество вызовов",
+    secondaryLabel: "Распознанные вызовы",
+    valueFormatter: (value) => `${Math.round(value)}`,
+    yTickFormatter: (value) => `${Math.round(value)}`,
     maxXAxisLabels: 9,
     maxPointLabels: 8,
-    pointTextClass: "is-mini",
-    axisTextClass: "is-mini",
-  });
+    pointTextClass: "is-medium",
+    axisTextClass: "is-medium",
+  })}`;
 }
 
 function renderDashboard() {
@@ -2902,7 +3000,7 @@ function renderDashboard() {
   renderNoRecordingChart();
   renderTokensPerMinuteChart();
   renderViolatedCheckpointsChart();
-  renderDailyScoreChart();
+  renderCallsVolumeChart();
 }
 async function api(url, options) {
   let lastError = null;
@@ -3871,7 +3969,6 @@ document.addEventListener("change", (event) => {
     renderEmptyChart(el.tokensPerMinuteChart, error.message);
     renderEmptyChart(el.violatedCheckpointsChart, error.message);
     renderEmptyChart(el.callsHeatmap, error.message);
-    renderEmptyChart(el.recognizedCallsHeatmap, error.message);
-    renderEmptyChart(el.dailyScoreChart, error.message);
+    renderEmptyChart(el.callsVolumeChart, error.message);
   }
 })();

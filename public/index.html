@@ -82,19 +82,10 @@
                   <div class="section-head">
                     <div class="section-head-main">
                       <h2>Тепловая карта вызовов за 3 месяца</h2>
-                      <span class="muted">Сверху все вызовы, ниже только распознанные вызовы.</span>
+                      <span class="muted">Плотность вызовов по дням за последние 3 месяца.</span>
                     </div>
                   </div>
-                  <div class="dashboard-subgrid">
-                    <section>
-                      <h3 class="dashboard-subtitle">Все вызовы</h3>
-                      <div id="callsHeatmap" class="heatmap-host"></div>
-                    </section>
-                    <section>
-                      <h3 class="dashboard-subtitle">Распознанные вызовы</h3>
-                      <div id="recognizedCallsHeatmap" class="heatmap-host"></div>
-                    </section>
-                  </div>
+                  <div id="callsHeatmap" class="heatmap-host"></div>
                 </article>
 
                 <article class="panel chart-panel chart-panel-slim">
@@ -150,11 +141,11 @@
                 <article class="panel chart-panel chart-panel-wide">
                   <div class="section-head">
                     <div class="section-head-main">
-                      <h2>Динамика среднего балла</h2>
-                      <span class="muted">Данные за последние 3 месяца с группировкой по дням звонков.</span>
+                      <h2>Количество вызовов и распознанные вызовы за 3 месяца</h2>
+                      <span class="muted">Сравнение общего потока звонков и числа звонков с анализом по дням.</span>
                     </div>
                   </div>
-                  <div id="dailyScoreChart" class="chart-host"></div>
+                  <div id="callsVolumeChart" class="chart-host"></div>
                 </article>
               </section>
             </div>
