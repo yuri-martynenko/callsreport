@@ -84,6 +84,12 @@
 - Длительность: около 35 минут.
 - Примечание: локальный smoke показал `dashboard` около `8.8 s` на полностью пустом cache и около `2.0 s` после рестарта с уже сохранённым snapshot; warm path `managers/settings/scenarios/dashboard` составил примерно `88 ms / 11 ms / 9 ms / 352 ms`. Production deploy выполнен с коммита `6ea9400`, шаги `stop_existing`, `clean`, `download`, `normalize_windows_paths`, `cleanup_metadata`, `runtime`, `install`, `systemd`, `start`, `healthcheck` завершились со статусом `ok`.
 
+## 2026-04-24 19:15 VLAT
+
+- Задача: переход на native SQLite storage с разделением `main.db` и `cache.db`, включением `WAL`, ротационных backup и append-only export для analyses.
+- Длительность: около 95 минут.
+- Примечание: локально проверены создание `main.db`, `cache.db`, каталога backup и `analysis-exports`, а также запись analysis через новый storage-слой. Production deploy выполнен с коммита `99146ce`, шаги `stop_existing`, `clean`, `download`, `normalize_windows_paths`, `cleanup_metadata`, `runtime`, `install`, `systemd`, `start`, `healthcheck` завершились со статусом `ok`; внешний `https://app-2f37df5d.vibecode.bitrix24.tech/api/health` ответил `{\"ok\":true,...}`.
+
 ## Формат записи
 
 ```text
