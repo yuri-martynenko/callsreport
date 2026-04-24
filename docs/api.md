@@ -232,3 +232,4 @@ The automatic rescan of eligible calls for auto-transcription is scheduled in th
 - `GET /api/dashboard-summary` returns only the dashboard summary cards payload and top-level `statusBreakdown`.
 - This endpoint is intended for the first dashboard paint and avoids shipping the full dashboard calls dataset.
 - `GET /api/dashboard` remains the heavy endpoint for charts, heatmaps, and other widgets that need the lightweight per-call dashboard dataset.
+- `GET /api/dashboard-charts` returns pre-aggregated chart series and dashboard widgets without the full per-call dataset. Frontend uses it for background chart loading after the fast summary response.

@@ -633,6 +633,251 @@ async function buildDashboardSummarySnapshot() {
   };
 }
 
+function roundMetric(value, digits = 1) {
+  const factor = 10 ** digits;
+  return Math.round(Number(value || 0) * factor) / factor;
+}
+
+function dashboardCallDayKey(call = {}) {
+  if (!call?.startTime) return null;
+  const date = new Date(call.startTime);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function dashboardDayLabel(key) {
+  if (!key) return "—";
+  const date = new Date(`${key}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return key;
+  return date.toLocaleDateString("ru-RU", { timeZone: "UTC" });
+}
+
+function lastNDashboardDayKeys(days = 7, endDate = new Date()) {
+  const end = new Date(endDate);
+  end.setUTCHours(0, 0, 0, 0);
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(end);
+    date.setUTCDate(end.getUTCDate() - (days - index - 1));
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+function dashboardCallsWithAnalysis(calls = []) {
+  return calls.filter((call) => {
+    const state = String(call?.analysis?.state || "");
+    return ["ready", "partial", "technical"].includes(state);
+  });
+}
+
+function buildDashboardCountSeries(calls = [], predicate = () => true, days = 90) {
+  const keys = lastNDashboardDayKeys(days);
+  const buckets = new Map(keys.map((key) => [key, 0]));
+  for (const call of calls) {
+    const key = dashboardCallDayKey(call);
+    if (!key || !buckets.has(key) || !predicate(call)) continue;
+    buckets.set(key, (buckets.get(key) || 0) + 1);
+  }
+  return keys.map((key) => ({
+    key,
+    label: dashboardDayLabel(key),
+    value: buckets.get(key) || 0,
+  }));
+}
+
+function buildDashboardSumSeries(calls = [], metricResolver = () => 0, days = 7, digits = null) {
+  const keys = lastNDashboardDayKeys(days);
+  const buckets = new Map(keys.map((key) => [key, 0]));
+  for (const call of calls) {
+    const key = dashboardCallDayKey(call);
+    if (!key || !buckets.has(key)) continue;
+    buckets.set(key, (buckets.get(key) || 0) + Number(metricResolver(call) || 0));
+  }
+  return keys.map((key) => {
+    const value = buckets.get(key) || 0;
+    return {
+      key,
+      label: dashboardDayLabel(key),
+      value: Number.isFinite(digits) ? roundMetric(value, digits) : value,
+    };
+  });
+}
+
+function buildDashboardRatioSeries(calls = [], numeratorResolver = () => 0, denominatorResolver = () => 0, days = 90) {
+  const keys = lastNDashboardDayKeys(days);
+  const buckets = new Map(keys.map((key) => [key, { numerator: 0, denominator: 0 }]));
+  for (const call of calls) {
+    const key = dashboardCallDayKey(call);
+    if (!key || !buckets.has(key)) continue;
+    const numerator = Number(numeratorResolver(call));
+    const denominator = Number(denominatorResolver(call));
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) continue;
+    const bucket = buckets.get(key);
+    bucket.numerator += numerator;
+    bucket.denominator += denominator;
+  }
+  return keys.map((key) => {
+    const bucket = buckets.get(key) || { numerator: 0, denominator: 0 };
+    return {
+      key,
+      label: dashboardDayLabel(key),
+      value: bucket.denominator > 0 ? roundMetric(bucket.numerator / bucket.denominator, 1) : 0,
+    };
+  });
+}
+
+function buildDashboardHeatmap(calls = [], predicate = () => true, days = 184) {
+  const keys = lastNDashboardDayKeys(days);
+  const buckets = new Map(keys.map((key) => [key, 0]));
+  for (const call of calls) {
+    const key = dashboardCallDayKey(call);
+    if (!key || !buckets.has(key) || !predicate(call)) continue;
+    buckets.set(key, (buckets.get(key) || 0) + 1);
+  }
+
+  const daysData = keys.map((key) => {
+    const date = new Date(`${key}T00:00:00Z`);
+    return {
+      key,
+      label: dashboardDayLabel(key),
+      weekday: (date.getUTCDay() + 6) % 7,
+      value: buckets.get(key) || 0,
+    };
+  });
+
+  return {
+    days: daysData,
+    maxValue: Math.max(...daysData.map((item) => item.value), 0),
+  };
+}
+
+function isDashboardCheckpointViolation(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  return !["passed", "good", "not_applicable", "пройден", "хорошо", "не применимо"].includes(normalized);
+}
+
+function buildDashboardChartsSnapshot(calls = []) {
+  const analyzedCalls = dashboardCallsWithAnalysis(calls);
+  const riskBuckets = new Map([
+    ["Низкий", { label: "Низкий", count: 0, trackClassName: "is-low-risk" }],
+    ["Средний", { label: "Средний", count: 0, trackClassName: "is-medium-risk" }],
+    ["Высокий", { label: "Высокий", count: 0, trackClassName: "is-high-risk" }],
+  ]);
+  const scenarioBuckets = new Map();
+  const managerBuckets = new Map();
+  const checkpointBuckets = new Map();
+
+  for (const call of analyzedCalls) {
+    const analysis = call.analysis || {};
+    const riskLabel = normalizeRiskLevel(analysis?.overview?.riskLevel) || "";
+    if (riskBuckets.has(riskLabel)) {
+      riskBuckets.get(riskLabel).count += 1;
+    }
+
+    const compliance = Number(analysis?.scriptAnalysis?.compliancePercent);
+    if (Number.isFinite(compliance)) {
+      const scenarioLabel = String(analysis?.selectedScenarioName || "Автосценарий").trim() || "Автосценарий";
+      if (!scenarioBuckets.has(scenarioLabel)) {
+        scenarioBuckets.set(scenarioLabel, { label: scenarioLabel, total: 0, count: 0 });
+      }
+      const bucket = scenarioBuckets.get(scenarioLabel);
+      bucket.total += compliance;
+      bucket.count += 1;
+    }
+
+    const score = Number(analysis?.scriptAnalysis?.overallScore);
+    if (Number.isFinite(score)) {
+      const managerKey = String(call?.managerId || call?.managerName || "unknown");
+      if (!managerBuckets.has(managerKey)) {
+        managerBuckets.set(managerKey, {
+          label: call?.managerName || analysis?.managerName || `Менеджер #${call?.managerId || "—"}`,
+          totalScore: 0,
+          calls: 0,
+        });
+      }
+      const bucket = managerBuckets.get(managerKey);
+      bucket.totalScore += score;
+      bucket.calls += 1;
+    }
+
+    const checkpoints = Array.isArray(analysis?.scriptAnalysis?.checkpoints) ? analysis.scriptAnalysis.checkpoints : [];
+    for (const checkpoint of checkpoints) {
+      if (!checkpoint?.name || !isDashboardCheckpointViolation(checkpoint?.status)) continue;
+      const key = String(checkpoint.name).trim();
+      if (!checkpointBuckets.has(key)) {
+        checkpointBuckets.set(key, { label: key, count: 0 });
+      }
+      checkpointBuckets.get(key).count += 1;
+    }
+  }
+
+  const totalRiskCalls = analyzedCalls.length;
+  const riskRows = Array.from(riskBuckets.values()).map((item) => ({
+    label: item.label,
+    value: totalRiskCalls ? roundMetric((item.count / totalRiskCalls) * 100, 1) : 0,
+    rawValue: item.count,
+    trackClassName: item.trackClassName,
+  }));
+
+  const scenarioAverageRows = Array.from(scenarioBuckets.values())
+    .map((item) => ({
+      label: item.label,
+      value: item.count ? roundMetric(item.total / item.count, 1) : 0,
+      count: item.count,
+    }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 8);
+
+  const managerScoreRows = Array.from(managerBuckets.values())
+    .map((item) => ({
+      label: item.label,
+      value: item.calls ? roundMetric(item.totalScore / item.calls, 1) : 0,
+      calls: item.calls,
+    }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 12);
+
+  const violatedCheckpointRows = Array.from(checkpointBuckets.values())
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 10)
+    .map((item) => ({
+      label: item.label,
+      value: analyzedCalls.length ? roundMetric((item.count / analyzedCalls.length) * 100, 1) : 0,
+      count: item.count,
+    }));
+
+  return {
+    riskRows,
+    scenarioAverageRows,
+    managerScoreRows,
+    callsHeatmap: buildDashboardHeatmap(calls, () => true, 184),
+    recognizedCallsSeries: buildDashboardCountSeries(analyzedCalls, () => true, 7),
+    tokensUsageSeries: buildDashboardSumSeries(
+      analyzedCalls,
+      (call) => Number(call?.analysis?.tokenUsage?.totalTokens || 0),
+      7,
+    ),
+    recognizedMinutesSeries: buildDashboardSumSeries(
+      analyzedCalls,
+      (call) => Number(call?.durationSeconds || 0) / 60,
+      7,
+      1,
+    ),
+    noRecordingSeries: buildDashboardCountSeries(calls, (call) => !call?.hasRecording, 90),
+    tokensPerMinuteSeries: buildDashboardRatioSeries(
+      analyzedCalls,
+      (call) => Number(call?.analysis?.tokenUsage?.totalTokens || 0),
+      (call) => Math.max(0, Number(call?.durationSeconds || 0) / 60),
+      90,
+    ),
+    violatedCheckpointRows,
+    callsVolume: {
+      totalSeries: buildDashboardCountSeries(calls, () => true, 90),
+      recognizedSeries: buildDashboardCountSeries(analyzedCalls, () => true, 90),
+      missingRecordingSeries: buildDashboardCountSeries(calls, (call) => !call?.hasRecording, 90),
+    },
+  };
+}
+
 function callSortTimestamp(call = {}) {
   return new Date(call.startTime || call.createdAt || 0).getTime();
 }
@@ -3145,6 +3390,30 @@ app.get("/api/dashboard-summary", async (_req, res, next) => {
     res.json({
       success: true,
       data: await buildDashboardSummarySnapshot(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/dashboard-charts", async (_req, res, next) => {
+  try {
+    const snapshot = await buildCallsSnapshot({ onlyRecorded: "false" });
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          ...summarizeAnalysesFromCalls(snapshot.calls),
+          totalCalls: snapshot.calls.length,
+          pendingCalls: Number(snapshot.statusBreakdown.find((item) => item.key === "pending")?.count || 0),
+          awaitingAnalysisCalls:
+            Number(snapshot.statusBreakdown.find((item) => item.key === "pending")?.count || 0) +
+            Number(snapshot.statusBreakdown.find((item) => item.key === "queued")?.count || 0),
+          statusBreakdown: snapshot.statusBreakdown,
+        },
+        statusBreakdown: snapshot.statusBreakdown,
+        charts: buildDashboardChartsSnapshot(snapshot.calls),
+      },
     });
   } catch (error) {
     next(error);

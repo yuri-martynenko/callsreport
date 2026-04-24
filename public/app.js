@@ -16,6 +16,7 @@ const state = {
   dashboardAnalyses: [],
   dashboardSummary: null,
   dashboardStatusBreakdown: [],
+  dashboardCharts: null,
   dashboardDatasetLoaded: false,
   dashboardDatasetLoading: null,
   scenarios: [],
@@ -2496,32 +2497,35 @@ function isCheckpointViolation(status) {
 }
 
 function renderManagerScoreChart() {
-  const callsById = new Map(state.dashboardCalls.map((call) => [String(call.id), call]));
-  const buckets = new Map();
-  for (const item of dashboardAnalysesList()) {
-    const score = Number(item?.scriptAnalysis?.overallScore);
-    if (!Number.isFinite(score)) continue;
-    const managerId = String(item?.managerId || item?.managerName || "unknown");
-    const fallbackCall = callsById.get(String(item?.activityId));
-    if (!buckets.has(managerId)) {
-      buckets.set(managerId, {
-        label: item?.managerName || fallbackCall?.managerName || `Менеджер #${item?.managerId || "—"}`,
-        totalScore: 0,
-        calls: 0,
-      });
+  let rows = Array.isArray(state.dashboardCharts?.managerScoreRows) ? state.dashboardCharts.managerScoreRows : null;
+  if (!rows) {
+    const callsById = new Map(state.dashboardCalls.map((call) => [String(call.id), call]));
+    const buckets = new Map();
+    for (const item of dashboardAnalysesList()) {
+      const score = Number(item?.scriptAnalysis?.overallScore);
+      if (!Number.isFinite(score)) continue;
+      const managerId = String(item?.managerId || item?.managerName || "unknown");
+      const fallbackCall = callsById.get(String(item?.activityId));
+      if (!buckets.has(managerId)) {
+        buckets.set(managerId, {
+          label: item?.managerName || fallbackCall?.managerName || `Менеджер #${item?.managerId || "—"}`,
+          totalScore: 0,
+          calls: 0,
+        });
+      }
+      const bucket = buckets.get(managerId);
+      bucket.totalScore += score;
+      bucket.calls += 1;
     }
-    const bucket = buckets.get(managerId);
-    bucket.totalScore += score;
-    bucket.calls += 1;
+    rows = Array.from(buckets.values())
+      .map((item) => ({
+        label: item.label,
+        value: item.calls ? roundedMetric(item.totalScore / item.calls, 1) : 0,
+        calls: item.calls,
+      }))
+      .sort((left, right) => right.value - left.value)
+      .slice(0, 12);
   }
-  const rows = Array.from(buckets.values())
-    .map((item) => ({
-      label: item.label,
-      value: item.calls ? roundedMetric(item.totalScore / item.calls, 1) : 0,
-      calls: item.calls,
-    }))
-    .sort((left, right) => right.value - left.value)
-    .slice(0, 12);
   renderHorizontalBars(
     el.managerScoreChart,
     rows,
@@ -2574,6 +2578,22 @@ function renderSentimentChart() {
 }
 
 function renderRiskChart() {
+  const rows = Array.isArray(state.dashboardCharts?.riskRows) ? state.dashboardCharts.riskRows : null;
+  if (rows) {
+    const total = rows.reduce((sum, item) => sum + Number(item.rawValue || 0), 0);
+    if (!total) {
+      renderEmptyChart(el.riskChart, "Нет данных по рискам.");
+      return;
+    }
+    renderHorizontalBars(el.riskChart, rows, {
+      emptyMessage: "Нет данных по рискам.",
+      usePercentScale: true,
+      formatter: (value, item) =>
+        `<span>${escapeHtml(`${item.rawValue}`)}</span><span class="muted">${escapeHtml(`(${value.toFixed(1)}%)`)}</span>`,
+    });
+    return;
+  }
+
   const parts = [
     { label: "Низкий", count: 0, trackClassName: "is-low-risk" },
     { label: "Средний", count: 0, trackClassName: "is-medium-risk" },
@@ -2639,7 +2659,9 @@ function scenarioComplianceRows() {
 }
 
 function renderScenarioAverageChart() {
-  const rows = scenarioComplianceRows();
+  const rows = Array.isArray(state.dashboardCharts?.scenarioAverageRows)
+    ? state.dashboardCharts.scenarioAverageRows
+    : scenarioComplianceRows();
   renderHorizontalBars(el.scenarioAverageChart, rows, {
     emptyMessage: "Нет данных по соблюдению сценариев.",
     usePercentScale: true,
@@ -2869,7 +2891,9 @@ function renderSeriesChart(container, series, options = {}) {
 }
 
 function renderRecognizedCallsChart() {
-  const series = buildLast7DaysSeries(dashboardCallsWithAnalysis(), () => 1);
+  const series = Array.isArray(state.dashboardCharts?.recognizedCallsSeries)
+    ? state.dashboardCharts.recognizedCallsSeries
+    : buildLast7DaysSeries(dashboardCallsWithAnalysis(), () => 1);
   renderSeriesChart(el.recognizedCallsChart, series, {
     emptyMessage: "Нет распознанных звонков за последние 7 дней.",
     ariaLabel: "График распознанных звонков за последние 7 дней",
@@ -2883,10 +2907,12 @@ function renderRecognizedCallsChart() {
 }
 
 function renderTokensUsageChart() {
-  const series = buildLast7DaysSeries(
-    dashboardCallsWithAnalysis(),
-    (call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0),
-  );
+  const series = Array.isArray(state.dashboardCharts?.tokensUsageSeries)
+    ? state.dashboardCharts.tokensUsageSeries
+    : buildLast7DaysSeries(
+      dashboardCallsWithAnalysis(),
+      (call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0),
+    );
   renderSeriesChart(el.tokensUsageChart, series, {
     emptyMessage: "Нет расхода токенов за последние 7 дней.",
     ariaLabel: "График расхода токенов за последние 7 дней",
@@ -2900,10 +2926,12 @@ function renderTokensUsageChart() {
 }
 
 function renderRecognizedMinutesChart() {
-  const series = buildLast7DaysSeries(dashboardCallsWithAnalysis(), (call) => Number(call.durationSeconds || 0) / 60).map((item) => ({
-    ...item,
-    value: roundedMetric(item.value, 1),
-  }));
+  const series = Array.isArray(state.dashboardCharts?.recognizedMinutesSeries)
+    ? state.dashboardCharts.recognizedMinutesSeries
+    : buildLast7DaysSeries(dashboardCallsWithAnalysis(), (call) => Number(call.durationSeconds || 0) / 60).map((item) => ({
+      ...item,
+      value: roundedMetric(item.value, 1),
+    }));
   renderSeriesChart(el.recognizedMinutesChart, series, {
     emptyMessage: "Нет распознанных минут за последние 7 дней.",
     ariaLabel: "График распознанных минут за последние 7 дней",
@@ -2917,11 +2945,13 @@ function renderRecognizedMinutesChart() {
 }
 
 function renderNoRecordingChart() {
-  const series = buildCountSeriesByDay(
-    filterCallsByLastNDays(state.dashboardCalls, 90),
-    (call) => !call.hasRecording,
-    90,
-  );
+  const series = Array.isArray(state.dashboardCharts?.noRecordingSeries)
+    ? state.dashboardCharts.noRecordingSeries
+    : buildCountSeriesByDay(
+      filterCallsByLastNDays(state.dashboardCalls, 90),
+      (call) => !call.hasRecording,
+      90,
+    );
   renderSeriesChart(el.noRecordingChart, series, {
     emptyMessage: "Нет данных по звонкам без записи.",
     zeroMessage: "За последние 3 месяца звонков без записи не было.",
@@ -2938,12 +2968,14 @@ function renderNoRecordingChart() {
 }
 
 function renderTokensPerMinuteChart() {
-  const series = buildRatioSeriesByDay(
-    filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
-    (call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0),
-    (call) => Math.max(0, Number(call.durationSeconds || 0) / 60),
-    90,
-  );
+  const series = Array.isArray(state.dashboardCharts?.tokensPerMinuteSeries)
+    ? state.dashboardCharts.tokensPerMinuteSeries
+    : buildRatioSeriesByDay(
+      filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
+      (call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0),
+      (call) => Math.max(0, Number(call.durationSeconds || 0) / 60),
+      90,
+    );
   renderSeriesChart(el.tokensPerMinuteChart, series, {
     emptyMessage: "Нет данных по токенам на минуту.",
     zeroMessage: "За последние 3 месяца расход токенов на минуту равен 0.",
@@ -2960,7 +2992,9 @@ function renderTokensPerMinuteChart() {
 }
 
 function renderViolatedCheckpointsChart() {
-  const rows = violatedCheckpointRows();
+  const rows = Array.isArray(state.dashboardCharts?.violatedCheckpointRows)
+    ? state.dashboardCharts.violatedCheckpointRows
+    : violatedCheckpointRows();
   renderHorizontalBars(el.violatedCheckpointsChart, rows, {
     emptyMessage: "Нет данных по нарушениям checkpoint’ов.",
     usePercentScale: true,
@@ -2970,27 +3004,34 @@ function renderViolatedCheckpointsChart() {
 }
 
 function renderHeatmaps() {
-  renderHeatmap(el.callsHeatmap, buildHeatmapData(state.dashboardCalls, () => true, 184), {
+  const data = state.dashboardCharts?.callsHeatmap || buildHeatmapData(state.dashboardCalls, () => true, 184);
+  renderHeatmap(el.callsHeatmap, data, {
     emptyMessage: "Нет данных по всем вызовам.",
   });
 }
 
 function renderCallsVolumeChart() {
-  const totalSeries = buildCountSeriesByDay(
-    filterCallsByLastNDays(state.dashboardCalls, 90),
-    () => true,
-    90,
-  );
-  const recognizedSeries = buildCountSeriesByDay(
-    filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
-    () => true,
-    90,
-  );
-  const missingRecordingSeries = buildCountSeriesByDay(
-    filterCallsByLastNDays(state.dashboardCalls, 90),
-    (call) => !call.hasRecording,
-    90,
-  );
+  const totalSeries = Array.isArray(state.dashboardCharts?.callsVolume?.totalSeries)
+    ? state.dashboardCharts.callsVolume.totalSeries
+    : buildCountSeriesByDay(
+      filterCallsByLastNDays(state.dashboardCalls, 90),
+      () => true,
+      90,
+    );
+  const recognizedSeries = Array.isArray(state.dashboardCharts?.callsVolume?.recognizedSeries)
+    ? state.dashboardCharts.callsVolume.recognizedSeries
+    : buildCountSeriesByDay(
+      filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
+      () => true,
+      90,
+    );
+  const missingRecordingSeries = Array.isArray(state.dashboardCharts?.callsVolume?.missingRecordingSeries)
+    ? state.dashboardCharts.callsVolume.missingRecordingSeries
+    : buildCountSeriesByDay(
+      filterCallsByLastNDays(state.dashboardCalls, 90),
+      (call) => !call.hasRecording,
+      90,
+    );
   if (!totalSeries.length) {
     renderEmptyChart(el.callsVolumeChart, "Нет данных по количеству вызовов.");
     return;
@@ -3373,8 +3414,9 @@ async function loadDashboardData(options = {}) {
   }
 
   const task = (async () => {
-  const data = await api("/api/dashboard");
+    const data = await api("/api/dashboard-charts");
     state.dashboardSummary = data.summary || state.dashboardSummary || null;
+    state.dashboardCharts = data.charts || null;
     state.dashboardCalls = Array.isArray(data.calls) ? data.calls : [];
     state.dashboardAnalyses = Array.isArray(data.analyses) && data.analyses.length
       ? data.analyses
