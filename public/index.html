@@ -61,6 +61,16 @@
                 <article class="panel chart-panel">
                   <div class="section-head">
                     <div class="section-head-main">
+                      <h2>Топ нарушений</h2>
+                      <span class="muted">Чаще всего проблемные пункты сценария за весь период.</span>
+                    </div>
+                  </div>
+                  <div id="violatedCheckpointsChart" class="chart-host chart-host-compact"></div>
+                </article>
+
+                <article class="panel chart-panel">
+                  <div class="section-head">
+                    <div class="section-head-main">
                       <h2>Средний балл по менеджерам</h2>
                       <span class="muted">Показатель: средний score по распознанным звонкам.</span>
                     </div>
@@ -72,10 +82,10 @@
                   <div class="section-head">
                     <div class="section-head-main">
                       <h2>Тепловая карта вызовов за 3 месяца</h2>
-                      <span class="muted">Слева все звонки, справа только распознанные звонки.</span>
+                      <span class="muted">Сверху все вызовы, ниже только распознанные вызовы.</span>
                     </div>
                   </div>
-                  <div class="dashboard-subgrid dashboard-subgrid-halves">
+                  <div class="dashboard-subgrid">
                     <section>
                       <h3 class="dashboard-subtitle">Все вызовы</h3>
                       <div id="callsHeatmap" class="heatmap-host"></div>
@@ -137,20 +147,10 @@
                   <div id="tokensPerMinuteChart" class="chart-host chart-host-compact"></div>
                 </article>
 
-                <article class="panel chart-panel">
-                  <div class="section-head">
-                    <div class="section-head-main">
-                      <h2>Топ нарушений</h2>
-                      <span class="muted">Чаще всего проблемные пункты сценария за весь период.</span>
-                    </div>
-                  </div>
-                  <div id="violatedCheckpointsChart" class="chart-host chart-host-compact"></div>
-                </article>
-
                 <article class="panel chart-panel chart-panel-wide">
                   <div class="section-head">
                     <div class="section-head-main">
-                      <h2>Динамика среднего score</h2>
+                      <h2>Динамика среднего балла</h2>
                       <span class="muted">Данные за последние 3 месяца с группировкой по дням звонков.</span>
                     </div>
                   </div>

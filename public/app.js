@@ -1804,8 +1804,7 @@ function renderSummaryInto(container, summary) {
     summaryCard("Всего звонков", summary.totalCalls || 0, "Общий объём звонков за весь период"),
     summaryCard("Проанализировано звонков", summary.analyzedCalls, "Все сохранённые AI-разборы"),
     summaryCard("Ожидает анализа", summary.awaitingAnalysisCalls ?? summary.pendingCalls ?? 0, "Ожидают запуска или стоят в очереди"),
-    summaryCard("Средний score", summary.averageScore || "0", "Оценка соблюдения сценария"),
-    summaryCard("Высокий риск", summary.highRisk, "Требует ручного разбора"),
+    summaryCard("Средний балл", summary.averageScore || "0", "Оценка соблюдения сценария"),
     summaryCard("Без записи", missingCalls, "Звонки, которые нельзя распознать"),
   ].join("");
 }
@@ -2567,74 +2566,60 @@ function buildHeatmapData(calls, predicate = () => true, days = 90) {
       key,
       label: formatDay(key),
       weekday: (date.getDay() + 6) % 7,
+      monthKey: key.slice(0, 7),
+      dayOfMonth: date.getDate(),
       value: buckets.get(key) || 0,
     };
   });
 
   const maxValue = Math.max(...daysData.map((item) => item.value), 0);
-  return { days: daysData, maxValue };
+  const months = [];
+  for (const item of daysData) {
+    let month = months[months.length - 1];
+    if (!month || month.key !== item.monthKey) {
+      month = {
+        key: item.monthKey,
+        label: new Date(`${item.monthKey}-01T00:00:00`).toLocaleDateString("ru-RU", {
+          month: "short",
+          year: "numeric",
+        }),
+        days: [],
+      };
+      months.push(month);
+    }
+    month.days.push(item);
+  }
+
+  return { days: daysData, months, maxValue };
 }
 
 function renderHeatmap(container, data, options = {}) {
   if (!container) return;
   const { emptyMessage = "Недостаточно данных для тепловой карты." } = options;
-  if (!data?.days?.length) {
+  if (!data?.months?.length) {
     renderEmptyChart(container, emptyMessage);
     return;
   }
 
-  const leadingEmpty = data.days[0]?.weekday || 0;
-  const paddedDays = [
-    ...Array.from({ length: leadingEmpty }, () => null),
-    ...data.days,
-  ];
-  const weekColumns = [];
-  for (let offset = 0; offset < paddedDays.length; offset += 7) {
-    const items = paddedDays.slice(offset, offset + 7);
-    const firstActual = items.find(Boolean);
-    const monthLabel = firstActual
-      ? new Date(`${firstActual.key}T00:00:00`).toLocaleDateString("ru-RU", { month: "short" })
-      : "";
-    weekColumns.push({ monthLabel, items });
-  }
-  const monthGroups = [];
-  for (const column of weekColumns) {
-    const lastGroup = monthGroups[monthGroups.length - 1];
-    if (!lastGroup || lastGroup.label !== column.monthLabel) {
-      monthGroups.push({ label: column.monthLabel, columns: [column] });
-    } else {
-      lastGroup.columns.push(column);
-    }
-  }
-
   container.innerHTML = `
     <div class="heatmap">
-      <div class="heatmap-months">
-        ${monthGroups
-          .map((group) => `<span class="heatmap-month-label">${escapeHtml(group.label)}</span>`)
-          .join("")}
-      </div>
-      <div class="heatmap-groups">
-        ${monthGroups
-          .map(
-            (group) => `
-              <div class="heatmap-group" style="--columns:${group.columns.length}">
-                ${group.columns
-                  .map(
-                    (column) => `
-                      <div class="heatmap-column">
-                        ${column.items
-                          .map((item) => {
-                            if (!item) return '<div class="heatmap-cell is-empty" aria-hidden="true"></div>';
-                            const intensity = data.maxValue > 0 ? Math.max(0.1, item.value / data.maxValue) : 0;
-                            return `<div class="heatmap-cell ${item.value ? "is-filled" : ""}" style="--heat:${intensity.toFixed(3)};" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
-                          })
-                          .join("")}
-                      </div>`,
-                  )
-                  .join("")}
-              </div>`,
-          )
+      <div class="heatmap-rows">
+        ${data.months
+          .map((month) => {
+            const monthTitle = month.label.replace(".", "");
+            return `
+              <div class="heatmap-row">
+                <div class="heatmap-month-label">${escapeHtml(monthTitle)}</div>
+                <div class="heatmap-day-line">
+                  ${month.days
+                    .map((item) => {
+                      const intensity = data.maxValue > 0 ? Math.max(0.1, item.value / data.maxValue) : 0;
+                      return `<div class="heatmap-cell ${item.value ? "is-filled" : ""}" style="--heat:${intensity.toFixed(3)};" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
+                    })
+                    .join("")}
+                </div>
+              </div>`;
+          })
           .join("")}
       </div>
       <div class="heatmap-legend">
@@ -2777,9 +2762,9 @@ function renderDailyScoreChart() {
     90,
   );
   renderSeriesChart(el.dailyScoreChart, series, {
-    emptyMessage: "Нет данных по среднему score.",
-    zeroMessage: "За последние 3 месяца значения среднего score равны 0.",
-    ariaLabel: "График среднего score за последние 3 месяца",
+    emptyMessage: "Нет данных по среднему баллу.",
+    zeroMessage: "За последние 3 месяца значения среднего балла равны 0.",
+    ariaLabel: "График среднего балла за последние 3 месяца",
     valueFormatter: (value) => `${value.toFixed(1)}`,
     yTickFormatter: (value) => `${value.toFixed(1)}`,
     strokeClass: "is-score",
