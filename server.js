@@ -850,16 +850,16 @@ function buildDashboardChartsSnapshot(calls = []) {
     scenarioAverageRows,
     managerScoreRows,
     callsHeatmap: buildDashboardHeatmap(calls, () => true, 184),
-    recognizedCallsSeries: buildDashboardCountSeries(analyzedCalls, () => true, 7),
+    recognizedCallsSeries: buildDashboardCountSeries(analyzedCalls, () => true, 30),
     tokensUsageSeries: buildDashboardSumSeries(
       analyzedCalls,
       (call) => Number(call?.analysis?.tokenUsage?.totalTokens || 0),
-      7,
+      30,
     ),
     recognizedMinutesSeries: buildDashboardSumSeries(
       analyzedCalls,
       (call) => Number(call?.durationSeconds || 0) / 60,
-      7,
+      30,
       1,
     ),
     noRecordingSeries: buildDashboardCountSeries(calls, (call) => !call?.hasRecording, 90),
@@ -867,7 +867,7 @@ function buildDashboardChartsSnapshot(calls = []) {
       analyzedCalls,
       (call) => Number(call?.analysis?.tokenUsage?.totalTokens || 0),
       (call) => Math.max(0, Number(call?.durationSeconds || 0) / 60),
-      90,
+      30,
     ),
     violatedCheckpointRows,
     callsVolume: {
