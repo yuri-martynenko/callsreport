@@ -146,6 +146,12 @@
 - Длительность: около 45 минут.
 - Примечание: frontend startup перестал ждать managers/settings/scenarios/rule-options перед первым dashboard render, а backend перестал сбрасывать filtered calls cache после фонового refresh activity snapshot без фактического изменения данных. Локальный smoke показал `dashboard ~605 ms`, `calls page1 ~172 ms`, `page2 ~118 ms`. Production deploy выполнен с коммита `40b30ba`, шаги `stop_existing`, `clean`, `download`, `normalize_windows_paths`, `cleanup_metadata`, `runtime`, `install`, `systemd`, `start`, `healthcheck` завершились со статусом `ok`; внешний `/api/health` ответил `{\"ok\":true,...}`.
 
+## 2026-04-25 08:42 VLAT
+
+- Задача: ускорение первого появления данных на дашборде, когда пользователь видит пустой экран до полной загрузки звонков.
+- Длительность: около 40 минут.
+- Примечание: dashboard startup split implemented: быстрый `/api/dashboard-summary` теперь отдает только summary/statusBreakdown, а тяжелый `/api/dashboard` с per-call dataset догружается отдельно в фоне для графиков. Локальный smoke показал `dashboard-summary ~136 ms`, `dashboard ~529 ms`, `calls page1 ~147 ms`. Production deploy выполнен с коммита `b39f217`, шаги `stop_existing`, `clean`, `download`, `normalize_windows_paths`, `cleanup_metadata`, `runtime`, `install`, `systemd`, `start`, `healthcheck` завершились со статусом `ok`; внешний `/api/health` ответил `{\"ok\":true,...}`.
+
 ## Формат записи
 
 ```text
