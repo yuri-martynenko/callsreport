@@ -11,6 +11,12 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-24 19:00 VLAT
+
+- Задача: deploy исправления страницы `Расшифровка`: после create/update/delete сценария сразу обновлять селект `Сценарий` в таблице звонков и очищать зависшие временные выборы удалённых сценариев.
+- Длительность: около 15 минут.
+- Результат: `push` коммита `aab870e` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, server-side exec подтвердил фактический `ExecStart` с `APP_ENV_FILE=/var/lib/callsreport/.env node server.js`, локальный `GET /api/health` на `127.0.0.1:3000` вернул `ok=true, configured=true`, а production `public/app.js` подтвердил наличие `validScenarioIds`, очистки `clearScenarioSelectionOverride(...)` и немедленного `renderCalls()` после `loadScenarios()`.
+
 ## 2026-04-24 19:55 VLAT
 
 - Задача: deploy правок дашборда с удалением KPI `Высокий риск`, переименованием `Средний score` в `Средний балл`, переносом `Топ нарушений` в верхнюю группу графиков и переводом обеих heatmap на три горизонтальные строки по месяцам с вертикальным стеком `Все вызовы` / `Распознанные вызовы`.
