@@ -11,6 +11,12 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-24 19:29 VLAT
+
+- Задача: deploy синхронизации документации с текущими правилами dashboard bar-chart после унификации отображения значений, шкалы и подписей.
+- Длительность: около 10 минут.
+- Результат: `push` коммита `ca58296` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production `app.js` и `styles.css` на `127.0.0.1:3000` подтвердили отсутствие `hintFormatter`, наличие `usePercentScale: true`, `totalAnalyzedCalls` и `.bar-label { min-width: 0; color: var(--text); font-weight: 400; }`.
+
 ## 2026-04-24 18:53 VLAT
 
 - Задача: deploy унификации однотипных dashboard-графиков `Тональность звонков`, `Средний процент по сценариям`, `Средний балл по менеджерам`, `Топ нарушаемых checkpoint’ов`: убрать нижние подписи, показывать количество прямо в значении рядом с процентом, перевести шкалу на 100% и снять жирность у названий.
