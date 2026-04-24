@@ -910,6 +910,9 @@ button.scenario-link:focus-visible {
   gap: 2px;
 }
 .heatmap-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 24px;
   height: 24px;
   border-radius: 4px;
@@ -917,6 +920,17 @@ button.scenario-link:focus-visible {
 }
 .heatmap-cell.is-filled {
   background: rgba(15, 159, 140, var(--heat, 0.2));
+}
+.heatmap-cell-count {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 1px;
+  color: #143a35;
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 700;
+  text-align: center;
+  overflow: hidden;
 }
 .heatmap-cell.is-empty {
   background: transparent;
@@ -944,7 +958,6 @@ button.scenario-link:focus-visible {
 .heatmap-legend-scale i:nth-child(4) { background: rgba(15, 159, 140, 1); }
 .line-chart-polyline.is-secondary {
   stroke: var(--primary);
-  stroke-dasharray: 8 6;
 }
 .line-chart-polyline.is-thin {
   stroke-width: 1.5;
@@ -957,6 +970,24 @@ button.scenario-link:focus-visible {
 }
 .line-chart-dot.is-missing {
   fill: var(--muted);
+}
+.line-chart-polyline.is-volume-total {
+  stroke: #2459a6;
+}
+.line-chart-dot.is-volume-total {
+  fill: #2459a6;
+}
+.line-chart-polyline.is-volume-recognized {
+  stroke: #0f9f8c;
+}
+.line-chart-dot.is-volume-recognized {
+  fill: #0f9f8c;
+}
+.line-chart-polyline.is-volume-missing {
+  stroke: #cc5f45;
+}
+.line-chart-dot.is-volume-missing {
+  fill: #cc5f45;
 }
 .line-chart-legend {
   display: flex;
@@ -984,6 +1015,15 @@ button.scenario-link:focus-visible {
 }
 .line-chart-legend-swatch.is-missing {
   background: var(--muted);
+}
+.line-chart-legend-swatch.is-volume-total {
+  background: #2459a6;
+}
+.line-chart-legend-swatch.is-volume-recognized {
+  background: #0f9f8c;
+}
+.line-chart-legend-swatch.is-volume-missing {
+  background: #cc5f45;
 }
 ul.flat { margin: 10px 0 0; padding-left: 18px; }
 
@@ -1494,6 +1534,7 @@ textarea {
   .chart-panel-slim { max-width: none; }
   .chart-panel-heatmap { grid-column: 1 / -1; }
   .heatmap-cell { width: 20px; height: 20px; }
+  .heatmap-cell-count { font-size: 7px; }
 }
 @media (max-width: 820px) {
   .topbar, .workspace { padding: 16px; }

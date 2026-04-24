@@ -2857,7 +2857,10 @@ function renderHeatmap(container, data, options = {}) {
                           .map((item) => {
                             if (!item) return '<div class="heatmap-cell is-empty" aria-hidden="true"></div>';
                             const intensity = data.maxValue > 0 ? Math.max(0.1, item.value / data.maxValue) : 0;
-                            return `<div class="heatmap-cell ${item.value ? "is-filled" : ""}" style="--heat:${intensity.toFixed(3)};" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"></div>`;
+                            if (!item.value) {
+                              return `<div class="heatmap-cell" title="${escapeHtml(`${item.label}: 0`)}" aria-label="${escapeHtml(`${item.label}: 0`)}"></div>`;
+                            }
+                            return `<div class="heatmap-cell is-filled" style="--heat:${intensity.toFixed(3)};" title="${escapeHtml(`${item.label}: ${item.value}`)}" aria-label="${escapeHtml(`${item.label}: ${item.value}`)}"><span class="heatmap-cell-count">${escapeHtml(String(item.value))}</span></div>`;
                           })
                           .join("")}
                       </div>`,
@@ -3042,29 +3045,29 @@ function renderCallsVolumeChart() {
     {
       label: "Количество вызовов",
       series: totalSeries,
-      polylineClassName: "is-calls is-thin",
+      polylineClassName: "is-calls is-thin is-volume-total",
       pointClassName: "is-calls",
       pointRadius: 1.35,
-      legendClassName: "is-primary",
+      legendClassName: "is-volume-total",
     },
     {
       label: "Распознанные вызовы",
       series: recognizedSeries,
-      polylineClassName: "is-secondary is-thin",
-      pointClassName: "is-secondary",
+      polylineClassName: "is-secondary is-thin is-volume-recognized",
+      pointClassName: "is-volume-recognized",
       pointRadius: 1.35,
-      legendClassName: "is-secondary",
+      legendClassName: "is-volume-recognized",
     },
     {
       label: "Без записи",
       series: missingRecordingSeries,
-      polylineClassName: "is-missing is-thin",
-      pointClassName: "is-missing",
+      polylineClassName: "is-missing is-thin is-volume-missing",
+      pointClassName: "is-volume-missing",
       pointRadius: 1.35,
-      legendClassName: "is-missing",
+      legendClassName: "is-volume-missing",
     },
   ], {
-    ariaLabel: "График количества вызовов, распознанных вызовов и звонков без записи за последние 3 месяца",
+    ariaLabel: "График количества вызовов за последние 3 месяца",
     valueFormatter: (value) => `${Math.round(value)}`,
     yTickFormatter: (value) => `${Math.round(value)}`,
     maxXAxisLabels: 9,
