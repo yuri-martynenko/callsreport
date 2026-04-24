@@ -2182,16 +2182,21 @@ function renderAnalysis(analysis) {
   );
 
   el.analysisDetail.innerHTML = `
-    <section id="analysisOverview" class="detail-block detail-block-summary">
-      <h3>Резюме</h3>
-      ${detailMetaMarkup(analysis)}
-      <p>${escapeHtml(resultExplanation)}</p>
-      <div class="detail-inline-metric"><strong>Результат</strong><span>${escapeHtml(overviewOutcome)}</span></div>
-    </section>
-    <section id="analysisClientNeed" class="detail-block detail-block-client-need">
-      <h3>Потребность клиента</h3>
-      <p>${escapeHtml(clientNeed)}</p>
-    </section>
+    <div class="detail-top-grid">
+      <section id="analysisOverview" class="detail-block detail-block-summary">
+        <h3>Резюме</h3>
+        ${detailMetaMarkup(analysis)}
+        <p>${escapeHtml(resultExplanation)}</p>
+      </section>
+      <section id="analysisOutcome" class="detail-block detail-block-outcome">
+        <h3>Результат</h3>
+        <p>${escapeHtml(overviewOutcome)}</p>
+      </section>
+      <section id="analysisClientNeed" class="detail-block detail-block-client-need">
+        <h3>Потребность клиента</h3>
+        <p>${escapeHtml(clientNeed)}</p>
+      </section>
+    </div>
     <section id="analysisNextStep" class="detail-block detail-block-next-step">
       <h3>Следующий шаг</h3>
       <p>${escapeHtml(nextStep)}</p>
