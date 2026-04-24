@@ -2140,7 +2140,6 @@ function renderHorizontalBars(container, rows, options = {}) {
     emptyMessage = "Недостаточно данных для графика.",
     maxValue = null,
     formatter = (value) => String(value),
-    hintFormatter = () => "",
     trackClassName = "",
     usePercentScale = false,
   } = options;
@@ -2162,14 +2161,10 @@ function renderHorizontalBars(container, rows, options = {}) {
     .map((item) => {
       const value = Number(item.value || 0);
       const width = usePercentScale ? percentBarWidth(value) : Math.max(8, Math.round((value / resolvedMax) * 100));
-      const hint = hintFormatter(item);
       const trackClass = [trackClassName, item.trackClassName].filter(Boolean).join(" ");
       return `
         <div class="bar-row">
-          <div class="bar-label">
-            <strong>${escapeHtml(item.label)}</strong>
-            ${hint ? `<span class="muted">${escapeHtml(hint)}</span>` : ""}
-          </div>
+          <div class="bar-label">${escapeHtml(item.label)}</div>
           <div class="bar-track ${trackClass}">
             <div class="bar-fill" style="width:${width}%"></div>
           </div>
@@ -2326,8 +2321,9 @@ function renderManagerScoreChart() {
     rows,
     {
       emptyMessage: "Недостаточно данных для графика по менеджерам.",
-      formatter: (value) => escapeHtml(value.toFixed(1)),
-      hintFormatter: (item) => `${item.calls} звонков`,
+      usePercentScale: true,
+      formatter: (value, item) =>
+        `<span>${escapeHtml(`${item.calls}`)}</span><span class="muted">${escapeHtml(`(${value.toFixed(1)}%)`)}</span>`,
     },
   );
 }
@@ -2367,7 +2363,6 @@ function renderSentimentChart() {
       usePercentScale: true,
       formatter: (value, item) =>
         `<span>${escapeHtml(`${item.rawValue}`)}</span><span class="muted">${escapeHtml(`(${value.toFixed(1)}%)`)}</span>`,
-      hintFormatter: (item) => `Доля звонков: ${item.value.toFixed(1)}%`,
     },
   );
 }
@@ -2406,8 +2401,8 @@ function renderScenarioAverageChart() {
   renderHorizontalBars(el.scenarioAverageChart, rows, {
     emptyMessage: "Нет данных по соблюдению сценариев.",
     usePercentScale: true,
-    formatter: (value) => escapeHtml(`${value.toFixed(1)}%`),
-    hintFormatter: (item) => `${item.count} звонков`,
+    formatter: (value, item) =>
+      `<span>${escapeHtml(`${item.count}`)}</span><span class="muted">${escapeHtml(`(${value.toFixed(1)}%)`)}</span>`,
   });
 }
 
@@ -2501,6 +2496,7 @@ function buildRatioSeriesByDay(calls, numeratorResolver, denominatorResolver, da
 
 function violatedCheckpointRows(limit = 10) {
   const buckets = new Map();
+  const totalAnalyzedCalls = Math.max(dashboardCallsWithAnalysis().length, 1);
   for (const item of dashboardCallsWithAnalysis()) {
     const checkpoints = effectiveAnalysis(item)?.scriptAnalysis?.checkpoints || [];
     for (const checkpoint of checkpoints) {
@@ -2517,7 +2513,7 @@ function violatedCheckpointRows(limit = 10) {
     .slice(0, limit)
     .map((item) => ({
       label: item.label,
-      value: item.count,
+      value: roundedMetric((item.count / totalAnalyzedCalls) * 100, 1),
       count: item.count,
     }));
 }
@@ -2728,8 +2724,9 @@ function renderViolatedCheckpointsChart() {
   const rows = violatedCheckpointRows();
   renderHorizontalBars(el.violatedCheckpointsChart, rows, {
     emptyMessage: "Нет данных по нарушениям checkpoint’ов.",
-    formatter: (value) => escapeHtml(`${Math.round(value)}`),
-    hintFormatter: (item) => `${item.count} нарушений`,
+    usePercentScale: true,
+    formatter: (value, item) =>
+      `<span>${escapeHtml(`${item.count}`)}</span><span class="muted">${escapeHtml(`(${value.toFixed(1)}%)`)}</span>`,
   });
 }
 

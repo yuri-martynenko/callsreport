@@ -821,9 +821,7 @@ button.scenario-link:focus-visible {
 .chart-empty { min-height: 220px; display: grid; place-items: center; text-align: center; color: var(--muted); border-radius: 18px; background: rgba(255, 255, 255, 0.42); border: 1px dashed var(--line); }
 .bars-vertical { display: flex; flex-direction: column; gap: 14px; }
 .bar-row { display: grid; grid-template-columns: minmax(148px, 188px) minmax(0, 1fr) max-content; gap: 12px; align-items: center; }
-.bar-label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.bar-label strong,
-.bar-label .muted { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+.bar-label { min-width: 0; color: var(--text); font-weight: 400; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 .bar-track { position: relative; height: 14px; border-radius: 999px; background: rgba(29, 26, 22, 0.08); overflow: hidden; }
 .bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #1f6b5f, #3d8f81); }
 .bar-value { display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 72px; }
@@ -1338,7 +1336,7 @@ textarea {
   background: rgba(96, 112, 134, 0.12);
 }
 
-.bars-vertical strong,
+.bars-vertical .bar-label,
 .bar-value {
   font-size: 12px;
 }
@@ -1353,7 +1351,6 @@ textarea {
   font-size: 11px;
 }
 
-.bar-label .muted,
 .chart-empty,
 .chart-inline-note {
   font-size: 11px;
