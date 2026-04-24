@@ -317,6 +317,8 @@ The calls table keeps a temporary UI selection for the scenario dropdown. If the
 
 If transcription exists but structured AI analysis or Russian localization fails, backend now exposes that result as `outdated`, so the UI shows `Нужен повтор` instead of `Готово`.
 
+After any scenario create, update, or delete operation, frontend reloads the scenario registry and immediately re-renders the calls table so the `Сценарий` selector on the `Расшифровка` page always uses the current scenario list.
+
 ## 2026-04 Localization Fallback
 
 Russian localization of the structured AI result is now best-effort. If the extra localization pass cannot fully remove Latin fragments, backend keeps the meaningful structured analysis instead of wiping it and degrading the whole call to an empty retry-only result.

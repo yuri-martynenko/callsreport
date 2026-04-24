@@ -572,7 +572,10 @@ function recommendedScenarioForCall(call) {
 
 function selectedScenarioIdForCall(call) {
   const selectionOverride = scenarioSelectionOverride(call?.id);
-  if (selectionOverride !== null) {
+  if (
+    selectionOverride !== null &&
+    state.scenarios.some((scenario) => String(scenario.id) === String(selectionOverride))
+  ) {
     return selectionOverride;
   }
   const analysis = effectiveAnalysis(call);
@@ -2868,6 +2871,12 @@ async function loadScenarioRuleOptions() {
 async function loadScenarios() {
   const data = await api("/api/scenarios");
   state.scenarios = data.scenarios || [];
+  const validScenarioIds = new Set(state.scenarios.map((scenario) => String(scenario.id)));
+  Object.keys(state.scenarioSelections).forEach((activityId) => {
+    if (!validScenarioIds.has(String(state.scenarioSelections[activityId] || ""))) {
+      clearScenarioSelectionOverride(activityId);
+    }
+  });
   const selected = new Set(selectedScenarioFilters());
   if (el.scenarioFilterOptions) {
     el.scenarioFilterOptions.innerHTML = state.scenarios
@@ -2880,6 +2889,12 @@ async function loadScenarios() {
   updateScenarioSummaryCards();
   renderScenarioList();
   refreshFilterLabels();
+  if (state.reportDataLoaded || state.calls.length) {
+    renderCalls();
+    if (state.selectedCallId) {
+      selectAnalysisByCallId(state.selectedCallId);
+    }
+  }
   if (state.selectedScenarioId) {
     const scenario = state.scenarios.find((item) => item.id === state.selectedScenarioId);
     if (scenario) {
