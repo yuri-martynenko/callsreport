@@ -2350,13 +2350,11 @@ function lineSeriesSvg(series, options = {}) {
     </svg>`;
 }
 
-function comparisonLineSeriesSvg(primarySeries, secondarySeries, options = {}) {
+function multiLineSeriesSvg(seriesEntries, options = {}) {
   const {
-    ariaLabel = "Сравнительный график",
+    ariaLabel = "Многосерийный график",
     valueFormatter = (value) => String(value),
     yTickFormatter = valueFormatter,
-    primaryLabel = "Основная серия",
-    secondaryLabel = "Вторая серия",
     maxXAxisLabels = 10,
     maxPointLabels = 10,
     axisTextClass = "",
@@ -2369,11 +2367,10 @@ function comparisonLineSeriesSvg(primarySeries, secondarySeries, options = {}) {
   const paddingTop = 28;
   const paddingBottom = 42;
   const chartHeight = height - paddingTop - paddingBottom;
-  const maxValue = Math.max(
-    ...primarySeries.map((item) => Number(item.value || 0)),
-    ...secondarySeries.map((item) => Number(item.value || 0)),
-    1,
-  );
+  const normalizedEntries = (seriesEntries || []).filter((entry) => Array.isArray(entry?.series) && entry.series.length);
+  if (!normalizedEntries.length) return "";
+  const baseSeries = normalizedEntries[0].series;
+  const maxValue = Math.max(...normalizedEntries.flatMap((entry) => entry.series.map((item) => Number(item.value || 0))), 1);
   const buildPoints = (series) =>
     series.map((item, index) => {
       const x = paddingX + (index * (width - paddingX * 2)) / Math.max(series.length - 1, 1);
@@ -2381,17 +2378,19 @@ function comparisonLineSeriesSvg(primarySeries, secondarySeries, options = {}) {
       return { ...item, x, y };
     });
 
-  const primaryPoints = buildPoints(primarySeries);
-  const secondaryPoints = buildPoints(secondarySeries);
-  const labelStep = Math.max(1, Math.ceil(primaryPoints.length / Math.max(1, maxXAxisLabels)));
-  const labels = primaryPoints
+  const renderedEntries = normalizedEntries.map((entry) => ({
+    ...entry,
+    points: buildPoints(entry.series),
+  }));
+  const labelStep = Math.max(1, Math.ceil(baseSeries.length / Math.max(1, maxXAxisLabels)));
+  const labels = renderedEntries[0].points
     .map((point, index) => {
-      const shouldShow = index === primaryPoints.length - 1 || index % labelStep === 0;
+      const shouldShow = index === renderedEntries[0].points.length - 1 || index % labelStep === 0;
       if (!shouldShow) return "";
       return `<text class="line-chart-axis-text ${axisTextClass}" x="${point.x}" y="${height - 12}" text-anchor="middle">${escapeHtml(point.label)}</text>`;
     })
     .join("");
-  const pointLabelStep = Math.max(1, Math.ceil(primaryPoints.length / Math.max(1, maxPointLabels)));
+  const pointLabelStep = Math.max(1, Math.ceil(baseSeries.length / Math.max(1, maxPointLabels)));
   const renderPointSet = (points, seriesClass, labelRule = () => false) =>
     points
       .map(
@@ -2413,18 +2412,34 @@ function comparisonLineSeriesSvg(primarySeries, secondarySeries, options = {}) {
 
   return `
     <div class="line-chart-legend">
-      <span class="line-chart-legend-item"><i class="line-chart-legend-swatch is-primary"></i>${escapeHtml(primaryLabel)}</span>
-      <span class="line-chart-legend-item"><i class="line-chart-legend-swatch is-secondary"></i>${escapeHtml(secondaryLabel)}</span>
+      ${renderedEntries
+        .map(
+          (entry) =>
+            `<span class="line-chart-legend-item"><i class="line-chart-legend-swatch ${entry.legendClassName || ""}"></i>${escapeHtml(entry.label || "")}</span>`,
+        )
+        .join("")}
     </div>
     <svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(ariaLabel)}">
       <g class="line-chart-grid">
         ${yTicks}
         <line x1="${paddingX}" y1="${height - paddingBottom}" x2="${width - paddingX}" y2="${height - paddingBottom}"></line>
       </g>
-      <polyline class="line-chart-polyline is-calls" points="${primaryPoints.map((point) => `${point.x},${point.y}`).join(" ")}"></polyline>
-      <polyline class="line-chart-polyline is-secondary" points="${secondaryPoints.map((point) => `${point.x},${point.y}`).join(" ")}"></polyline>
-      ${renderPointSet(primaryPoints, "is-calls", (index, length) => index === length - 1 || index % pointLabelStep === 0)}
-      ${renderPointSet(secondaryPoints, "is-secondary", (index, length) => index === length - 1)}
+      ${renderedEntries
+        .map((entry) => `<polyline class="line-chart-polyline ${entry.polylineClassName || ""}" points="${entry.points.map((point) => `${point.x},${point.y}`).join(" ")}"></polyline>`)
+        .join("")}
+      ${renderedEntries
+        .map((entry, entryIndex) =>
+          renderPointSet(
+            entry.points,
+            entry.pointClassName || "",
+            entry.labelRule ||
+              ((index, length) => {
+                if (entryIndex === 0) return index === length - 1 || index % pointLabelStep === 0;
+                return index === length - 1;
+              }),
+          ),
+        )
+        .join("")}
       <g class="axis-labels">${labels}</g>
     </svg>`;
 }
@@ -2953,7 +2968,7 @@ function renderViolatedCheckpointsChart() {
 }
 
 function renderHeatmaps() {
-  renderHeatmap(el.callsHeatmap, buildHeatmapData(state.dashboardCalls, () => true, 92), {
+  renderHeatmap(el.callsHeatmap, buildHeatmapData(state.dashboardCalls, () => true, 184), {
     emptyMessage: "Нет данных по всем вызовам.",
   });
 }
@@ -2969,22 +2984,47 @@ function renderCallsVolumeChart() {
     () => true,
     90,
   );
+  const missingRecordingSeries = buildCountSeriesByDay(
+    filterCallsByLastNDays(state.dashboardCalls, 90),
+    (call) => !call.hasRecording,
+    90,
+  );
   if (!totalSeries.length) {
     renderEmptyChart(el.callsVolumeChart, "Нет данных по количеству вызовов.");
     return;
   }
-  const hasValues = [...totalSeries, ...recognizedSeries].some((item) => Number(item.value || 0) > 0);
-  const note = hasValues ? "" : `<div class="chart-inline-note">За последние 3 месяца значения по обоим рядам равны 0.</div>`;
-  el.callsVolumeChart.innerHTML = `${note}${comparisonLineSeriesSvg(totalSeries, recognizedSeries, {
-    ariaLabel: "График количества вызовов и распознанных вызовов за последние 3 месяца",
-    primaryLabel: "Количество вызовов",
-    secondaryLabel: "Распознанные вызовы",
+  const hasValues = [...totalSeries, ...recognizedSeries, ...missingRecordingSeries].some((item) => Number(item.value || 0) > 0);
+  const note = hasValues ? "" : `<div class="chart-inline-note">За последние 3 месяца значения по всем рядам равны 0.</div>`;
+  el.callsVolumeChart.innerHTML = `${note}${multiLineSeriesSvg([
+    {
+      label: "Количество вызовов",
+      series: totalSeries,
+      polylineClassName: "is-calls",
+      pointClassName: "is-calls",
+      legendClassName: "is-primary",
+    },
+    {
+      label: "Распознанные вызовы",
+      series: recognizedSeries,
+      polylineClassName: "is-secondary",
+      pointClassName: "is-secondary",
+      legendClassName: "is-secondary",
+    },
+    {
+      label: "Без записи",
+      series: missingRecordingSeries,
+      polylineClassName: "is-missing",
+      pointClassName: "is-missing",
+      legendClassName: "is-missing",
+    },
+  ], {
+    ariaLabel: "График количества вызовов, распознанных вызовов и звонков без записи за последние 3 месяца",
     valueFormatter: (value) => `${Math.round(value)}`,
     yTickFormatter: (value) => `${Math.round(value)}`,
     maxXAxisLabels: 9,
     maxPointLabels: 8,
-    pointTextClass: "is-medium",
-    axisTextClass: "is-medium",
+    pointTextClass: "is-half",
+    axisTextClass: "is-half",
   })}`;
 }
 
@@ -2992,12 +3032,10 @@ function renderDashboard() {
   renderSentimentChart();
   renderRiskChart();
   renderScenarioAverageChart();
-  renderManagerScoreChart();
   renderHeatmaps();
   renderRecognizedCallsChart();
   renderTokensUsageChart();
   renderRecognizedMinutesChart();
-  renderNoRecordingChart();
   renderTokensPerMinuteChart();
   renderViolatedCheckpointsChart();
   renderCallsVolumeChart();
