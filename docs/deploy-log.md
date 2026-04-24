@@ -11,6 +11,12 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-24 19:40 VLAT
+
+- Задача: deploy фактической коррекции дашборда: убрать акцентный gradient у панели `Тональность звонков`, удалить summary-блок `Позитив / нейтрал / негатив`, заменить `Динамика высокого риска` на график `Количество звонков без записи`, добавить отдельный bar-chart `Риски звонков`, упростить строку месяцев у heatmap до одной горизонтальной линии и переименовать `Топ нарушаемых checkpoint’ов` в `Топ нарушений`.
+- Длительность: около 20 минут.
+- Результат: `push` коммита `bd5f711` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, локальный `GET /api/health` на сервере вернул `ok=true, configured=true`, а production `app.js`, `styles.css` и HTML на `127.0.0.1:3000` подтвердили наличие `renderRiskChart`, `renderNoRecordingChart`, `riskChart`, `noRecordingChart`, отсутствие старого блока `Динамика высокого риска`, plain-стиль `.chart-panel-accent { background: var(--panel); }` и упрощённую строку `.heatmap-month-label`.
+
 ## 2026-04-24 19:29 VLAT
 
 - Задача: deploy синхронизации документации с текущими правилами dashboard bar-chart после унификации отображения значений, шкалы и подписей.
