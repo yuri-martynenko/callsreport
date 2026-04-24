@@ -10,7 +10,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "express": "^4.21.2",
-    "sql.js": "^1.13.0"
+    "better-sqlite3": "^12.9.0",
+    "express": "^4.21.2"
   }
 }

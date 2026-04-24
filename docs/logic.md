@@ -318,3 +318,9 @@ If transcription exists but structured AI analysis or Russian localization fails
 ## 2026-04 Localization Fallback
 
 Russian localization of the structured AI result is now best-effort. If the extra localization pass cannot fully remove Latin fragments, backend keeps the meaningful structured analysis instead of wiping it and degrading the whole call to an empty retry-only result.
+## 2026-04 Storage Resilience
+
+- The storage layer now uses native SQLite with separate `main.db` and `cache.db`.
+- `main.db` is the source of truth for application state; `cache.db` only accelerates call browsing and CRM name hydration.
+- Cache corruption is treated as recoverable: the backend may quarantine and recreate `cache.db`.
+- Main database writes now trigger rotating SQLite backups and append-only JSONL export of changed analyses for additional recovery options.

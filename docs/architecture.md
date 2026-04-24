@@ -145,3 +145,10 @@ Backend реализован в `server.js` и отвечает за:
 - БД файловая, поэтому приложение предполагает один активный экземпляр сервиса;
 - сильная зависимость от формата и стабильности VibeCode API;
 - качество анализа зависит от доступности Whisper и LLM-провайдера.
+## 2026-04 Storage Architecture Update
+
+- The backend storage layer now uses native SQLite via `better-sqlite3`.
+- Persistent business data is isolated in `main.db`.
+- Regenerable acceleration data is isolated in `cache.db`.
+- This split means corruption of cache-oriented tables no longer implies loss of the main application state.
+- `main.db` is protected by WAL, rotating backups, and append-only JSONL exports for changed analyses.

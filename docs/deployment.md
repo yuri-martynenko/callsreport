@@ -188,3 +188,17 @@ port = 3000
 - каждую миграцию хранения описывать в `docs/adr`;
 - перед изменением схемы хранения делать backup БД;
 - не выполнять ручные правки в production-БД без документирования.
+## 2026-04 SQLite Layout
+
+- Production storage is now expected under `/var/lib/callsreport/` with separate files:
+  - `/var/lib/callsreport/main.db`
+  - `/var/lib/callsreport/cache.db`
+  - `/var/lib/callsreport/backups/`
+  - `/var/lib/callsreport/analysis-exports/`
+- Recommended env configuration:
+  - `APP_MAIN_DB_PATH=/var/lib/callsreport/main.db`
+  - `APP_CACHE_DB_PATH=/var/lib/callsreport/cache.db`
+  - `APP_DB_BACKUP_DIR=/var/lib/callsreport/backups`
+  - `APP_ANALYSIS_EXPORT_DIR=/var/lib/callsreport/analysis-exports`
+- `APP_DB_PATH` is now compatibility-only and should point to the legacy single database file only when a staged migration still needs it.
+- `main.db` is the protected persistent store; `cache.db` is disposable and may be rebuilt automatically if it is corrupted.

@@ -101,3 +101,15 @@ APP_LEGACY_DATA_DIR=/var/lib/callsreport/bootstrap-data
 - production-БД должна лежать вне каталога приложения;
 - перед любыми изменениями схемы хранения нужно обновлять документацию в `docs/`;
 - если меняется архитектурное решение, его нужно фиксировать в `docs/adr/`.
+## 2026-04 Storage Update
+
+- The project now uses native SQLite via `better-sqlite3` instead of `sql.js`.
+- Persistent data is split into `main.db` and `cache.db`.
+- Default production paths are:
+  - `APP_MAIN_DB_PATH=/var/lib/callsreport/main.db`
+  - `APP_CACHE_DB_PATH=/var/lib/callsreport/cache.db`
+  - `APP_DB_BACKUP_DIR=/var/lib/callsreport/backups`
+  - `APP_ANALYSIS_EXPORT_DIR=/var/lib/callsreport/analysis-exports`
+- `main.db` stores analyses, failures, jobs, scenarios, and settings.
+- `cache.db` stores CRM client cache and raw activity snapshot cache.
+- `main.db` runs with `WAL` mode and backup rotation; analysis writes are also appended to daily JSONL export files.

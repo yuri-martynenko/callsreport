@@ -169,3 +169,13 @@ Legacy JSON-файлы больше не должны использоватьс
 - The cache keeps the latest unfiltered calls payload received from Vibe API and survives restart and deploy.
 - Application startup and dashboard loading now read this local snapshot first and refresh it in background when it becomes stale.
 - This table is an acceleration layer for call browsing. It does not replace `analyses`, `failures`, `jobs`, `scenarios`, or `settings` as the source of truth.
+## 2026-04 Native SQLite Storage
+
+- The runtime now uses native SQLite via `better-sqlite3` instead of the in-process `sql.js` image export model.
+- Persistent storage is split into two databases:
+  - `main.db` for analyses, failures, jobs, scenarios, settings, and metadata
+  - `cache.db` for `crm_client_cache` and `activity_snapshot_cache`
+- `main.db` is opened with `WAL` mode, `synchronous = FULL`, and `busy_timeout`.
+- `cache.db` is opened with `WAL` mode and `synchronous = NORMAL`; if it becomes corrupted, it can be recreated from scratch.
+- On startup the backend attempts to migrate from the previous single-file SQLite database or from `bootstrap-data` if the new main database is empty.
+- The backend keeps rotation backups of `main.db` and appends changed analyses into daily JSONL export files in `analysis-exports`.

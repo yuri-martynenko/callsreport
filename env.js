@@ -7,8 +7,6 @@ const REQUIRED_ENV_NAMES = [
   "BITRIX_PORTAL_URL",
   "AI_CHAT_MODEL",
   "AI_TRANSCRIPTION_MODEL",
-  "APP_DB_PATH",
-  "APP_LEGACY_DATA_DIR",
 ];
 
 let envBootstrapState = null;
