@@ -11,6 +11,13 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-25 08:59 VLAT
+
+- Задача: deploy дополнительной оптимизации dashboard-графиков через новый backend endpoint `GET /api/dashboard-charts` с pre-aggregated series вместо тяжелого per-call dataset для фоновой прогрузки графиков.
+- Длительность: около 35 минут.
+- Результат: `push` коммита `c072a8d` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, внешний `GET https://app-2f37df5d.vibecode.bitrix24.tech/api/health` вернул `ok=true, configured=true`.
+- Примечание: локальный smoke показал сокращение payload для фоновой загрузки графиков примерно с `598 KB` (`/api/dashboard`) до `37.8 KB` (`/api/dashboard-charts`). На production быстрый `GET /api/dashboard-summary` занял около `500 ms`, warm `GET /api/dashboard-charts` после прогрева snapshot занял около `687 ms`; первый cold запрос сразу после restart/deploy был заметно тяжелее, потому что прогревал snapshot и кеш агрегатов.
+
 ## 2026-04-25 07:59 VLAT
 
 - Задача: deploy коррекции dashboard после обратной связи: вернуть bar-chart `Средний балл по менеджерам`, удалить именно KPI-карточку `Средний балл` из summary и дополнительно уменьшить точки и толщину линий у графика `Количество вызовов и распознанные вызовы за 3 месяца`.
