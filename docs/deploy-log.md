@@ -114,6 +114,12 @@
 - Длительность: около 95 минут.
 - Примечание: локально проверены создание `main.db`, `cache.db`, каталога backup и `analysis-exports`, а также запись analysis через новый storage-слой. Production deploy выполнен с коммита `99146ce`, шаги `stop_existing`, `clean`, `download`, `normalize_windows_paths`, `cleanup_metadata`, `runtime`, `install`, `systemd`, `start`, `healthcheck` завершились со статусом `ok`; внешний `https://app-2f37df5d.vibecode.bitrix24.tech/api/health` ответил `{\"ok\":true,...}`.
 
+## 2026-04-24 20:18 VLAT
+
+- Задача: ускорение первого открытия приложения и устранение эпизодически медленной пагинации.
+- Длительность: около 45 минут.
+- Примечание: frontend startup перестал ждать managers/settings/scenarios/rule-options перед первым dashboard render, а backend перестал сбрасывать filtered calls cache после фонового refresh activity snapshot без фактического изменения данных. Локальный smoke показал `dashboard ~605 ms`, `calls page1 ~172 ms`, `page2 ~118 ms`. Production deploy выполнен с коммита `40b30ba`, шаги `stop_existing`, `clean`, `download`, `normalize_windows_paths`, `cleanup_metadata`, `runtime`, `install`, `systemd`, `start`, `healthcheck` завершились со статусом `ok`; внешний `/api/health` ответил `{\"ok\":true,...}`.
+
 ## Формат записи
 
 ```text
