@@ -2855,16 +2855,30 @@ function renderHeatmap(container, data, options = {}) {
     label: start.label,
     columns: weekColumns.slice(start.weekIndex, monthStarts[index + 1]?.weekIndex ?? weekColumns.length),
   }));
+  const heatmapColumnWidth = 24;
+  const heatmapColumnGap = 2;
+  const heatmapMonthGap = 12;
+  let monthOffset = 0;
+  const positionedMonthGroups = monthGroups.map((group, index) => {
+    const width = group.columns.length * heatmapColumnWidth + Math.max(0, group.columns.length - 1) * heatmapColumnGap;
+    const positioned = {
+      ...group,
+      offset: monthOffset,
+      width,
+    };
+    monthOffset += width + (index < monthGroups.length - 1 ? heatmapMonthGap : 0);
+    return positioned;
+  });
 
   container.innerHTML = `
     <div class="heatmap">
-      <div class="heatmap-months">
-        ${monthGroups
-          .map((group) => `<span class="heatmap-month-label" style="--columns:${group.columns.length}">${escapeHtml(group.label)}</span>`)
+      <div class="heatmap-months" style="--heatmap-width:${monthOffset}px;">
+        ${positionedMonthGroups
+          .map((group) => `<span class="heatmap-month-label" style="left:${group.offset}px;">${escapeHtml(group.label)}</span>`)
           .join("")}
       </div>
       <div class="heatmap-groups">
-        ${monthGroups
+        ${positionedMonthGroups
           .map(
             (group) => `
               <div class="heatmap-group" style="--columns:${group.columns.length}">
@@ -3492,11 +3506,15 @@ async function reloadReportData(options = {}) {
 }
 
 function warmDashboardDataset() {
-  setTimeout(() => {
+  const schedule =
+    typeof window.requestIdleCallback === "function"
+      ? (callback) => window.requestIdleCallback(callback, { timeout: 1200 })
+      : (callback) => setTimeout(callback, 350);
+  schedule(() => {
     loadDashboardData({ refreshDashboard: true }).catch((error) => {
       notifyLoadError(error);
     });
-  }, 0);
+  });
 }
 
 function hasActiveAnalysisWork() {

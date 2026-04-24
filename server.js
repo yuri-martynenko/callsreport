@@ -878,6 +878,91 @@ function buildDashboardChartsSnapshot(calls = []) {
   };
 }
 
+function buildDashboardCallSnapshotFromActivity(activity = {}, managersById = new Map(), analysesByActivityId = new Map(), failuresByActivityId = new Map(), jobsByActivityId = new Map()) {
+  const activityId = String(activity?.id || "");
+  const manager = managersById.get(activity.responsibleId) || null;
+  const analysis = analysesByActivityId.get(activityId) || null;
+  const failure = failuresByActivityId.get(activityId) || null;
+  const latestJob = jobsByActivityId.get(activityId) || null;
+  const rawFiles = activity?.FILES ?? activity?.files ?? activity?.recordings ?? [];
+  const files = Array.isArray(rawFiles) ? rawFiles : [];
+  const start = activity.startTime || activity.createdAt;
+  const end = activity.endTime || activity.updatedAt || start;
+  const durationSeconds = Math.max(0, Math.round((new Date(end) - new Date(start)) / 1000));
+  const analysisState = deriveCallAnalysisStateFromActivity(activity, analysis, failure, latestJob);
+
+  return {
+    id: activity.id,
+    managerId: activity.responsibleId,
+    managerName: manager?.fullName || `User #${activity.responsibleId}`,
+    direction: activity.direction === 1 ? "incoming" : "outgoing",
+    startTime: start,
+    durationSeconds,
+    hasRecording: files.length > 0,
+    analysis: createDashboardAnalysisSnapshot(
+      analysis
+        ? {
+            ...analysis,
+            selectedScenarioId: latestJob?.selectedScenarioId || analysis.selectedScenarioId || null,
+            selectedScenarioName: latestJob?.selectedScenarioName || analysis.selectedScenarioName || "",
+            state: analysisState,
+            isCurrent: analysis.sourceUpdatedAt === activity.updatedAt,
+          }
+        : failure || latestJob
+          ? {
+              activityId: activity.id,
+              updatedAt: latestJob?.updatedAt || failure?.updatedAt || null,
+              selectedScenarioId: latestJob?.selectedScenarioId || null,
+              selectedScenarioName: latestJob?.selectedScenarioName || "",
+              state: analysisState,
+              isCurrent: true,
+              overview: null,
+              scriptAnalysis: null,
+              tokenUsage: null,
+            }
+          : null,
+    ),
+  };
+}
+
+async function buildDashboardChartsResponse() {
+  const [rawActivities, analysisStore, managers] = await Promise.all([
+    getRawActivitiesSnapshot(),
+    readAnalysisStore(),
+    listManagers(),
+  ]);
+  const managersById = new Map(managers.map((manager) => [manager.id, manager]));
+  const analysesByActivityId = buildLatestRecordsMap(analysisStore.analyses, (analysis) => analysis.activityId);
+  const failuresByActivityId = buildLatestRecordsMap(
+    analysisStore.failures || [],
+    (failure) => failure.activityId,
+  );
+  const jobsByActivityId = buildLatestJobMap(analysisStore.jobs || []);
+  const statusBreakdown = buildCallStatusBreakdownFromActivities(
+    rawActivities,
+    analysesByActivityId,
+    failuresByActivityId,
+    jobsByActivityId,
+  );
+  const pendingCalls = Number(statusBreakdown.find((item) => item.key === "pending")?.count || 0);
+  const queuedCalls = Number(statusBreakdown.find((item) => item.key === "queued")?.count || 0);
+  const dashboardCalls = rawActivities.map((activity) =>
+    buildDashboardCallSnapshotFromActivity(activity, managersById, analysesByActivityId, failuresByActivityId, jobsByActivityId),
+  );
+
+  return {
+    summary: {
+      ...summarizeAnalysesFromCalls(dashboardCalls),
+      totalCalls: dashboardCalls.length,
+      pendingCalls,
+      awaitingAnalysisCalls: pendingCalls + queuedCalls,
+      statusBreakdown,
+    },
+    statusBreakdown,
+    charts: buildDashboardChartsSnapshot(dashboardCalls),
+  };
+}
+
 function callSortTimestamp(call = {}) {
   return new Date(call.startTime || call.createdAt || 0).getTime();
 }
@@ -3398,22 +3483,9 @@ app.get("/api/dashboard-summary", async (_req, res, next) => {
 
 app.get("/api/dashboard-charts", async (_req, res, next) => {
   try {
-    const snapshot = await buildCallsSnapshot({ onlyRecorded: "false" });
     res.json({
       success: true,
-      data: {
-        summary: {
-          ...summarizeAnalysesFromCalls(snapshot.calls),
-          totalCalls: snapshot.calls.length,
-          pendingCalls: Number(snapshot.statusBreakdown.find((item) => item.key === "pending")?.count || 0),
-          awaitingAnalysisCalls:
-            Number(snapshot.statusBreakdown.find((item) => item.key === "pending")?.count || 0) +
-            Number(snapshot.statusBreakdown.find((item) => item.key === "queued")?.count || 0),
-          statusBreakdown: snapshot.statusBreakdown,
-        },
-        statusBreakdown: snapshot.statusBreakdown,
-        charts: buildDashboardChartsSnapshot(snapshot.calls),
-      },
+      data: await buildDashboardChartsResponse(),
     });
   } catch (error) {
     next(error);
