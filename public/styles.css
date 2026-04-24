@@ -946,6 +946,9 @@ button.scenario-link:focus-visible {
   stroke: var(--primary);
   stroke-dasharray: 8 6;
 }
+.line-chart-polyline.is-thin {
+  stroke-width: 1.5;
+}
 .line-chart-dot.is-calls {
   fill: var(--accent);
 }

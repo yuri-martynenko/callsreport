@@ -1912,7 +1912,6 @@ function renderSummaryInto(container, summary) {
     summaryCard("Всего звонков", summary.totalCalls || 0, "Общий объём звонков за весь период"),
     summaryCard("Проанализировано звонков", summary.analyzedCalls, "Все сохранённые AI-разборы"),
     summaryCard("Ожидает анализа", summary.awaitingAnalysisCalls ?? summary.pendingCalls ?? 0, "Ожидают запуска или стоят в очереди"),
-    summaryCard("Средний балл", summary.averageScore || "0", "Оценка соблюдения сценария"),
     summaryCard("Без записи", missingCalls, "Звонки, которые нельзя распознать"),
   ].join("");
 }
@@ -2391,11 +2390,11 @@ function multiLineSeriesSvg(seriesEntries, options = {}) {
     })
     .join("");
   const pointLabelStep = Math.max(1, Math.ceil(baseSeries.length / Math.max(1, maxPointLabels)));
-  const renderPointSet = (points, seriesClass, labelRule = () => false) =>
+  const renderPointSet = (points, seriesClass, pointRadius, labelRule = () => false) =>
     points
       .map(
         (point, index) => `
-          <circle class="line-chart-dot ${seriesClass}" cx="${point.x}" cy="${point.y}" r="4"></circle>
+          <circle class="line-chart-dot ${seriesClass}" cx="${point.x}" cy="${point.y}" r="${pointRadius}"></circle>
           ${labelRule(index, points.length) ? `<text class="line-chart-point-text ${pointTextClass}" x="${point.x}" y="${point.y - 12}" text-anchor="middle">${escapeHtml(valueFormatter(point.value, point))}</text>` : ""}`,
       )
       .join("");
@@ -2432,6 +2431,7 @@ function multiLineSeriesSvg(seriesEntries, options = {}) {
           renderPointSet(
             entry.points,
             entry.pointClassName || "",
+            Number(entry.pointRadius || 4),
             entry.labelRule ||
               ((index, length) => {
                 if (entryIndex === 0) return index === length - 1 || index % pointLabelStep === 0;
@@ -2999,22 +2999,25 @@ function renderCallsVolumeChart() {
     {
       label: "Количество вызовов",
       series: totalSeries,
-      polylineClassName: "is-calls",
+      polylineClassName: "is-calls is-thin",
       pointClassName: "is-calls",
+      pointRadius: 1.35,
       legendClassName: "is-primary",
     },
     {
       label: "Распознанные вызовы",
       series: recognizedSeries,
-      polylineClassName: "is-secondary",
+      polylineClassName: "is-secondary is-thin",
       pointClassName: "is-secondary",
+      pointRadius: 1.35,
       legendClassName: "is-secondary",
     },
     {
       label: "Без записи",
       series: missingRecordingSeries,
-      polylineClassName: "is-missing",
+      polylineClassName: "is-missing is-thin",
       pointClassName: "is-missing",
+      pointRadius: 1.35,
       legendClassName: "is-missing",
     },
   ], {
@@ -3032,6 +3035,7 @@ function renderDashboard() {
   renderSentimentChart();
   renderRiskChart();
   renderScenarioAverageChart();
+  renderManagerScoreChart();
   renderHeatmaps();
   renderRecognizedCallsChart();
   renderTokensUsageChart();
