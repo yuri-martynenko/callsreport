@@ -16,6 +16,8 @@ const state = {
   dashboardAnalyses: [],
   dashboardSummary: null,
   dashboardStatusBreakdown: [],
+  dashboardDatasetLoaded: false,
+  dashboardDatasetLoading: null,
   scenarios: [],
   managers: [],
   scenarioRuleOptions: {
@@ -3032,6 +3034,24 @@ function renderCallsVolumeChart() {
 }
 
 function renderDashboard() {
+  if (!state.dashboardDatasetLoaded) {
+    [
+      el.sentimentChart,
+      el.riskChart,
+      el.scenarioAverageChart,
+      el.managerScoreChart,
+      el.callsHeatmap,
+      el.recognizedCallsHeatmap,
+      el.recognizedCallsChart,
+      el.tokensUsageChart,
+      el.recognizedMinutesChart,
+      el.noRecordingChart,
+      el.tokensPerMinuteChart,
+      el.violatedCheckpointsChart,
+      el.dailyScoreChart,
+    ].forEach((container) => renderEmptyChart(container, "Загрузка данных..."));
+    return;
+  }
   renderSentimentChart();
   renderRiskChart();
   renderScenarioAverageChart();
@@ -3337,18 +3357,41 @@ async function loadSummary(options = {}) {
   }
 }
 
-async function loadDashboardData(options = {}) {
-  const data = await api("/api/dashboard");
+async function loadDashboardSummaryData(options = {}) {
+  const data = await api("/api/dashboard-summary");
   state.dashboardSummary = data.summary || null;
-  state.dashboardCalls = Array.isArray(data.calls) ? data.calls : [];
-  state.dashboardAnalyses = Array.isArray(data.analyses) && data.analyses.length
-    ? data.analyses
-    : dashboardAnalysesFromCalls(state.dashboardCalls);
   state.dashboardStatusBreakdown = Array.isArray(data.statusBreakdown) ? data.statusBreakdown : [];
   renderSummary();
   if (options.refreshDashboard !== false) {
     renderDashboard();
   }
+}
+
+async function loadDashboardData(options = {}) {
+  if (state.dashboardDatasetLoading) {
+    return state.dashboardDatasetLoading;
+  }
+
+  const task = (async () => {
+  const data = await api("/api/dashboard");
+    state.dashboardSummary = data.summary || state.dashboardSummary || null;
+    state.dashboardCalls = Array.isArray(data.calls) ? data.calls : [];
+    state.dashboardAnalyses = Array.isArray(data.analyses) && data.analyses.length
+      ? data.analyses
+      : dashboardAnalysesFromCalls(state.dashboardCalls);
+    state.dashboardStatusBreakdown = Array.isArray(data.statusBreakdown) ? data.statusBreakdown : state.dashboardStatusBreakdown;
+    state.dashboardDatasetLoaded = true;
+    renderSummary();
+    if (options.refreshDashboard !== false) {
+      renderDashboard();
+    }
+    return data;
+  })().finally(() => {
+    state.dashboardDatasetLoading = null;
+  });
+
+  state.dashboardDatasetLoading = task;
+  return task;
 }
 
 async function reloadReportData(options = {}) {
@@ -3366,6 +3409,14 @@ async function reloadReportData(options = {}) {
   if (refreshDashboard) {
     renderDashboard();
   }
+}
+
+function warmDashboardDataset() {
+  setTimeout(() => {
+    loadDashboardData({ refreshDashboard: true }).catch((error) => {
+      notifyLoadError(error);
+    });
+  }, 0);
 }
 
 function hasActiveAnalysisWork() {
@@ -3993,11 +4044,13 @@ document.addEventListener("change", (event) => {
     refreshFilterLabels();
     updateApplyFiltersState();
     await Promise.all([
-      loadDashboardData({ refreshDashboard: false }),
+      loadDashboardSummaryData({ refreshDashboard: false }),
     ]);
+    state.dashboardDatasetLoaded = false;
     renderDashboard();
     renderAnalysis(null);
     warmDeferredViewData();
+    warmDashboardDataset();
   } catch (error) {
     if (el.statusText) el.statusText.textContent = error.message;
     renderEmptyChart(el.managerScoreChart, error.message);

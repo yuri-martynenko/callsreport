@@ -227,3 +227,8 @@ Usage:
 `POST /api/settings` now returns immediately after persisting settings.
 
 The automatic rescan of eligible calls for auto-transcription is scheduled in the background and no longer blocks the HTTP response.
+## 2026-04 Dashboard Summary Split
+
+- `GET /api/dashboard-summary` returns only the dashboard summary cards payload and top-level `statusBreakdown`.
+- This endpoint is intended for the first dashboard paint and avoids shipping the full dashboard calls dataset.
+- `GET /api/dashboard` remains the heavy endpoint for charts, heatmaps, and other widgets that need the lightweight per-call dashboard dataset.

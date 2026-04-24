@@ -548,6 +548,91 @@ function createDashboardCallSnapshot(call = {}) {
   };
 }
 
+function activityHasRecording(activity = {}) {
+  const rawFiles = activity?.FILES ?? activity?.files ?? activity?.recordings ?? [];
+  return Array.isArray(rawFiles) && rawFiles.length > 0;
+}
+
+function deriveCallAnalysisStateFromActivity(activity, analysis, failure, latestJob = null) {
+  const isFailureCurrent = Boolean(
+    failure &&
+      (!analysis || new Date(failure.updatedAt || 0).getTime() >= new Date(analysis.updatedAt || 0).getTime()),
+  );
+
+  const jobStatus = String(latestJob?.status || "");
+  const isJobActive = ACTIVE_ANALYSIS_JOB_STATUSES.has(jobStatus);
+  const isJobError = jobStatus === "error";
+
+  if (isJobActive) return jobStatus;
+  if (isFailureCurrent || isJobError) return "error";
+  if (!activityHasRecording(activity)) return "missing";
+  if (!analysis) return "pending";
+  if (analysis.sourceUpdatedAt !== activity.updatedAt) return "outdated";
+  return deriveAnalysisResultState(analysis);
+}
+
+function buildCallStatusBreakdownFromActivities(activities = [], analysesByActivityId = new Map(), failuresByActivityId = new Map(), jobsByActivityId = new Map()) {
+  const order = ["total", "ready", "pending", "queued", "partial", "outdated", "error", "missing"];
+  const counts = new Map(order.map((key) => [key, 0]));
+  counts.set("total", activities.length);
+
+  for (const activity of activities) {
+    const activityId = String(activity?.id || "");
+    const state = deriveCallAnalysisStateFromActivity(
+      activity,
+      analysesByActivityId.get(activityId),
+      failuresByActivityId.get(activityId),
+      jobsByActivityId.get(activityId),
+    );
+    const normalized = normalizeDisplayAnalysisState(state);
+    const key = normalized === "processing" ? "queued" : normalized;
+    if (counts.has(key)) {
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+  }
+
+  return order.map((key) => ({
+    key,
+    count: counts.get(key) || 0,
+  }));
+}
+
+async function buildDashboardSummarySnapshot() {
+  const [rawActivities, analysisStore] = await Promise.all([
+    getRawActivitiesSnapshot(),
+    readAnalysisStore(),
+  ]);
+
+  const analysesByActivityId = buildLatestRecordsMap(analysisStore.analyses, (analysis) => analysis.activityId);
+  const failuresByActivityId = buildLatestRecordsMap(
+    analysisStore.failures || [],
+    (failure) => failure.activityId,
+  );
+  const jobsByActivityId = buildLatestJobMap(analysisStore.jobs || []);
+  const relevantAnalyses = rawActivities
+    .map((activity) => analysesByActivityId.get(String(activity?.id || "")))
+    .filter(Boolean);
+  const statusBreakdown = buildCallStatusBreakdownFromActivities(
+    rawActivities,
+    analysesByActivityId,
+    failuresByActivityId,
+    jobsByActivityId,
+  );
+  const pendingCalls = Number(statusBreakdown.find((item) => item.key === "pending")?.count || 0);
+  const queuedCalls = Number(statusBreakdown.find((item) => item.key === "queued")?.count || 0);
+
+  return {
+    summary: {
+      ...summarizeAnalyses(relevantAnalyses),
+      totalCalls: rawActivities.length,
+      pendingCalls,
+      awaitingAnalysisCalls: pendingCalls + queuedCalls,
+      statusBreakdown,
+    },
+    statusBreakdown,
+  };
+}
+
 function callSortTimestamp(call = {}) {
   return new Date(call.startTime || call.createdAt || 0).getTime();
 }
@@ -3048,6 +3133,18 @@ app.get("/api/reports/summary", async (req, res, next) => {
     res.json({
       success: true,
       data: includeAnalyses ? { summary: summarizeAnalyses(analyses), analyses } : { summary: summarizeAnalyses(analyses) },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/dashboard-summary", async (_req, res, next) => {
+  try {
+    await cleanupStaleActiveJobs();
+    res.json({
+      success: true,
+      data: await buildDashboardSummarySnapshot(),
     });
   } catch (error) {
     next(error);
