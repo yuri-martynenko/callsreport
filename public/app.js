@@ -2823,7 +2823,7 @@ function renderHeatmap(container, data, options = {}) {
     const items = paddedDays.slice(offset, offset + 7);
     const firstActual = items.find(Boolean);
     const monthLabel = firstActual
-      ? new Date(`${firstActual.key}T00:00:00`).toLocaleDateString("ru-RU", { month: "short" })
+      ? new Date(`${firstActual.key}T00:00:00`).toLocaleDateString("ru-RU", { month: "long" })
       : "";
     weekColumns.push({ monthLabel, items });
   }
@@ -2841,7 +2841,7 @@ function renderHeatmap(container, data, options = {}) {
     <div class="heatmap">
       <div class="heatmap-months">
         ${monthGroups
-          .map((group) => `<span class="heatmap-month-label">${escapeHtml(group.label)}</span>`)
+          .map((group) => `<span class="heatmap-month-label" style="--columns:${group.columns.length}">${escapeHtml(group.label)}</span>`)
           .join("")}
       </div>
       <div class="heatmap-groups">
@@ -2896,10 +2896,10 @@ function renderSeriesChart(container, series, options = {}) {
 function renderRecognizedCallsChart() {
   const series = Array.isArray(state.dashboardCharts?.recognizedCallsSeries)
     ? state.dashboardCharts.recognizedCallsSeries
-    : buildLast7DaysSeries(dashboardCallsWithAnalysis(), () => 1);
+    : buildCountSeriesByDay(filterCallsByLastNDays(dashboardCallsWithAnalysis(), 30), () => true, 30);
   renderSeriesChart(el.recognizedCallsChart, series, {
-    emptyMessage: "Нет распознанных звонков за последние 7 дней.",
-    ariaLabel: "График распознанных звонков за последние 7 дней",
+    emptyMessage: "Нет распознанных звонков за последний месяц.",
+    ariaLabel: "График распознанных звонков за последний месяц",
     valueFormatter: (value) => `${Math.round(value)}`,
     yTickFormatter: (value) => `${Math.round(value)}`,
     strokeClass: "is-calls",
@@ -2912,13 +2912,16 @@ function renderRecognizedCallsChart() {
 function renderTokensUsageChart() {
   const series = Array.isArray(state.dashboardCharts?.tokensUsageSeries)
     ? state.dashboardCharts.tokensUsageSeries
-    : buildLast7DaysSeries(
-      dashboardCallsWithAnalysis(),
-      (call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0),
-    );
+    : lastNDaysKeys(30).map((key) => ({
+      key,
+      label: formatDay(key),
+      value: filterCallsByLastNDays(dashboardCallsWithAnalysis(), 30)
+        .filter((call) => callDayKey(call) === key)
+        .reduce((sum, call) => sum + Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0), 0),
+    }));
   renderSeriesChart(el.tokensUsageChart, series, {
-    emptyMessage: "Нет расхода токенов за последние 7 дней.",
-    ariaLabel: "График расхода токенов за последние 7 дней",
+    emptyMessage: "Нет расхода токенов за последний месяц.",
+    ariaLabel: "График расхода токенов за последний месяц",
     valueFormatter: (value) => `${Math.round(value)}`,
     yTickFormatter: (value) => `${Math.round(value)}`,
     strokeClass: "is-tokens",
@@ -2931,13 +2934,19 @@ function renderTokensUsageChart() {
 function renderRecognizedMinutesChart() {
   const series = Array.isArray(state.dashboardCharts?.recognizedMinutesSeries)
     ? state.dashboardCharts.recognizedMinutesSeries
-    : buildLast7DaysSeries(dashboardCallsWithAnalysis(), (call) => Number(call.durationSeconds || 0) / 60).map((item) => ({
-      ...item,
-      value: roundedMetric(item.value, 1),
+    : lastNDaysKeys(30).map((key) => ({
+      key,
+      label: formatDay(key),
+      value: roundedMetric(
+        filterCallsByLastNDays(dashboardCallsWithAnalysis(), 30)
+          .filter((call) => callDayKey(call) === key)
+          .reduce((sum, call) => sum + Number(call.durationSeconds || 0) / 60, 0),
+        1,
+      ),
     }));
   renderSeriesChart(el.recognizedMinutesChart, series, {
-    emptyMessage: "Нет распознанных минут за последние 7 дней.",
-    ariaLabel: "График распознанных минут за последние 7 дней",
+    emptyMessage: "Нет распознанных минут за последний месяц.",
+    ariaLabel: "График распознанных минут за последний месяц",
     valueFormatter: (value) => `${value.toFixed(1)}`,
     yTickFormatter: (value) => `${value.toFixed(1)}`,
     strokeClass: "is-minutes",
@@ -2974,15 +2983,15 @@ function renderTokensPerMinuteChart() {
   const series = Array.isArray(state.dashboardCharts?.tokensPerMinuteSeries)
     ? state.dashboardCharts.tokensPerMinuteSeries
     : buildRatioSeriesByDay(
-      filterCallsByLastNDays(dashboardCallsWithAnalysis(), 90),
+      filterCallsByLastNDays(dashboardCallsWithAnalysis(), 30),
       (call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0),
       (call) => Math.max(0, Number(call.durationSeconds || 0) / 60),
-      90,
+      30,
     );
   renderSeriesChart(el.tokensPerMinuteChart, series, {
     emptyMessage: "Нет данных по токенам на минуту.",
-    zeroMessage: "За последние 3 месяца расход токенов на минуту равен 0.",
-    ariaLabel: "График токенов на минуту за последние 3 месяца",
+    zeroMessage: "За последний месяц расход токенов на минуту равен 0.",
+    ariaLabel: "График токенов на минуту за последний месяц",
     valueFormatter: (value) => `${value.toFixed(1)}`,
     yTickFormatter: (value) => `${value.toFixed(1)}`,
     strokeClass: "is-score",
