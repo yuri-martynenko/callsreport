@@ -154,6 +154,7 @@ const el = {
   sentimentChart: document.getElementById("sentimentChart"),
   riskChart: document.getElementById("riskChart"),
   scenarioAverageChart: document.getElementById("scenarioAverageChart"),
+  scenarioTokensPerMinuteChart: document.getElementById("scenarioTokensPerMinuteChart"),
   recognizedCallsChart: document.getElementById("recognizedCallsChart"),
   tokensUsageChart: document.getElementById("tokensUsageChart"),
   recognizedMinutesChart: document.getElementById("recognizedMinutesChart"),
@@ -2668,6 +2669,37 @@ function scenarioComplianceRows() {
     .slice(0, 8);
 }
 
+function scenarioTokensPerMinuteRows() {
+  const buckets = new Map();
+  for (const call of dashboardCallsWithAnalysis()) {
+    const analysis = effectiveAnalysis(call);
+    const scenarioLabel = String(
+      analysis?.selectedScenarioName ||
+        state.scenarios.find((item) => String(item.id) === String(analysis?.selectedScenarioId || ""))?.name ||
+        "Автосценарий",
+    ).trim() || "Автосценарий";
+    const totalTokens = Number(analysis?.tokenUsage?.totalTokens || 0);
+    const durationMinutes = Math.max(0, Number(call?.durationSeconds || 0) / 60);
+    if (!Number.isFinite(totalTokens) || totalTokens <= 0 || !Number.isFinite(durationMinutes) || durationMinutes <= 0) continue;
+    if (!buckets.has(scenarioLabel)) {
+      buckets.set(scenarioLabel, { label: scenarioLabel, totalTokens: 0, totalMinutes: 0, count: 0 });
+    }
+    const bucket = buckets.get(scenarioLabel);
+    bucket.totalTokens += totalTokens;
+    bucket.totalMinutes += durationMinutes;
+    bucket.count += 1;
+  }
+
+  return Array.from(buckets.values())
+    .map((item) => ({
+      label: item.label,
+      value: item.totalMinutes > 0 ? roundedMetric(item.totalTokens / item.totalMinutes, 1) : 0,
+      count: item.count,
+    }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 8);
+}
+
 function renderScenarioAverageChart() {
   const rows = Array.isArray(state.dashboardCharts?.scenarioAverageRows)
     ? state.dashboardCharts.scenarioAverageRows
@@ -2677,6 +2709,17 @@ function renderScenarioAverageChart() {
     usePercentScale: true,
     formatter: (value, item) =>
       `<span>${escapeHtml(`${item.count}`)}</span><span class="muted">${escapeHtml(`(${value.toFixed(1)}%)`)}</span>`,
+  });
+}
+
+function renderScenarioTokensPerMinuteChart() {
+  const rows = Array.isArray(state.dashboardCharts?.scenarioTokensPerMinuteRows)
+    ? state.dashboardCharts.scenarioTokensPerMinuteRows
+    : scenarioTokensPerMinuteRows();
+  renderHorizontalBars(el.scenarioTokensPerMinuteChart, rows, {
+    emptyMessage: "Нет данных по токенам на минуту в сценариях.",
+    formatter: (value, item) =>
+      `<span>${escapeHtml(value.toFixed(1))}</span><span class="muted">${escapeHtml(`${item.count} звонков`)}</span>`,
   });
 }
 
@@ -3132,6 +3175,7 @@ function renderDashboard() {
       el.sentimentChart,
       el.riskChart,
       el.scenarioAverageChart,
+      el.scenarioTokensPerMinuteChart,
       el.managerScoreChart,
       el.callsHeatmap,
       el.recognizedCallsHeatmap,
@@ -3148,6 +3192,7 @@ function renderDashboard() {
   renderSentimentChart();
   renderRiskChart();
   renderScenarioAverageChart();
+  renderScenarioTokensPerMinuteChart();
   renderManagerScoreChart();
   renderHeatmaps();
   renderRecognizedCallsChart();
@@ -4154,6 +4199,7 @@ document.addEventListener("change", (event) => {
     renderEmptyChart(el.managerScoreChart, error.message);
     renderEmptyChart(el.sentimentChart, error.message);
     renderEmptyChart(el.scenarioAverageChart, error.message);
+    renderEmptyChart(el.scenarioTokensPerMinuteChart, error.message);
     renderEmptyChart(el.recognizedCallsChart, error.message);
     renderEmptyChart(el.tokensUsageChart, error.message);
     renderEmptyChart(el.recognizedMinutesChart, error.message);

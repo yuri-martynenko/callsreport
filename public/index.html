@@ -61,6 +61,16 @@
                 <article class="panel chart-panel">
                   <div class="section-head">
                     <div class="section-head-main">
+                      <h2>Токены на 1 минуту по сценариям</h2>
+                      <span class="muted">Средний расход токенов на одну распознанную минуту в разбивке по сценариям.</span>
+                    </div>
+                  </div>
+                  <div id="scenarioTokensPerMinuteChart" class="chart-host chart-host-compact"></div>
+                </article>
+
+                <article class="panel chart-panel">
+                  <div class="section-head">
+                    <div class="section-head-main">
                       <h2>Топ нарушений</h2>
                       <span class="muted">Чаще всего проблемные пункты сценария за весь период.</span>
                     </div>
@@ -88,15 +98,27 @@
                   <div id="callsHeatmap" class="heatmap-host"></div>
                 </article>
 
-                <article class="panel chart-panel">
-                  <div class="section-head">
-                    <div class="section-head-main">
-                      <h2>Токены на 1 минуту звонка за последний месяц</h2>
-                      <span class="muted">Средний расход токенов на одну распознанную минуту по дням за последний месяц.</span>
+                <div class="dashboard-row dashboard-row-halves chart-panel-wide">
+                  <article class="panel chart-panel">
+                    <div class="section-head">
+                      <div class="section-head-main">
+                        <h2>Токены на 1 минуту звонка за последний месяц</h2>
+                        <span class="muted">Средний расход токенов на одну распознанную минуту по дням за последний месяц.</span>
+                      </div>
                     </div>
-                  </div>
-                  <div id="tokensPerMinuteChart" class="chart-host chart-host-compact"></div>
-                </article>
+                    <div id="tokensPerMinuteChart" class="chart-host chart-host-compact"></div>
+                  </article>
+
+                  <article class="panel chart-panel">
+                    <div class="section-head">
+                      <div class="section-head-main">
+                        <h2>Израсходование токенов за последний месяц</h2>
+                        <span class="muted">Сумма токенов транскрибации и анализа по дням.</span>
+                      </div>
+                    </div>
+                    <div id="tokensUsageChart" class="chart-host chart-host-compact"></div>
+                  </article>
+                </div>
 
                 <article class="panel chart-panel chart-panel-slim">
                   <div class="section-head">
@@ -106,16 +128,6 @@
                     </div>
                   </div>
                   <div id="recognizedCallsChart" class="chart-host chart-host-slim"></div>
-                </article>
-
-                <article class="panel chart-panel chart-panel-slim">
-                  <div class="section-head">
-                    <div class="section-head-main">
-                      <h2>Израсходование токенов за последний месяц</h2>
-                      <span class="muted">Сумма токенов транскрибации и анализа по дням.</span>
-                    </div>
-                  </div>
-                  <div id="tokensUsageChart" class="chart-host chart-host-slim"></div>
                 </article>
 
                 <article class="panel chart-panel chart-panel-slim">

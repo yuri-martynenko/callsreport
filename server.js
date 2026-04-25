@@ -763,6 +763,7 @@ function buildDashboardChartsSnapshot(calls = []) {
     ["Высокий", { label: "Высокий", count: 0, trackClassName: "is-high-risk" }],
   ]);
   const scenarioBuckets = new Map();
+  const scenarioTokensBuckets = new Map();
   const managerBuckets = new Map();
   const checkpointBuckets = new Map();
 
@@ -781,6 +782,19 @@ function buildDashboardChartsSnapshot(calls = []) {
       }
       const bucket = scenarioBuckets.get(scenarioLabel);
       bucket.total += compliance;
+      bucket.count += 1;
+    }
+
+    const totalTokens = Number(analysis?.tokenUsage?.totalTokens || 0);
+    const durationMinutes = Math.max(0, Number(call?.durationSeconds || 0) / 60);
+    if (Number.isFinite(totalTokens) && totalTokens > 0 && Number.isFinite(durationMinutes) && durationMinutes > 0) {
+      const scenarioTokenLabel = String(analysis?.selectedScenarioName || "Автосценарий").trim() || "Автосценарий";
+      if (!scenarioTokensBuckets.has(scenarioTokenLabel)) {
+        scenarioTokensBuckets.set(scenarioTokenLabel, { label: scenarioTokenLabel, totalTokens: 0, totalMinutes: 0, count: 0 });
+      }
+      const bucket = scenarioTokensBuckets.get(scenarioTokenLabel);
+      bucket.totalTokens += totalTokens;
+      bucket.totalMinutes += durationMinutes;
       bucket.count += 1;
     }
 
@@ -827,6 +841,15 @@ function buildDashboardChartsSnapshot(calls = []) {
     .sort((left, right) => right.value - left.value)
     .slice(0, 8);
 
+  const scenarioTokensPerMinuteRows = Array.from(scenarioTokensBuckets.values())
+    .map((item) => ({
+      label: item.label,
+      value: item.totalMinutes > 0 ? roundMetric(item.totalTokens / item.totalMinutes, 1) : 0,
+      count: item.count,
+    }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 8);
+
   const managerScoreRows = Array.from(managerBuckets.values())
     .map((item) => ({
       label: item.label,
@@ -848,6 +871,7 @@ function buildDashboardChartsSnapshot(calls = []) {
   return {
     riskRows,
     scenarioAverageRows,
+    scenarioTokensPerMinuteRows,
     managerScoreRows,
     callsHeatmap: buildDashboardHeatmap(calls, () => true, 184),
     recognizedCallsSeries: buildDashboardCountSeries(analyzedCalls, () => true, 30),
