@@ -11,6 +11,12 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-25 15:18 VLAT
+
+- Задача: deploy очередной коррекции dashboard: собрать в один ряд три токеновых графика (`Токены на 1 минуту по сценариям`, `Токены на 1 минуту звонка за последний месяц`, `Токены на 1 минуту по сценариям за последний месяц`), перевести бывший график `Израсходование токенов за последний месяц` на сценарную метрику среднего расхода токенов на минуту за последний месяц и разложить `Распознанные звонки` / `Распознанные минуты` в row `50/50`.
+- Длительность: около 20 минут.
+- Результат: `push` коммита `f00b652` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, внешний `GET https://app-2f37df5d.vibecode.bitrix24.tech/api/health` вернул `ok=true, configured=true`, `GET /api/dashboard-charts` подтвердил наличие `monthlyScenarioTokensPerMinuteRows`, а production HTML подтвердил `dashboard-row dashboard-row-thirds chart-panel-wide`, `dashboard-row dashboard-row-halves chart-panel-wide`, `scenarioTokensPerMinuteChart`, `tokensUsageChart`, `recognizedCallsChart`, `recognizedMinutesChart`.
+
 ## 2026-04-25 10:18 VLAT
 
 - Задача: deploy правок dashboard с добавлением нового графика `Токены на 1 минуту по сценариям` и переносом двух токеновых месячных графиков (`Токены на 1 минуту звонка`, `Израсходование токенов`) в отдельный ряд сразу после `Тепловая карта вызовов за 6 месяцев`.
