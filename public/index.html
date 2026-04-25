@@ -61,16 +61,6 @@
                 <article class="panel chart-panel">
                   <div class="section-head">
                     <div class="section-head-main">
-                      <h2>Токены на 1 минуту по сценариям</h2>
-                      <span class="muted">Средний расход токенов на одну распознанную минуту в разбивке по сценариям.</span>
-                    </div>
-                  </div>
-                  <div id="scenarioTokensPerMinuteChart" class="chart-host chart-host-compact"></div>
-                </article>
-
-                <article class="panel chart-panel">
-                  <div class="section-head">
-                    <div class="section-head-main">
                       <h2>Топ нарушений</h2>
                       <span class="muted">Чаще всего проблемные пункты сценария за весь период.</span>
                     </div>
@@ -98,7 +88,17 @@
                   <div id="callsHeatmap" class="heatmap-host"></div>
                 </article>
 
-                <div class="dashboard-row dashboard-row-halves chart-panel-wide">
+                <div class="dashboard-row dashboard-row-thirds chart-panel-wide">
+                  <article class="panel chart-panel">
+                    <div class="section-head">
+                      <div class="section-head-main">
+                        <h2>Токены на 1 минуту по сценариям</h2>
+                        <span class="muted">Средний расход токенов на одну распознанную минуту в разбивке по сценариям за весь период.</span>
+                      </div>
+                    </div>
+                    <div id="scenarioTokensPerMinuteChart" class="chart-host chart-host-compact"></div>
+                  </article>
+
                   <article class="panel chart-panel">
                     <div class="section-head">
                       <div class="section-head-main">
@@ -112,33 +112,35 @@
                   <article class="panel chart-panel">
                     <div class="section-head">
                       <div class="section-head-main">
-                        <h2>Израсходование токенов за последний месяц</h2>
-                        <span class="muted">Сумма токенов транскрибации и анализа по дням.</span>
+                        <h2>Токены на 1 минуту по сценариям за последний месяц</h2>
+                        <span class="muted">Средний расход токенов на одну распознанную минуту в разбивке по сценариям за последний месяц.</span>
                       </div>
                     </div>
                     <div id="tokensUsageChart" class="chart-host chart-host-compact"></div>
                   </article>
                 </div>
 
-                <article class="panel chart-panel chart-panel-slim">
-                  <div class="section-head">
-                    <div class="section-head-main">
-                      <h2>Распознанные звонки за последний месяц</h2>
-                      <span class="muted">Количество звонков, по которым есть анализ.</span>
+                <div class="dashboard-row dashboard-row-halves chart-panel-wide">
+                  <article class="panel chart-panel">
+                    <div class="section-head">
+                      <div class="section-head-main">
+                        <h2>Распознанные звонки за последний месяц</h2>
+                        <span class="muted">Количество звонков, по которым есть анализ.</span>
+                      </div>
                     </div>
-                  </div>
-                  <div id="recognizedCallsChart" class="chart-host chart-host-slim"></div>
-                </article>
+                    <div id="recognizedCallsChart" class="chart-host chart-host-compact"></div>
+                  </article>
 
-                <article class="panel chart-panel chart-panel-slim">
-                  <div class="section-head">
-                    <div class="section-head-main">
-                      <h2>Распознанные минуты за последний месяц</h2>
-                      <span class="muted">Суммарная длительность обработанных звонков.</span>
+                  <article class="panel chart-panel">
+                    <div class="section-head">
+                      <div class="section-head-main">
+                        <h2>Распознанные минуты за последний месяц</h2>
+                        <span class="muted">Суммарная длительность обработанных звонков.</span>
+                      </div>
                     </div>
-                  </div>
-                  <div id="recognizedMinutesChart" class="chart-host chart-host-slim"></div>
-                </article>
+                    <div id="recognizedMinutesChart" class="chart-host chart-host-compact"></div>
+                  </article>
+                </div>
 
                 <article class="panel chart-panel chart-panel-wide">
                   <div class="section-head">

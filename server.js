@@ -764,8 +764,10 @@ function buildDashboardChartsSnapshot(calls = []) {
   ]);
   const scenarioBuckets = new Map();
   const scenarioTokensBuckets = new Map();
+  const monthlyScenarioTokensBuckets = new Map();
   const managerBuckets = new Map();
   const checkpointBuckets = new Map();
+  const last30DayKeys = new Set(lastNDashboardDayKeys(30));
 
   for (const call of analyzedCalls) {
     const analysis = call.analysis || {};
@@ -796,6 +798,17 @@ function buildDashboardChartsSnapshot(calls = []) {
       bucket.totalTokens += totalTokens;
       bucket.totalMinutes += durationMinutes;
       bucket.count += 1;
+
+      const callDayKey = dashboardCallDayKey(call);
+      if (callDayKey && last30DayKeys.has(callDayKey)) {
+        if (!monthlyScenarioTokensBuckets.has(scenarioTokenLabel)) {
+          monthlyScenarioTokensBuckets.set(scenarioTokenLabel, { label: scenarioTokenLabel, totalTokens: 0, totalMinutes: 0, count: 0 });
+        }
+        const monthlyBucket = monthlyScenarioTokensBuckets.get(scenarioTokenLabel);
+        monthlyBucket.totalTokens += totalTokens;
+        monthlyBucket.totalMinutes += durationMinutes;
+        monthlyBucket.count += 1;
+      }
     }
 
     const score = Number(analysis?.scriptAnalysis?.overallScore);
@@ -850,6 +863,15 @@ function buildDashboardChartsSnapshot(calls = []) {
     .sort((left, right) => right.value - left.value)
     .slice(0, 8);
 
+  const monthlyScenarioTokensPerMinuteRows = Array.from(monthlyScenarioTokensBuckets.values())
+    .map((item) => ({
+      label: item.label,
+      value: item.totalMinutes > 0 ? roundMetric(item.totalTokens / item.totalMinutes, 1) : 0,
+      count: item.count,
+    }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 8);
+
   const managerScoreRows = Array.from(managerBuckets.values())
     .map((item) => ({
       label: item.label,
@@ -872,6 +894,7 @@ function buildDashboardChartsSnapshot(calls = []) {
     riskRows,
     scenarioAverageRows,
     scenarioTokensPerMinuteRows,
+    monthlyScenarioTokensPerMinuteRows,
     managerScoreRows,
     callsHeatmap: buildDashboardHeatmap(calls, () => true, 184),
     recognizedCallsSeries: buildDashboardCountSeries(analyzedCalls, () => true, 30),

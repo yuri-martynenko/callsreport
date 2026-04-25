@@ -2669,9 +2669,12 @@ function scenarioComplianceRows() {
     .slice(0, 8);
 }
 
-function scenarioTokensPerMinuteRows() {
+function scenarioTokensPerMinuteRows(days = null) {
   const buckets = new Map();
-  for (const call of dashboardCallsWithAnalysis()) {
+  const calls = Number.isFinite(Number(days)) && Number(days) > 0
+    ? filterCallsByLastNDays(dashboardCallsWithAnalysis(), Number(days))
+    : dashboardCallsWithAnalysis();
+  for (const call of calls) {
     const analysis = effectiveAnalysis(call);
     const scenarioLabel = String(
       analysis?.selectedScenarioName ||
@@ -2988,26 +2991,13 @@ function renderRecognizedCallsChart() {
 }
 
 function renderTokensUsageChart() {
-  const series = Array.isArray(state.dashboardCharts?.tokensUsageSeries)
-    ? state.dashboardCharts.tokensUsageSeries
-    : lastNDaysKeys(30).map((key) => ({
-      key,
-      label: formatDay(key),
-      value: filterCallsByLastNDays(dashboardCallsWithAnalysis(), 30)
-        .filter((call) => callDayKey(call) === key)
-        .reduce((sum, call) => sum + Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0), 0),
-    }));
-  renderSeriesChart(el.tokensUsageChart, series, {
-    emptyMessage: "Нет расхода токенов за последний месяц.",
-    ariaLabel: "График расхода токенов за последний месяц",
-    valueFormatter: (value) => `${Math.round(value)}`,
-    yTickFormatter: (value) => `${Math.round(value)}`,
-    strokeClass: "is-tokens",
-    areaClass: "is-tokens",
-    pointTextClass: "is-emphasis",
-    axisTextClass: "is-medium",
-    maxXAxisLabels: 6,
-    xTickFormatter: (item) => formatDayShort(item.key),
+  const rows = Array.isArray(state.dashboardCharts?.monthlyScenarioTokensPerMinuteRows)
+    ? state.dashboardCharts.monthlyScenarioTokensPerMinuteRows
+    : scenarioTokensPerMinuteRows(30);
+  renderHorizontalBars(el.tokensUsageChart, rows, {
+    emptyMessage: "Нет данных по токенам на минуту в сценариях за последний месяц.",
+    formatter: (value, item) =>
+      `<span>${escapeHtml(value.toFixed(1))}</span><span class="muted">${escapeHtml(`${item.count} звонков`)}</span>`,
   });
 }
 

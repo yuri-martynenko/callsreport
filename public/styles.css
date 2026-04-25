@@ -78,6 +78,7 @@ body.drawer-open { overflow: hidden; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
 .dashboard-row { display: grid; gap: 18px; }
 .dashboard-row-halves { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dashboard-row-thirds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .chart-panel { position: relative; overflow: hidden; }
 .chart-panel-slim { max-width: 460px; }
 .chart-panel-accent {
