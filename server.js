@@ -529,7 +529,14 @@ function createDashboardAnalysisSnapshot(analysis = null) {
       : null,
     tokenUsage: analysis.tokenUsage
       ? {
+          transcriptionTokens: analysis.tokenUsage.transcriptionTokens ?? 0,
+          analysisTotalTokens: analysis.tokenUsage.analysisTotalTokens ?? 0,
           totalTokens: analysis.tokenUsage.totalTokens ?? 0,
+        }
+      : null,
+    transcriptMeta: analysis.transcriptMeta
+      ? {
+          duration: analysis.transcriptMeta.duration ?? null,
         }
       : null,
   };
