@@ -2684,20 +2684,19 @@ function scenarioTokensPerMinuteRows(days = null) {
     const totalTokens = Number(analysis?.tokenUsage?.totalTokens || 0);
     const durationMinutes = Math.max(0, Number(call?.durationSeconds || 0) / 60);
     if (!Number.isFinite(totalTokens) || totalTokens <= 0 || !Number.isFinite(durationMinutes) || durationMinutes <= 0) continue;
-    const rate = totalTokens / durationMinutes;
     if (!buckets.has(scenarioLabel)) {
-      buckets.set(scenarioLabel, { label: scenarioLabel, rateSum: 0, rateCount: 0, count: 0 });
+      buckets.set(scenarioLabel, { label: scenarioLabel, totalTokens: 0, totalMinutes: 0, count: 0 });
     }
     const bucket = buckets.get(scenarioLabel);
-    bucket.rateSum += rate;
-    bucket.rateCount += 1;
+    bucket.totalTokens += totalTokens;
+    bucket.totalMinutes += durationMinutes;
     bucket.count += 1;
   }
 
   return Array.from(buckets.values())
     .map((item) => ({
       label: item.label,
-      value: item.rateCount > 0 ? roundedMetric(item.rateSum / item.rateCount, 1) : 0,
+      value: item.totalMinutes > 0 ? roundedMetric(item.totalTokens / item.totalMinutes, 1) : 0,
       count: item.count,
     }))
     .sort((left, right) => right.value - left.value)
