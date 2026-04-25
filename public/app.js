@@ -2873,6 +2873,12 @@ function buildRatioSeriesByDay(calls, numeratorResolver, denominatorResolver, da
   });
 }
 
+function normalizedMinutes(seconds) {
+  const numericSeconds = Number(seconds || 0);
+  if (!Number.isFinite(numericSeconds) || numericSeconds <= 0) return 0;
+  return numericSeconds < 60 ? 1 : numericSeconds / 60;
+}
+
 function violatedCheckpointRows(limit = 10) {
   const buckets = new Map();
   const totalAnalyzedCalls = Math.max(dashboardCallsWithAnalysis().length, 1);
@@ -3121,11 +3127,11 @@ function renderTokensPerMinuteChart() {
   const series = Array.isArray(state.dashboardCharts?.tokensPerMinuteSeries)
     ? state.dashboardCharts.tokensPerMinuteSeries
     : buildRatioSeriesByDay(
-      filterCallsByLastNDays(dashboardCallsWithAnalysis(), 30),
-      (call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0),
-      (call) => Math.max(0, Number(call.durationSeconds || 0) / 60),
-      30,
-    );
+        filterCallsByLastNDays(dashboardCallsWithAnalysis(), 30),
+        (call) => Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0),
+        (call) => normalizedMinutes(call.durationSeconds),
+        30,
+      );
   renderSeriesChart(el.tokensPerMinuteChart, series, {
     emptyMessage: "Нет данных по токенам на минуту.",
     zeroMessage: "За последний месяц расход токенов на минуту равен 0.",

@@ -345,3 +345,9 @@ Russian localization of the structured AI result is now best-effort. If the extr
 - Other users receive permissions only through configured roles.
 - The frontend hides unavailable navigation/actions, but backend permission checks are the source of truth.
 - Access roles cover page visibility for Dashboard, Transcription, and Scenarios, plus separate permissions for auto-transcription mode changes, manual call transcription launch, and scenario editing.
+## Dashboard token metrics
+
+- `Токены на 1 минуту звонка за последний месяц` uses `analysis.tokenUsage.totalTokens` as the numerator.
+- The denominator is the call duration in minutes.
+- Calls shorter than `60` seconds are normalized to `1` minute in the denominator so sub-minute calls do not inflate the per-minute value.
+- `Токены на 1 минуту по сценариям` uses the same sub-minute normalization rule.

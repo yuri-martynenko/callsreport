@@ -948,6 +948,12 @@ function buildDashboardRatioSeries(calls = [], numeratorResolver = () => 0, deno
   });
 }
 
+function normalizedDashboardMinutes(seconds) {
+  const numericSeconds = Number(seconds || 0);
+  if (!Number.isFinite(numericSeconds) || numericSeconds <= 0) return 0;
+  return numericSeconds < 60 ? 1 : numericSeconds / 60;
+}
+
 function buildDashboardHeatmap(calls = [], predicate = () => true, days = 184) {
   const keys = lastNDashboardDayKeys(days);
   const buckets = new Map(keys.map((key) => [key, 0]));
@@ -1139,7 +1145,7 @@ function buildDashboardChartsSnapshot(calls = []) {
     tokensPerMinuteSeries: buildDashboardRatioSeries(
       analyzedCalls,
       (call) => Number(call?.analysis?.tokenUsage?.totalTokens || 0),
-      (call) => Math.max(0, Number(call?.durationSeconds || 0) / 60),
+      (call) => normalizedDashboardMinutes(call?.durationSeconds),
       30,
     ),
     violatedCheckpointRows,
