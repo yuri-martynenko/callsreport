@@ -11,6 +11,12 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-25 10:18 VLAT
+
+- Задача: deploy правок dashboard с добавлением нового графика `Токены на 1 минуту по сценариям` и переносом двух токеновых месячных графиков (`Токены на 1 минуту звонка`, `Израсходование токенов`) в отдельный ряд сразу после `Тепловая карта вызовов за 6 месяцев`.
+- Длительность: около 15 минут.
+- Результат: `push` коммита `666c5ef` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, внешний `GET https://app-2f37df5d.vibecode.bitrix24.tech/api/health` вернул `ok=true, configured=true`, `GET /api/dashboard-charts` подтвердил наличие `scenarioTokensPerMinuteRows`, а production HTML подтвердил `scenarioTokensPerMinuteChart` и отдельный `dashboard-row dashboard-row-halves chart-panel-wide` сразу после `callsHeatmap`.
+
 ## 2026-04-25 09:58 VLAT
 
 - Задача: deploy очередной коррекции dashboard после повторной обратной связи: убрать остаточный сдвиг подписей месяцев над heatmap `Тепловая карта вызовов за 6 месяцев` через абсолютное позиционирование по стартовой колонке месяца и сократить стартовую задержку загрузки dashboard за счёт облегчённого backend ответа `/api/dashboard-charts` и более мягкого frontend warmup.
