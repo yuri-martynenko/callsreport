@@ -179,3 +179,15 @@ Legacy JSON-файлы больше не должны использоватьс
 - `cache.db` is opened with `WAL` mode and `synchronous = NORMAL`; if it becomes corrupted, it can be recreated from scratch.
 - On startup the backend attempts to migrate from the previous single-file SQLite database or from `bootstrap-data` if the new main database is empty.
 - The backend keeps rotation backups of `main.db` and appends changed analyses into daily JSONL export files in `analysis-exports`.
+
+## 2026-04 Access Settings Payload
+
+- No new table is required for application roles.
+- Access configuration is stored inside the singleton `settings` payload as `settings.appAccess.roles`.
+- Each role has:
+  - `id`
+  - `name`
+  - `permissions`
+  - `userIds`
+  - `updatedAt`
+- Permission keys are `viewDashboard`, `viewReport`, `viewScenarios`, `changeAutoTranscription`, `manualAnalyze`, and `manageScenarios`.

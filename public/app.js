@@ -27,7 +27,17 @@ const state = {
   settings: {
     autoTranscriptionMode: "disabled",
   },
+  access: {
+    currentUser: null,
+    permissions: {},
+    roles: [],
+  },
+  accessUsers: [],
+  selectedAccessRoleId: "",
+  accessLoaded: false,
+  accessUsersLoaded: false,
   settingsDirty: false,
+  accessDirty: false,
   scenarioDirty: false,
   scenarioFormBaseline: "",
   selectedCallId: null,
@@ -164,6 +174,13 @@ const el = {
   callsHeatmap: document.getElementById("callsHeatmap"),
   callsVolumeChart: document.getElementById("callsVolumeChart"),
   saveSettings: document.getElementById("saveSettings"),
+  accessCurrentUser: document.getElementById("accessCurrentUser"),
+  accessRolesList: document.getElementById("accessRolesList"),
+  accessRoleName: document.getElementById("accessRoleName"),
+  accessUsersList: document.getElementById("accessUsersList"),
+  newAccessRole: document.getElementById("newAccessRole"),
+  saveAccessRole: document.getElementById("saveAccessRole"),
+  deleteAccessRole: document.getElementById("deleteAccessRole"),
 };
 
 function selectedCheckboxValues(container, selector) {
@@ -206,6 +223,35 @@ function setCheckedValues(container, selector, values) {
 
 function managerNameById(id) {
   return state.managers.find((manager) => String(manager.id) === String(id))?.fullName || `ID ${id}`;
+}
+
+function createClientId(prefix = "id") {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function hasPermission(permission) {
+  return Boolean(state.access?.currentUser?.isAdmin || state.access?.permissions?.[permission]);
+}
+
+function canManageAccess() {
+  return Boolean(state.access?.currentUser?.isAdmin);
+}
+
+function firstAllowedView() {
+  if (hasPermission("viewDashboard")) return "dashboard";
+  if (hasPermission("viewReport")) return "report";
+  if (hasPermission("viewScenarios")) return "scenarios";
+  if (canManageAccess()) return "settings";
+  return "settings";
+}
+
+function viewAllowed(view) {
+  const map = {
+    dashboard: "viewDashboard",
+    report: "viewReport",
+    scenarios: "viewScenarios",
+  };
+  return view === "settings" ? canManageAccess() : hasPermission(map[view]);
 }
 
 function selectedItemsLabel(values, fallbackLabel, optionsMap) {
@@ -1646,6 +1692,7 @@ function applyScenarioToForm(scenario) {
 
 function renderScenarioList() {
   if (!el.scenarioList) return;
+  const canManage = hasPermission("manageScenarios");
   const scenarios = filteredScenarios();
   const query = String(el.scenarioSearch?.value || "").trim();
 
@@ -1692,12 +1739,12 @@ function renderScenarioList() {
           <td class="scenario-index-column">${scenarioNumber}</td>
           <td class="scenario-flag-column">
             <label class="scenario-table-toggle" aria-label="Участвует в автоподборе" title="${scenario.autoApply ? "Участвует в автоподборе" : "Не участвует в автоподборе"}">
-              <input type="checkbox" data-action="toggle-scenario-auto" data-id="${scenario.id}" ${scenario.autoApply ? "checked" : ""} />
+              <input type="checkbox" data-action="toggle-scenario-auto" data-id="${scenario.id}" ${scenario.autoApply ? "checked" : ""} ${canManage ? "" : "disabled"} />
             </label>
           </td>
           <td class="scenario-flag-column">
             <label class="scenario-table-toggle" aria-label="Сценарий по умолчанию" title="${scenario.isDefault ? "Сценарий по умолчанию" : "Не сценарий по умолчанию"}">
-              <input type="radio" name="scenarioDefaultTable" data-action="toggle-scenario-default" data-id="${scenario.id}" ${scenario.isDefault ? "checked" : ""} />
+              <input type="radio" name="scenarioDefaultTable" data-action="toggle-scenario-default" data-id="${scenario.id}" ${scenario.isDefault ? "checked" : ""} ${canManage ? "" : "disabled"} />
             </label>
           </td>
           <td class="scenario-name-column">
@@ -1717,6 +1764,9 @@ function renderScenarioList() {
 }
 
 function setCurrentView(view) {
+  if (!viewAllowed(view)) {
+    view = firstAllowedView();
+  }
   state.currentView = view;
   el.dashboardView.classList.toggle("active", view === "dashboard");
   el.reportView.classList.toggle("active", view === "report");
@@ -1748,7 +1798,7 @@ function setCurrentView(view) {
   }
 
   if (view === "settings") {
-    ensureSettingsLoaded().catch((error) => {
+    Promise.all([ensureSettingsLoaded(), loadAccessUsers()]).catch((error) => {
       notifyLoadError(error);
     });
   }
@@ -1857,21 +1907,24 @@ async function ensureReportViewReady() {
 }
 
 async function ensureScenariosViewReady() {
-  await Promise.all([
+  const tasks = [
     ensureManagersLoaded(),
-    ensureScenarioRuleOptionsLoaded(),
     ensureScenariosLoaded(),
-  ]);
+  ];
+  if (hasPermission("manageScenarios")) tasks.push(ensureScenarioRuleOptionsLoaded());
+  await Promise.all(tasks);
 }
 
 function warmDeferredViewData() {
   setTimeout(() => {
-    Promise.allSettled([
-      ensureManagersLoaded(),
-      ensureScenarioRuleOptionsLoaded(),
-      ensureSettingsLoaded(),
-      ensureScenariosLoaded(),
-    ]).catch(() => {
+    const tasks = [];
+    if (hasPermission("viewReport") || hasPermission("viewScenarios")) tasks.push(ensureManagersLoaded());
+    if (hasPermission("manageScenarios")) tasks.push(ensureScenarioRuleOptionsLoaded());
+    if (hasPermission("viewReport") || hasPermission("changeAutoTranscription")) tasks.push(ensureSettingsLoaded());
+    if (hasPermission("viewReport") || hasPermission("viewScenarios") || hasPermission("manualAnalyze")) {
+      tasks.push(ensureScenariosLoaded());
+    }
+    Promise.allSettled(tasks).catch(() => {
       // Ignore best-effort warmup failures. Data will be loaded on demand.
     });
   }, 0);
@@ -2050,15 +2103,18 @@ function renderCallRow(call) {
   const sameScenario = String(analysis?.selectedScenarioId || "") === String(currentScenarioId || "");
   const isReadyAndCurrent = normalizeDisplayAnalysisState(analysis?.state) === "ready" && Boolean(analysis?.isCurrent);
   const isUpToDateReady = sameScenario && isReadyAndCurrent;
-  const actionDisabled = !call.hasRecording || isAnalysisActive || isUpToDateReady;
-  const actionTitle = !call.hasRecording
+  const canManualAnalyze = hasPermission("manualAnalyze");
+  const actionDisabled = !canManualAnalyze || !call.hasRecording || isAnalysisActive || isUpToDateReady;
+  const actionTitle = !canManualAnalyze
+    ? "Нет права на ручной запуск"
+    : !call.hasRecording
     ? "Нет записи"
     : isUpToDateReady
       ? "Повторный анализ не требуется"
       : isAnalysisActive
         ? "Анализ уже запущен"
         : "Анализировать звонок";
-  const actionIcon = !call.hasRecording ? "×" : isAnalysisActive ? "…" : isUpToDateReady ? "✓" : "▶";
+  const actionIcon = !canManualAnalyze ? "—" : !call.hasRecording ? "×" : isAnalysisActive ? "…" : isUpToDateReady ? "✓" : "▶";
 
   return `
     <tr class="${String(state.selectedCallId || state.selectedAnalysis?.activityId || "") === String(call.id) ? "is-selected" : ""} is-clickable" data-action="select-call" data-id="${call.id}">
@@ -2075,7 +2131,7 @@ function renderCallRow(call) {
       <td class="duration-column">${formatDuration(call.durationSeconds)}</td>
       <td><span class="status-pill ${status.className}">${status.label}</span></td>
       <td class="compliance-cell">${escapeHtml(compliancePercent)}</td>
-      <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}" ${isAnalysisActive ? "disabled" : ""}>${scenarioOptions}</select></td>
+      <td class="scenario-cell"><select class="scenario-select" data-scenario-select="${call.id}" ${isAnalysisActive || !canManualAnalyze ? "disabled" : ""}>${scenarioOptions}</select></td>
       <td class="token-cell">${escapeHtml(totalTokens)}</td>
       <td class="actions-cell"><div class="action-stack"><button class="call-action call-action-icon primary-action" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" data-action="analyze" data-id="${call.id}" ${actionDisabled ? "disabled" : ""}>${actionIcon}</button></div></td>
     </tr>`;
@@ -3332,12 +3388,210 @@ function applySettings(settings) {
   renderReportMeta();
 }
 
+function applyAccess(access = {}) {
+  state.access = {
+    currentUser: access.currentUser || null,
+    permissions: access.permissions || {},
+    roles: Array.isArray(access.roles) ? access.roles : [],
+  };
+  if (!state.selectedAccessRoleId && state.access.roles.length) {
+    state.selectedAccessRoleId = state.access.roles[0].id;
+  }
+  applyAccessVisibility();
+  renderAccessSettings();
+}
+
+function currentAccessRole() {
+  return state.access.roles.find((role) => String(role.id) === String(state.selectedAccessRoleId)) || null;
+}
+
+function permissionInputs() {
+  return Array.from(document.querySelectorAll("[data-access-permission]"));
+}
+
+function roleUserIds(role) {
+  return (role?.userIds || []).map((id) => String(id));
+}
+
+function renderAccessSettings() {
+  if (el.accessCurrentUser) {
+    const user = state.access.currentUser;
+    el.accessCurrentUser.textContent = user
+      ? `${user.fullName || `User #${user.id}`} (${user.isAdmin ? "администратор" : "пользователь"})`
+      : "Пользователь не определен";
+  }
+  renderAccessRoleList();
+  renderAccessRoleEditor();
+}
+
+function renderAccessRoleList() {
+  if (!el.accessRolesList) return;
+  if (!state.access.roles.length) {
+    el.accessRolesList.innerHTML = '<div class="muted access-empty">Роли пока не созданы.</div>';
+    return;
+  }
+  el.accessRolesList.innerHTML = state.access.roles
+    .map((role) => {
+      const userCount = roleUserIds(role).length;
+      return `<button class="access-role-item ${String(role.id) === String(state.selectedAccessRoleId) ? "is-selected" : ""}" type="button" data-action="select-access-role" data-id="${escapeHtml(role.id)}">
+        <span>${escapeHtml(role.name)}</span>
+        <span class="muted">${userCount ? `Сотрудников: ${userCount}` : "Без сотрудников"}</span>
+      </button>`;
+    })
+    .join("");
+}
+
+function renderAccessRoleEditor() {
+  const role = currentAccessRole();
+  const disabled = !canManageAccess() || !role;
+  if (el.accessRoleName) {
+    el.accessRoleName.value = role?.name || "";
+    el.accessRoleName.disabled = disabled;
+  }
+  permissionInputs().forEach((input) => {
+    input.checked = Boolean(role?.permissions?.[input.getAttribute("data-access-permission")]);
+    input.disabled = disabled;
+  });
+  if (el.accessUsersList) {
+    const selected = new Set(roleUserIds(role));
+    el.accessUsersList.innerHTML = state.accessUsers.length
+      ? state.accessUsers
+          .map(
+            (user) => `<label class="access-user-option"><input type="checkbox" data-access-user="${user.id}" ${selected.has(String(user.id)) ? "checked" : ""} ${disabled ? "disabled" : ""} /><span>${escapeHtml(user.fullName || `User #${user.id}`)}${user.isAdmin ? " · Администратор" : ""}</span></label>`,
+          )
+          .join("")
+      : '<div class="muted access-empty">Список сотрудников загрузится с портала при открытии настроек.</div>';
+  }
+  if (el.saveAccessRole) el.saveAccessRole.disabled = disabled || !state.accessDirty;
+  if (el.deleteAccessRole) el.deleteAccessRole.disabled = disabled;
+}
+
+function applyAccessVisibility() {
+  const navMap = [
+    [el.showDashboardView, "viewDashboard"],
+    [el.showReportView, "viewReport"],
+    [el.showScenariosView, "viewScenarios"],
+  ];
+  navMap.forEach(([node, permission]) => {
+    if (node) node.hidden = !hasPermission(permission);
+  });
+  if (el.showSettingsView) el.showSettingsView.hidden = !canManageAccess();
+  if (el.openAutoTranscriptionSettings) {
+    el.openAutoTranscriptionSettings.hidden = !hasPermission("changeAutoTranscription");
+    el.openAutoTranscriptionSettings.disabled = !hasPermission("changeAutoTranscription");
+  }
+  [el.newScenario, el.saveScenario, el.copyScenario, el.deleteScenario].forEach((node) => {
+    if (node) node.hidden = !hasPermission("manageScenarios");
+  });
+  [
+    el.scenarioName,
+    el.scenarioDescription,
+    el.scenarioScriptChecklist,
+    el.scenarioCustomMetrics,
+    el.scenarioDirection,
+    el.scenarioKeywords,
+    el.scenarioMinDuration,
+    el.scenarioMaxDuration,
+    el.scenarioAutoApply,
+    el.scenarioIsDefault,
+  ].forEach((node) => {
+    if (node) node.disabled = !hasPermission("manageScenarios");
+  });
+  [el.scenarioManagerIdsDropdown, el.scenarioEntityTypeIdsDropdown, el.resetScenarioRules].forEach((node) => {
+    if (node) node.hidden = !hasPermission("manageScenarios");
+  });
+  if (el.statusText && !Object.values(state.access.permissions || {}).some(Boolean) && !state.access.currentUser?.isAdmin) {
+    el.statusText.textContent = "Для текущего пользователя не настроены права доступа к приложению.";
+  }
+}
+
 async function loadSettings() {
   const data = await api("/api/settings");
   applySettings(data.settings || {});
 }
 
+async function loadAccess() {
+  const data = await api("/api/access");
+  applyAccess(data || {});
+  state.accessLoaded = true;
+}
+
+async function loadAccessUsers() {
+  if (!canManageAccess() || state.accessUsersLoaded) return;
+  const data = await api("/api/access/users");
+  state.accessUsers = data.users || [];
+  state.accessUsersLoaded = true;
+  renderAccessRoleEditor();
+}
+
+function markAccessDirty() {
+  state.accessDirty = true;
+  renderAccessRoleEditor();
+}
+
+function collectAccessRolePayload() {
+  const role = currentAccessRole() || { id: createClientId("role"), permissions: {}, userIds: [] };
+  const permissions = {};
+  permissionInputs().forEach((input) => {
+    permissions[input.getAttribute("data-access-permission")] = input.checked;
+  });
+  const userIds = Array.from(document.querySelectorAll("[data-access-user]"))
+    .filter((input) => input.checked)
+    .map((input) => Number(input.getAttribute("data-access-user")))
+    .filter((id) => Number.isFinite(id) && id > 0);
+  return {
+    ...role,
+    name: el.accessRoleName?.value.trim() || "Новая роль",
+    permissions,
+    userIds,
+  };
+}
+
+function createAccessRole() {
+  const role = {
+    id: createClientId("role"),
+    name: "Новая роль",
+    permissions: {},
+    userIds: [],
+  };
+  state.access.roles = [role, ...state.access.roles];
+  state.selectedAccessRoleId = role.id;
+  state.accessDirty = true;
+  renderAccessSettings();
+}
+
+async function saveAccessRole() {
+  if (!canManageAccess()) throw new Error("Настраивать доступы могут только администраторы");
+  const rolePayload = collectAccessRolePayload();
+  const roles = state.access.roles.map((role) => String(role.id) === String(rolePayload.id) ? rolePayload : role);
+  if (!roles.some((role) => String(role.id) === String(rolePayload.id))) roles.unshift(rolePayload);
+  const data = await api("/api/access", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ roles }),
+  });
+  state.accessDirty = false;
+  applyAccess(data || {});
+  if (el.statusText) el.statusText.textContent = `Роль «${rolePayload.name}» сохранена.`;
+}
+
+async function deleteAccessRole() {
+  const role = currentAccessRole();
+  if (!role || !confirm(`Удалить роль «${role.name}»?`)) return;
+  const roles = state.access.roles.filter((item) => String(item.id) !== String(role.id));
+  const data = await api("/api/access", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ roles }),
+  });
+  state.selectedAccessRoleId = roles[0]?.id || "";
+  state.accessDirty = false;
+  applyAccess(data || {});
+  if (el.statusText) el.statusText.textContent = `Роль «${role.name}» удалена.`;
+}
+
 async function saveSettings() {
+  if (!hasPermission("changeAutoTranscription")) throw new Error("Нет права на изменение режима авторасшифровки");
   const nextMode = autoTranscriptionMode();
   const data = await api("/api/settings", {
     method: "POST",
@@ -3365,6 +3619,7 @@ async function saveSettings() {
 }
 
 async function saveScenario() {
+  if (!hasPermission("manageScenarios")) throw new Error("Нет права на изменение сценариев");
   const payload = collectScenarioSubmitPayload();
   if (!payload.name) throw new Error("Укажите название сценария");
   const data = await api("/api/scenarios", {
@@ -3383,6 +3638,7 @@ async function saveScenario() {
 }
 
 async function deleteScenario() {
+  if (!hasPermission("manageScenarios")) throw new Error("Нет права на изменение сценариев");
   if (!state.selectedScenarioId) return;
   const current = state.scenarios.find((item) => String(item.id) === String(state.selectedScenarioId));
   if (!confirm(`Удалить сценарий «${current?.name || "без названия"}»? Это действие нельзя отменить.`)) {
@@ -3629,6 +3885,9 @@ function selectAnalysisByCallId(activityId) {
 }
 
 async function analyzeOne(activityId) {
+  if (!hasPermission("manualAnalyze")) {
+    throw new Error("Нет права на ручной запуск расшифровки");
+  }
   const call = state.calls.find((item) => String(item.id) === String(activityId));
   const scenarioSelect = document.querySelector(`[data-scenario-select="${activityId}"]`);
   const scenarioId = scenarioSelect?.value || "";
@@ -3822,6 +4081,14 @@ document.addEventListener("click", async (event) => {
     closeFilterDropdowns();
   }
 
+  const accessRoleButton = event.target.closest("[data-action='select-access-role']");
+  if (accessRoleButton) {
+    state.selectedAccessRoleId = accessRoleButton.getAttribute("data-id");
+    state.accessDirty = false;
+    renderAccessSettings();
+    return;
+  }
+
   const pickScenarioButton = event.target.closest("[data-action='pick-scenario']");
   if (pickScenarioButton) {
     const scenario = state.scenarios.find((item) => String(item.id) === String(pickScenarioButton.getAttribute("data-id")));
@@ -3887,6 +4154,11 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("change", async (event) => {
+  if (event.target.matches("[data-access-permission], [data-access-user]")) {
+    markAccessDirty();
+    return;
+  }
+
   if (
     event.target.matches(
       'input[data-filter-option="manager"], input[data-filter-option="direction"], input[data-filter-option="analysis-state"], input[data-filter-option="scenario"]',
@@ -3929,6 +4201,11 @@ document.addEventListener("change", async (event) => {
   }
 
   if (event.target.matches('[data-action="toggle-scenario-auto"]')) {
+    if (!hasPermission("manageScenarios")) {
+      event.target.checked = !event.target.checked;
+      notifyLoadError(new Error("Нет права на изменение сценариев"));
+      return;
+    }
     try {
       await saveScenarioInline(event.target.getAttribute("data-id"), { autoApply: event.target.checked });
     } catch (error) {
@@ -3939,6 +4216,11 @@ document.addEventListener("change", async (event) => {
   }
 
   if (event.target.matches('[data-action="toggle-scenario-default"]')) {
+    if (!hasPermission("manageScenarios")) {
+      event.target.checked = !event.target.checked;
+      notifyLoadError(new Error("Нет права на изменение сценариев"));
+      return;
+    }
     try {
       await saveScenarioInline(event.target.getAttribute("data-id"), { isDefault: event.target.checked });
     } catch (error) {
@@ -4000,6 +4282,7 @@ if (el.saveScenario) {
 
 if (el.newScenario) {
   el.newScenario.addEventListener("click", () => {
+    if (!hasPermission("manageScenarios")) return;
     resetScenarioForm();
     renderScenarioList();
     setScenarioModalOpen(true);
@@ -4039,6 +4322,33 @@ if (el.saveSettings) {
   el.saveSettings.addEventListener("click", async () => {
     try {
       await saveSettings();
+    } catch (error) {
+      notifyLoadError(error);
+    }
+  });
+}
+
+if (el.newAccessRole) {
+  el.newAccessRole.addEventListener("click", () => {
+    if (!canManageAccess()) return;
+    createAccessRole();
+  });
+}
+
+if (el.saveAccessRole) {
+  el.saveAccessRole.addEventListener("click", async () => {
+    try {
+      await saveAccessRole();
+    } catch (error) {
+      notifyLoadError(error);
+    }
+  });
+}
+
+if (el.deleteAccessRole) {
+  el.deleteAccessRole.addEventListener("click", async () => {
+    try {
+      await deleteAccessRole();
     } catch (error) {
       notifyLoadError(error);
     }
@@ -4136,6 +4446,11 @@ window.addEventListener("resize", () => {
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target === el.accessRoleName) {
+    markAccessDirty();
+    return;
+  }
+
   if (event.target === el.scenarioName) {
     const draftTitle = el.scenarioName.value.trim() || "Новый сценарий";
     if (el.scenarioModalTitle && !state.selectedScenarioId) {
@@ -4180,18 +4495,21 @@ document.addEventListener("change", (event) => {
 
 (async function init() {
   try {
-    setCurrentView("dashboard");
+    await loadAccess();
+    setCurrentView(firstAllowedView());
     state.appliedFilters = normalizeFilters(currentFiltersFromControls());
     refreshFilterLabels();
     updateApplyFiltersState();
-    await Promise.all([
-      loadDashboardSummaryData({ refreshDashboard: false }),
-    ]);
-    state.dashboardDatasetLoaded = false;
-    renderDashboard();
+    if (hasPermission("viewDashboard")) {
+      await Promise.all([
+        loadDashboardSummaryData({ refreshDashboard: false }),
+      ]);
+      state.dashboardDatasetLoaded = false;
+      renderDashboard();
+    }
     renderAnalysis(null);
     warmDeferredViewData();
-    warmDashboardDataset();
+    if (hasPermission("viewDashboard")) warmDashboardDataset();
   } catch (error) {
     if (el.statusText) el.statusText.textContent = error.message;
     renderEmptyChart(el.managerScoreChart, error.message);

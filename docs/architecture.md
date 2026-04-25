@@ -152,3 +152,11 @@ Backend реализован в `server.js` и отвечает за:
 - Regenerable acceleration data is isolated in `cache.db`.
 - This split means corruption of cache-oriented tables no longer implies loss of the main application state.
 - `main.db` is protected by WAL, rotating backups, and append-only JSONL exports for changed analyses.
+
+## 2026-04 Access Architecture Update
+
+- Access control is enforced in `server.js` before protected internal API handlers.
+- `public/app.js` only mirrors effective permissions for navigation and button state; it is not the security boundary.
+- Portal users are loaded from VibeCode `/v1/users`.
+- Current launch identity is resolved from gateway/Bitrix24 headers or bearer token claims when available; the VibeCode API key owner is the fallback administrator for owner-only deployments.
+- Role configuration is persisted in the existing settings singleton instead of a separate table.

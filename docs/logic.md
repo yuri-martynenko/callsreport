@@ -336,3 +336,12 @@ Russian localization of the structured AI result is now best-effort. If the extr
 - `main.db` is the source of truth for application state; `cache.db` only accelerates call browsing and CRM name hydration.
 - Cache corruption is treated as recoverable: the backend may quarantine and recreate `cache.db`.
 - Main database writes now trigger rotating SQLite backups and append-only JSONL export of changed analyses for additional recovery options.
+
+## 2026-04 Application Access Logic
+
+- The application resolves the current portal user from VibeCode/Bitrix24 identity headers or bearer token claims when they are present.
+- If no launch user is present, the VibeCode API key owner is used as the effective administrator so owner-only deployments remain operable.
+- Portal administrators always receive all application permissions.
+- Other users receive permissions only through configured roles.
+- The frontend hides unavailable navigation/actions, but backend permission checks are the source of truth.
+- Access roles cover page visibility for Dashboard, Transcription, and Scenarios, plus separate permissions for auto-transcription mode changes, manual call transcription launch, and scenario editing.

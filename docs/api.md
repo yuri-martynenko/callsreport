@@ -234,3 +234,18 @@ The automatic rescan of eligible calls for auto-transcription is scheduled in th
 - `GET /api/dashboard` remains the heavy endpoint for charts, heatmaps, and other widgets that need the lightweight per-call dashboard dataset.
 - `GET /api/dashboard-charts` returns pre-aggregated chart series and dashboard widgets without the full per-call dataset. Frontend uses it for background chart loading after the fast summary response.
 - The charts payload now includes scenario-level aggregates for `scenarioAverageRows` and `scenarioTokensPerMinuteRows`, along with the monthly token-related and recognition line-chart series.
+
+## 2026-04 Application Access Control
+
+- `GET /api/access` returns the current application user, effective permissions, and configured roles.
+- `GET /api/access/users` returns active portal users for role assignment. It is available only to administrators.
+- `POST /api/access` saves role definitions in `settings.appAccess.roles`. It is available only to administrators.
+- Bitrix24/VibeCode administrators always receive all application permissions.
+- Non-admin users receive the union of permissions from roles where their portal user id is listed in `userIds`.
+- Protected endpoints now return `403` when the current user lacks the required permission:
+  - dashboard endpoints require `viewDashboard`;
+  - report calls, recordings, jobs, and report summary require `viewReport`;
+  - manual analysis endpoints require `manualAnalyze`;
+  - auto-transcription settings update requires `changeAutoTranscription`;
+  - scenario create/update/delete and scenario rule options require `manageScenarios`;
+  - scenario listing is available to users who can view reports, view scenarios, manually analyze, or manage scenarios.

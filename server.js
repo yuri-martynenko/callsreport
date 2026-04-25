@@ -48,6 +48,14 @@ const TERMINAL_ANALYSIS_JOB_STATUSES = new Set(["ready", "partial", "technical",
 const MANAGERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const FILTERED_CALLS_CACHE_TTL_MS = 5 * 60 * 1000;
 const STALE_JOBS_CLEANUP_INTERVAL_MS = 30 * 1000;
+const ACCESS_PERMISSIONS = [
+  "viewDashboard",
+  "viewReport",
+  "viewScenarios",
+  "changeAutoTranscription",
+  "manualAnalyze",
+  "manageScenarios",
+];
 
 let queueLoopActive = false;
 let queueRunningCount = 0;
@@ -56,6 +64,7 @@ let autoScanInFlight = false;
 const crmEntityCache = new Map();
 const crmClientWarmupInFlight = new Set();
 let managersCache = { expiresAt: 0, data: null };
+let usersCache = { expiresAt: 0, data: null };
 const filteredCallsCache = new Map();
 const filteredCallsSnapshotInFlight = new Map();
 let activitySnapshotCache = { loaded: false, updatedAt: 0, activities: [] };
@@ -64,6 +73,7 @@ let staleJobsCleanupCheckedAt = 0;
 let staleJobsCleanupInFlight = null;
 const analysisLocalizationRepairInFlight = new Map();
 const analysisLocalizationRepairCooldown = new Map();
+let vibeOwnerCache = { loaded: false, userId: null };
 
 console.log(formatEnvBootstrapSummary(envBootstrap));
 for (const error of envBootstrap.readErrors) {
@@ -329,7 +339,213 @@ function sanitizeSettings(input = {}) {
 
   return {
     autoTranscriptionMode,
+    appAccess: sanitizeAppAccess(input.appAccess || {}),
   };
+}
+
+function sanitizePermissionMap(input = {}) {
+  return ACCESS_PERMISSIONS.reduce((result, key) => {
+    result[key] = Boolean(input[key]);
+    return result;
+  }, {});
+}
+
+function allPermissions() {
+  return ACCESS_PERMISSIONS.reduce((result, key) => {
+    result[key] = true;
+    return result;
+  }, {});
+}
+
+function sanitizeAppAccess(input = {}) {
+  const roles = Array.isArray(input.roles) ? input.roles : [];
+  return {
+    roles: roles.map((role) => ({
+      id: String(role.id || createId("role")).trim(),
+      name: String(role.name || "").trim() || "Новая роль",
+      permissions: sanitizePermissionMap(role.permissions || {}),
+      userIds: sanitizePositiveIntList(role.userIds),
+      updatedAt: role.updatedAt || new Date().toISOString(),
+    })),
+  };
+}
+
+function normalizeUserSummary(user = {}) {
+  const id = Number(user.id ?? user.ID);
+  return {
+    id: Number.isFinite(id) && id > 0 ? id : null,
+    fullName: [user.lastName ?? user.LAST_NAME, user.name ?? user.NAME, user.secondName ?? user.SECOND_NAME]
+      .filter(Boolean)
+      .join(" ")
+      .trim(),
+    email: user.email || user.EMAIL || "",
+    position: extractUserPosition(user),
+    departmentIds: user.departmentId || user.UF_DEPARTMENT || [],
+    active: user.active !== false && user.ACTIVE !== "N",
+    isAdmin: Boolean(user.isAdmin || user.IS_ADMIN === true || user.IS_ADMIN === "Y"),
+  };
+}
+
+function decodeJwtPayload(token) {
+  try {
+    const payload = String(token || "").split(".")[1];
+    if (!payload) return {};
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function positiveIdFromValue(value) {
+  const id = Number(String(value ?? "").trim());
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function extractRequestUserId(req) {
+  const headerCandidates = [
+    "x-bitrix-user-id",
+    "x-b24-user-id",
+    "x-vibe-user-id",
+    "x-vibecode-user-id",
+    "x-auth-user-id",
+    "x-user-id",
+  ];
+  for (const name of headerCandidates) {
+    const id = positiveIdFromValue(req.get(name));
+    if (id) return id;
+  }
+
+  const jsonHeaderCandidates = ["x-vibe-user", "x-vibecode-user", "x-user"];
+  for (const name of jsonHeaderCandidates) {
+    const raw = req.get(name);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      const id = positiveIdFromValue(parsed.userId ?? parsed.id ?? parsed.ID);
+      if (id) return id;
+    } catch {
+      // Ignore malformed optional identity headers.
+    }
+  }
+
+  const auth = String(req.get("authorization") || "");
+  const jwtPayload = auth.toLowerCase().startsWith("bearer ") ? decodeJwtPayload(auth.slice(7)) : {};
+  const jwtId = positiveIdFromValue(
+    jwtPayload.userId ?? jwtPayload.user_id ?? jwtPayload.bitrixUserId ?? jwtPayload.b24UserId ?? jwtPayload.id ?? jwtPayload.sub,
+  );
+  if (jwtId) return jwtId;
+
+  return positiveIdFromValue(req.query?.userId ?? req.body?.userId);
+}
+
+async function getVibeOwnerUserId() {
+  if (vibeOwnerCache.loaded) return vibeOwnerCache.userId;
+  try {
+    const payload = await vibeJson("/v1/me");
+    vibeOwnerCache = {
+      loaded: true,
+      userId: positiveIdFromValue(payload?.data?.owner?.userId),
+    };
+  } catch {
+    vibeOwnerCache = { loaded: true, userId: null };
+  }
+  return vibeOwnerCache.userId;
+}
+
+async function listUsers() {
+  if (usersCache.data && Date.now() < usersCache.expiresAt) {
+    return usersCache.data;
+  }
+  const payload = await vibeJson("/v1/users?limit=500");
+  const users = (Array.isArray(payload?.data) ? payload.data : [])
+    .map(normalizeUserSummary)
+    .filter((user) => user.id && user.active)
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
+  usersCache = {
+    data: users,
+    expiresAt: Date.now() + MANAGERS_CACHE_TTL_MS,
+  };
+  return users;
+}
+
+async function getAccessContext(req) {
+  const [store, users, ownerUserId] = await Promise.all([
+    readSettingsStore(),
+    listUsers(),
+    getVibeOwnerUserId(),
+  ]);
+  const requestedUserId = extractRequestUserId(req);
+  const currentUserId = requestedUserId || ownerUserId;
+  const currentUser = users.find((user) => String(user.id) === String(currentUserId)) || {
+    id: currentUserId,
+    fullName: currentUserId ? `User #${currentUserId}` : "Неизвестный пользователь",
+    isAdmin: false,
+  };
+  const isAdmin = Boolean(currentUser.isAdmin || (ownerUserId && String(currentUser.id) === String(ownerUserId)));
+  const access = sanitizeAppAccess(store.settings?.appAccess || {});
+  if (isAdmin) {
+    return { currentUser: { ...currentUser, isAdmin: true }, permissions: allPermissions(), roles: access.roles, users };
+  }
+
+  const permissions = sanitizePermissionMap({});
+  for (const role of access.roles) {
+    if (!role.userIds.map(String).includes(String(currentUser.id))) continue;
+    for (const key of ACCESS_PERMISSIONS) {
+      permissions[key] = permissions[key] || Boolean(role.permissions?.[key]);
+    }
+  }
+  return { currentUser: { ...currentUser, isAdmin: false }, permissions, roles: access.roles, users };
+}
+
+function requirePermission(permission) {
+  return async (req, _res, next) => {
+    try {
+      const context = await getAccessContext(req);
+      req.accessContext = context;
+      if (!context.permissions[permission]) {
+        const error = new Error("Недостаточно прав для выполнения действия");
+        error.statusCode = 403;
+        throw error;
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+}
+
+function requireAnyPermission(permissions) {
+  return async (req, _res, next) => {
+    try {
+      const context = await getAccessContext(req);
+      req.accessContext = context;
+      if (!permissions.some((permission) => context.permissions[permission])) {
+        const error = new Error("Недостаточно прав для выполнения действия");
+        error.statusCode = 403;
+        throw error;
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+}
+
+async function requireAdminAccess(req, _res, next) {
+  try {
+    const context = await getAccessContext(req);
+    req.accessContext = context;
+    if (!context.currentUser?.isAdmin) {
+      const error = new Error("Настраивать доступы могут только администраторы");
+      error.statusCode = 403;
+      throw error;
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
 
 function matchesScenario(call, scenario) {
@@ -1841,6 +2057,7 @@ async function listManagers() {
       fullName: [user.lastName, user.name, user.secondName].filter(Boolean).join(" ").trim(),
       position: extractUserPosition(user),
       departmentIds: user.departmentId || [],
+      isAdmin: Boolean(user.isAdmin || user.IS_ADMIN === true || user.IS_ADMIN === "Y"),
     }))
     .sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
   managersCache = {
@@ -3311,7 +3528,54 @@ app.get("/api/health", async (_req, res) => {
   res.json({ ok: true, configured: Boolean(VIBE_API_KEY), updatedAt: store.updatedAt });
 });
 
-app.get("/api/managers", async (_req, res, next) => {
+app.get("/api/access", async (req, res, next) => {
+  try {
+    const context = req.accessContext || await getAccessContext(req);
+    res.json({
+      success: true,
+      data: {
+        currentUser: context.currentUser,
+        permissions: context.permissions,
+        roles: context.roles,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/access/users", requireAdminAccess, async (req, res, next) => {
+  try {
+    const context = req.accessContext || await getAccessContext(req);
+    res.json({ success: true, data: { users: context.users } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/access", requireAdminAccess, async (req, res, next) => {
+  try {
+    const store = await readSettingsStore();
+    store.settings = sanitizeSettings({
+      ...(store.settings || {}),
+      appAccess: req.body || {},
+    });
+    await writeSettingsStore(store);
+    const context = await getAccessContext(req);
+    res.json({
+      success: true,
+      data: {
+        currentUser: context.currentUser,
+        permissions: context.permissions,
+        roles: context.roles,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/managers", requireAnyPermission(["viewReport", "viewScenarios", "manageScenarios"]), async (_req, res, next) => {
   try {
     res.json({ success: true, data: await listManagers() });
   } catch (error) {
@@ -3319,7 +3583,7 @@ app.get("/api/managers", async (_req, res, next) => {
   }
 });
 
-app.get("/api/scenarios", async (_req, res, next) => {
+app.get("/api/scenarios", requireAnyPermission(["viewReport", "viewScenarios", "manualAnalyze", "manageScenarios"]), async (_req, res, next) => {
   try {
     const store = await readScenarioStore();
     res.json({ success: true, data: { scenarios: store.scenarios || [] } });
@@ -3328,7 +3592,7 @@ app.get("/api/scenarios", async (_req, res, next) => {
   }
 });
 
-app.get("/api/scenario-options", async (_req, res, next) => {
+app.get("/api/scenario-options", requirePermission("manageScenarios"), async (_req, res, next) => {
   try {
     res.json({ success: true, data: await buildScenarioOptions() });
   } catch (error) {
@@ -3339,16 +3603,20 @@ app.get("/api/scenario-options", async (_req, res, next) => {
 app.get("/api/settings", async (_req, res, next) => {
   try {
     const store = await readSettingsStore();
-    res.json({ success: true, data: { settings: sanitizeSettings(store.settings || {}) } });
+    const settings = sanitizeSettings(store.settings || {});
+    res.json({ success: true, data: { settings: { autoTranscriptionMode: settings.autoTranscriptionMode } } });
   } catch (error) {
     next(error);
   }
 });
 
-app.post("/api/settings", async (req, res, next) => {
+app.post("/api/settings", requirePermission("changeAutoTranscription"), async (req, res, next) => {
   try {
     const store = await readSettingsStore();
-    store.settings = sanitizeSettings(req.body || {});
+    store.settings = sanitizeSettings({
+      ...(store.settings || {}),
+      autoTranscriptionMode: req.body?.autoTranscriptionMode,
+    });
     await writeSettingsStore(store);
     queueAutomaticAnalysisRefresh();
     const autoScan = {
@@ -3363,7 +3631,7 @@ app.post("/api/settings", async (req, res, next) => {
   }
 });
 
-app.post("/api/scenarios", async (req, res, next) => {
+app.post("/api/scenarios", requirePermission("manageScenarios"), async (req, res, next) => {
   try {
     const store = await readScenarioStore();
     const scenario = sanitizeScenario(req.body || {});
@@ -3387,7 +3655,7 @@ app.post("/api/scenarios", async (req, res, next) => {
   }
 });
 
-app.delete("/api/scenarios/:id", async (req, res, next) => {
+app.delete("/api/scenarios/:id", requirePermission("manageScenarios"), async (req, res, next) => {
   try {
     const store = await readScenarioStore();
     const beforeCount = (store.scenarios || []).length;
@@ -3405,7 +3673,7 @@ app.delete("/api/scenarios/:id", async (req, res, next) => {
   }
 });
 
-app.get("/api/calls", async (req, res, next) => {
+app.get("/api/calls", requirePermission("viewReport"), async (req, res, next) => {
   try {
     res.json({ success: true, data: await fetchCalls(req.query) });
   } catch (error) {
@@ -3413,7 +3681,7 @@ app.get("/api/calls", async (req, res, next) => {
   }
 });
 
-app.get("/api/calls/:id/recording", async (req, res, next) => {
+app.get("/api/calls/:id/recording", requirePermission("viewReport"), async (req, res, next) => {
   try {
     const callsData = await fetchCalls({ onlyRecorded: "false" });
     const call = (callsData.calls || []).find((item) => String(item.id) === String(req.params.id));
@@ -3433,7 +3701,7 @@ app.get("/api/calls/:id/recording", async (req, res, next) => {
   }
 });
 
-app.get("/api/analyze/jobs", async (_req, res, next) => {
+app.get("/api/analyze/jobs", requirePermission("viewReport"), async (_req, res, next) => {
   try {
     const store = await readAnalysisStore();
     res.json({ success: true, data: { jobs: listJobsNewestFirst(store.jobs || []) } });
@@ -3442,7 +3710,7 @@ app.get("/api/analyze/jobs", async (_req, res, next) => {
   }
 });
 
-app.post("/api/analyze", async (req, res, next) => {
+app.post("/api/analyze", requirePermission("manualAnalyze"), async (req, res, next) => {
   try {
     const { activityId, scriptChecklist, customMetrics, scenarioId } = req.body || {};
     if (!activityId) {
@@ -3459,7 +3727,7 @@ app.post("/api/analyze", async (req, res, next) => {
   }
 });
 
-app.post("/api/analyze-batch", async (req, res, next) => {
+app.post("/api/analyze-batch", requirePermission("manualAnalyze"), async (req, res, next) => {
   try {
     const { filters = {}, scriptChecklist, customMetrics, scenarioId } = req.body || {};
     const callsData = await fetchCalls({
@@ -3509,7 +3777,7 @@ app.post("/api/analyze-batch", async (req, res, next) => {
   }
 });
 
-app.get("/api/reports/summary", async (req, res, next) => {
+app.get("/api/reports/summary", requirePermission("viewReport"), async (req, res, next) => {
   try {
     const store = await readAnalysisStore();
     let analyses = uniqueLatestAnalyses(store.analyses || []);
@@ -3524,7 +3792,7 @@ app.get("/api/reports/summary", async (req, res, next) => {
   }
 });
 
-app.get("/api/dashboard-summary", async (_req, res, next) => {
+app.get("/api/dashboard-summary", requirePermission("viewDashboard"), async (_req, res, next) => {
   try {
     await cleanupStaleActiveJobs();
     res.json({
@@ -3536,7 +3804,7 @@ app.get("/api/dashboard-summary", async (_req, res, next) => {
   }
 });
 
-app.get("/api/dashboard-charts", async (_req, res, next) => {
+app.get("/api/dashboard-charts", requirePermission("viewDashboard"), async (_req, res, next) => {
   try {
     res.json({
       success: true,
@@ -3547,7 +3815,7 @@ app.get("/api/dashboard-charts", async (_req, res, next) => {
   }
 });
 
-app.get("/api/dashboard", async (_req, res, next) => {
+app.get("/api/dashboard", requirePermission("viewDashboard"), async (_req, res, next) => {
   try {
     const snapshot = await buildCallsSnapshot({ onlyRecorded: "false" });
     const dashboardCalls = snapshot.calls.map((call) => createDashboardCallSnapshot(call));
