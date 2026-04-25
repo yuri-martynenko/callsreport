@@ -183,6 +183,8 @@ const el = {
   accessRoleModalTitle: document.getElementById("accessRoleModalTitle"),
   accessRoleModalMeta: document.getElementById("accessRoleModalMeta"),
   accessRoleName: document.getElementById("accessRoleName"),
+  accessUserSelect: document.getElementById("accessUserSelect"),
+  addAccessUser: document.getElementById("addAccessUser"),
   accessUsersList: document.getElementById("accessUsersList"),
   newAccessRole: document.getElementById("newAccessRole"),
   saveAccessRole: document.getElementById("saveAccessRole"),
@@ -3436,6 +3438,10 @@ function roleUserIds(role) {
   return (role?.userIds || []).map((id) => String(id));
 }
 
+function userNameById(id) {
+  return state.accessUsers.find((user) => String(user.id) === String(id))?.fullName || `User #${id}`;
+}
+
 function renderAccessSettings() {
   if (el.accessCurrentUser) {
     const user = state.access.currentUser;
@@ -3483,13 +3489,7 @@ function renderAccessRoleEditor() {
   if (el.accessRoleModalTitle) {
     el.accessRoleModalTitle.textContent = role?.name || "Новая роль";
   }
-  if (el.accessRoleModalMeta) {
-    const userCount = roleUserIds(role).length;
-    const permissionCount = role ? Object.values(role.permissions || {}).filter(Boolean).length : 0;
-    el.accessRoleModalMeta.innerHTML = role
-      ? `<span class="pill">Сотрудников: ${escapeHtml(userCount)}</span><span class="pill">Функций: ${escapeHtml(permissionCount)}</span>`
-      : "";
-  }
+  updateAccessRoleModalMeta(role);
   if (el.accessRoleName) {
     el.accessRoleName.value = role?.name || "";
     el.accessRoleName.disabled = disabled;
@@ -3498,16 +3498,51 @@ function renderAccessRoleEditor() {
     input.checked = Boolean(role?.permissions?.[input.getAttribute("data-access-permission")]);
     input.disabled = disabled;
   });
-  if (el.accessUsersList) {
-    const selected = new Set(roleUserIds(role));
-    el.accessUsersList.innerHTML = state.accessUsers.length
-      ? state.accessUsers
-          .map(
-            (user) => `<label class="access-user-option"><input type="checkbox" data-access-user="${user.id}" ${selected.has(String(user.id)) ? "checked" : ""} ${disabled ? "disabled" : ""} /><span>${escapeHtml(user.fullName || `User #${user.id}`)}${user.isAdmin ? " · Администратор" : ""}</span></label>`,
-          )
-          .join("")
-      : '<div class="muted access-empty">Список сотрудников загрузится с портала при открытии настроек.</div>';
+  renderAccessUserPicker(role, disabled);
+  updateSaveAccessRoleState();
+}
+
+function updateAccessRoleModalMeta(role = currentAccessRole()) {
+  if (!el.accessRoleModalMeta) return;
+  const userCount = roleUserIds(role).length;
+  const permissionCount = permissionInputs().length
+    ? permissionInputs().filter((input) => input.checked).length
+    : role ? Object.values(role.permissions || {}).filter(Boolean).length : 0;
+  el.accessRoleModalMeta.innerHTML = role
+    ? `<span class="pill">Сотрудников: ${escapeHtml(userCount)}</span><span class="pill">Функций: ${escapeHtml(permissionCount)}</span>`
+    : "";
+}
+
+function renderAccessUserPicker(role, disabled) {
+  const selected = new Set(roleUserIds(role));
+  if (el.accessUserSelect) {
+    const availableUsers = state.accessUsers.filter((user) => !selected.has(String(user.id)));
+    el.accessUserSelect.disabled = disabled || !availableUsers.length;
+    el.accessUserSelect.innerHTML = availableUsers.length
+      ? `<option value="">Выберите сотрудника</option>${availableUsers
+          .map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.fullName || `User #${user.id}`)}${user.isAdmin ? " · Администратор" : ""}</option>`)
+          .join("")}`
+      : '<option value="">Все доступные сотрудники уже добавлены</option>';
   }
+  if (el.addAccessUser) {
+    el.addAccessUser.disabled = disabled || !state.accessUsers.some((user) => !selected.has(String(user.id)));
+  }
+  if (el.accessUsersList) {
+    const selectedIds = roleUserIds(role);
+    el.accessUsersList.innerHTML = selectedIds.length
+      ? selectedIds
+          .map((userId) => `<div class="access-selected-user" data-access-selected-user="${escapeHtml(userId)}">
+            <span>${escapeHtml(userNameById(userId))}</span>
+            <button type="button" data-action="remove-access-user" data-id="${escapeHtml(userId)}" ${disabled ? "disabled" : ""} aria-label="Убрать сотрудника">×</button>
+          </div>`)
+          .join("")
+      : '<div class="muted access-empty">Добавьте сотрудников, которым нужна эта роль.</div>';
+  }
+}
+
+function updateSaveAccessRoleState() {
+  const role = currentAccessRole();
+  const disabled = !canManageAccess() || !role;
   if (el.saveAccessRole) el.saveAccessRole.disabled = disabled || !state.accessDirty;
   if (el.deleteAccessRole) el.deleteAccessRole.disabled = disabled;
 }
@@ -3572,7 +3607,11 @@ async function loadAccessUsers() {
 
 function markAccessDirty() {
   state.accessDirty = true;
-  renderAccessRoleEditor();
+  updateSaveAccessRoleState();
+  updateAccessRoleModalMeta();
+  if (el.accessRoleModalTitle && el.accessRoleName) {
+    el.accessRoleModalTitle.textContent = el.accessRoleName.value.trim() || "Новая роль";
+  }
 }
 
 function openAccessRole(roleId) {
@@ -3584,15 +3623,42 @@ function openAccessRole(roleId) {
   setAccessRoleModalOpen(true);
 }
 
+function addAccessUserToRole() {
+  const role = currentAccessRole();
+  const userId = Number(el.accessUserSelect?.value || 0);
+  if (!role || !Number.isFinite(userId) || userId <= 0) return;
+  const selected = new Set(roleUserIds(role));
+  if (selected.has(String(userId))) return;
+  role.userIds = [...roleUserIds(role).map(Number).filter((id) => Number.isFinite(id) && id > 0), userId];
+  state.accessDirty = true;
+  renderAccessRolesTable();
+  renderAccessUserPicker(role, !canManageAccess());
+  updateAccessRoleModalMeta(role);
+  updateSaveAccessRoleState();
+}
+
+function removeAccessUserFromRole(userId) {
+  const role = currentAccessRole();
+  if (!role) return;
+  role.userIds = roleUserIds(role)
+    .filter((id) => String(id) !== String(userId))
+    .map(Number)
+    .filter((id) => Number.isFinite(id) && id > 0);
+  state.accessDirty = true;
+  renderAccessRolesTable();
+  renderAccessUserPicker(role, !canManageAccess());
+  updateAccessRoleModalMeta(role);
+  updateSaveAccessRoleState();
+}
+
 function collectAccessRolePayload() {
   const role = currentAccessRole() || { id: createClientId("role"), permissions: {}, userIds: [] };
   const permissions = {};
   permissionInputs().forEach((input) => {
     permissions[input.getAttribute("data-access-permission")] = input.checked;
   });
-  const userIds = Array.from(document.querySelectorAll("[data-access-user]"))
-    .filter((input) => input.checked)
-    .map((input) => Number(input.getAttribute("data-access-user")))
+  const userIds = Array.from(document.querySelectorAll("[data-access-selected-user]"))
+    .map((node) => Number(node.getAttribute("data-access-selected-user")))
     .filter((id) => Number.isFinite(id) && id > 0);
   return {
     ...role,
@@ -4150,6 +4216,12 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const removeAccessUserButton = event.target.closest("[data-action='remove-access-user']");
+  if (removeAccessUserButton) {
+    removeAccessUserFromRole(removeAccessUserButton.getAttribute("data-id"));
+    return;
+  }
+
   const pickScenarioButton = event.target.closest("[data-action='pick-scenario']");
   if (pickScenarioButton) {
     const scenario = state.scenarios.find((item) => String(item.id) === String(pickScenarioButton.getAttribute("data-id")));
@@ -4215,7 +4287,7 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("change", async (event) => {
-  if (event.target.matches("[data-access-permission], [data-access-user]")) {
+  if (event.target.matches("[data-access-permission]")) {
     markAccessDirty();
     return;
   }
@@ -4393,6 +4465,12 @@ if (el.newAccessRole) {
   el.newAccessRole.addEventListener("click", () => {
     if (!canManageAccess()) return;
     createAccessRole();
+  });
+}
+
+if (el.addAccessUser) {
+  el.addAccessUser.addEventListener("click", () => {
+    addAccessUserToRole();
   });
 }
 

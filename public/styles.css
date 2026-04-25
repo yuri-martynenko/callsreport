@@ -866,9 +866,15 @@ button.scenario-link:focus-visible {
 .access-role-modal-panel { width: min(920px, calc(100vw - 32px)); }
 .access-role-modal-body label { display: grid; gap: 6px; }
 .access-permissions-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.access-permissions-grid label,
-.access-user-option { display: flex; min-height: 44px; flex-direction: row; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.64); }
-.access-users-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 320px; overflow: auto; padding-right: 4px; }
+.access-permissions-grid label { display: flex; min-height: 48px; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.64); }
+.access-permissions-grid input { width: 18px; min-width: 18px; max-width: 18px; height: 18px; flex: 0 0 18px; padding: 0; }
+.access-permissions-grid span { min-width: 0; line-height: 1.35; overflow-wrap: anywhere; }
+.access-user-add-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.access-user-add-row button { min-height: 44px; }
+.access-users-list { display: grid; grid-template-columns: 1fr; gap: 8px; max-height: 320px; overflow: auto; padding-right: 4px; }
+.access-selected-user { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.64); }
+.access-selected-user span { min-width: 0; overflow-wrap: anywhere; }
+.access-selected-user button { width: 34px; min-width: 34px; height: 34px; padding: 0; }
 .access-empty { padding: 12px; border: 1px dashed var(--line); border-radius: 8px; }
 .access-actions { align-items: flex-start; }
 .bar-track.is-positive .bar-fill { background: linear-gradient(90deg, #1f6b5f, #3d8f81); }
@@ -1518,7 +1524,8 @@ textarea {
 
 @media (max-width: 900px) {
   .access-permissions-grid,
-  .access-users-list {
+  .access-users-list,
+  .access-user-add-row {
     grid-template-columns: 1fr;
   }
 
