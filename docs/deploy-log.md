@@ -17,6 +17,12 @@
 - Длительность: около 30 минут.
 - Результат: `push` коммита `5bb5d86` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, внешний `GET https://app-2f37df5d.vibecode.bitrix24.tech/api/health` через access token вернул `ok=true, configured=true`, локальный server-side `GET http://127.0.0.1:3000/api/health` вернул `ok=true, configured=true`, production-файлы подтвердили наличие `ACCESS_PERMISSIONS`, `/api/access`, `/api/access/users` и `accessRolesList`.
 
+## 2026-04-25 17:17 VLAT
+
+- Задача: deploy уточнения minute-cost метрики по повторной обратной связи: для графика `Токены на 1 минуту по сценариям` считать звонки короче `60` секунд как `1` полную минуту в знаменателе, чтобы не завышать стоимость минуты на ультракоротких звонках.
+- Длительность: около 10 минут.
+- Результат: `push` runtime-коммита `d9e5471` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, внешний `GET https://app-2f37df5d.vibecode.bitrix24.tech/api/health` вернул `ok=true, configured=true`, а `GET /api/dashboard-charts` подтвердил обновлённые значения `scenarioTokensPerMinuteRows`, включая `Шадания Анастасия|1769|2` вместо прежнего всплеска `26561.6`.
+
 ## 2026-04-25 16:43 VLAT
 
 - Задача: deploy уточнения формулы графика `Токены на 1 минуту по сценариям` после дополнительной обратной связи: считать общую стоимость минуты как `totalTokens / transcriptMinutes` с использованием полной суммы токенов (`транскрибация + анализ`) и фактической длительности транскрипта, при сохранении heatmap `Тепловая карта вызовов за 6 месяцев` на полную ширину дашборда.
