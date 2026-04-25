@@ -11,6 +11,12 @@
 - ориентировочную длительность;
 - примечания по результату, если это важно для эксплуатации.
 
+## 2026-04-26 00:58 VLAT
+
+- Задача: deploy исправления модального окна настройки роли: выровнять карточки функций, исправить откат значений полей при изменении и заменить массовый список чекбоксов сотрудников на добавление сотрудника из выпадающего списка в список назначенных.
+- Длительность: около 15 минут.
+- Результат: `push` коммита `716a387` выполнен в `main`, production deploy завершился успешно со статусами `stop_existing/clean/download/normalize_windows_paths/cleanup_metadata/runtime/install/systemd/start/healthcheck = ok`, внешний `GET https://app-2f37df5d.vibecode.bitrix24.tech/api/health` через access token вернул `ok=true, configured=true`, локальный server-side `GET http://127.0.0.1:3000/api/health` вернул `ok=true, configured=true`, production-файлы подтвердили наличие `accessUserSelect`, `addAccessUser`, `access-selected-user`, `renderAccessUserPicker` и `remove-access-user`.
+
 ## 2026-04-26 00:37 VLAT
 
 - Задача: deploy переработки интерфейса ролей: заменить встроенный редактор на обзорную таблицу функций и вынести детализацию/настройку роли в модальное окно по паттерну детализации звонка и сценария.
