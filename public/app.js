@@ -2684,19 +2684,20 @@ function scenarioTokensPerMinuteRows(days = null) {
     const totalTokens = Number(analysis?.tokenUsage?.totalTokens || 0);
     const durationMinutes = Math.max(0, Number(call?.durationSeconds || 0) / 60);
     if (!Number.isFinite(totalTokens) || totalTokens <= 0 || !Number.isFinite(durationMinutes) || durationMinutes <= 0) continue;
+    const rate = totalTokens / durationMinutes;
     if (!buckets.has(scenarioLabel)) {
-      buckets.set(scenarioLabel, { label: scenarioLabel, totalTokens: 0, totalMinutes: 0, count: 0 });
+      buckets.set(scenarioLabel, { label: scenarioLabel, rateSum: 0, rateCount: 0, count: 0 });
     }
     const bucket = buckets.get(scenarioLabel);
-    bucket.totalTokens += totalTokens;
-    bucket.totalMinutes += durationMinutes;
+    bucket.rateSum += rate;
+    bucket.rateCount += 1;
     bucket.count += 1;
   }
 
   return Array.from(buckets.values())
     .map((item) => ({
       label: item.label,
-      value: item.totalMinutes > 0 ? roundedMetric(item.totalTokens / item.totalMinutes, 1) : 0,
+      value: item.rateCount > 0 ? roundedMetric(item.rateSum / item.rateCount, 1) : 0,
       count: item.count,
     }))
     .sort((left, right) => right.value - left.value)
@@ -2868,39 +2869,33 @@ function renderHeatmap(container, data, options = {}) {
     renderEmptyChart(container, emptyMessage);
     return;
   }
-
-  const leadingEmpty = data.days[0]?.weekday || 0;
-  const paddedDays = [
-    ...Array.from({ length: leadingEmpty }, () => null),
-    ...data.days,
-  ];
-  const weekColumns = [];
-  for (let offset = 0; offset < paddedDays.length; offset += 7) {
-    const items = paddedDays.slice(offset, offset + 7);
-    weekColumns.push({ items });
-  }
-  const monthStarts = [
-    {
-      weekIndex: 0,
-      label: new Date(`${data.days[0].key}T00:00:00`).toLocaleDateString("ru-RU", { month: "long" }),
-    },
-  ];
-  data.days.forEach((item, index) => {
+  const groupedByMonth = [];
+  for (const item of data.days) {
     const date = new Date(`${item.key}T00:00:00`);
-    if (index === 0 || date.getDate() !== 1) return;
-    const weekIndex = Math.floor((leadingEmpty + index) / 7);
-    const label = date.toLocaleDateString("ru-RU", { month: "long" });
-    const lastStart = monthStarts[monthStarts.length - 1];
-    if (lastStart?.weekIndex === weekIndex) {
-      lastStart.label = label;
-      return;
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const monthLabel = date.toLocaleDateString("ru-RU", { month: "long" });
+    const lastGroup = groupedByMonth[groupedByMonth.length - 1];
+    if (!lastGroup || lastGroup.key !== monthKey) {
+      groupedByMonth.push({ key: monthKey, label: monthLabel, days: [item] });
+    } else {
+      lastGroup.days.push(item);
     }
-    monthStarts.push({ weekIndex, label });
+  }
+  const monthGroups = groupedByMonth.map((group) => {
+    const leadingEmpty = group.days[0]?.weekday || 0;
+    const paddedDays = [
+      ...Array.from({ length: leadingEmpty }, () => null),
+      ...group.days,
+    ];
+    const columns = [];
+    for (let offset = 0; offset < paddedDays.length; offset += 7) {
+      columns.push({ items: paddedDays.slice(offset, offset + 7) });
+    }
+    return {
+      label: group.label,
+      columns,
+    };
   });
-  const monthGroups = monthStarts.map((start, index) => ({
-    label: start.label,
-    columns: weekColumns.slice(start.weekIndex, monthStarts[index + 1]?.weekIndex ?? weekColumns.length),
-  }));
   const heatmapColumnWidth = 24;
   const heatmapColumnGap = 2;
   const heatmapMonthGap = 12;
@@ -2983,7 +2978,7 @@ function renderRecognizedCallsChart() {
     yTickFormatter: (value) => `${Math.round(value)}`,
     strokeClass: "is-calls",
     areaClass: "is-calls",
-    pointTextClass: "is-emphasis",
+    pointTextClass: "is-emphasis-light",
     axisTextClass: "is-medium",
     maxXAxisLabels: 6,
     xTickFormatter: (item) => formatDayShort(item.key),
@@ -2991,13 +2986,26 @@ function renderRecognizedCallsChart() {
 }
 
 function renderTokensUsageChart() {
-  const rows = Array.isArray(state.dashboardCharts?.monthlyScenarioTokensPerMinuteRows)
-    ? state.dashboardCharts.monthlyScenarioTokensPerMinuteRows
-    : scenarioTokensPerMinuteRows(30);
-  renderHorizontalBars(el.tokensUsageChart, rows, {
-    emptyMessage: "Нет данных по токенам на минуту в сценариях за последний месяц.",
-    formatter: (value, item) =>
-      `<span>${escapeHtml(value.toFixed(1))}</span><span class="muted">${escapeHtml(`${item.count} звонков`)}</span>`,
+  const series = Array.isArray(state.dashboardCharts?.tokensUsageSeries)
+    ? state.dashboardCharts.tokensUsageSeries
+    : lastNDaysKeys(30).map((key) => ({
+      key,
+      label: formatDay(key),
+      value: filterCallsByLastNDays(dashboardCallsWithAnalysis(), 30)
+        .filter((call) => callDayKey(call) === key)
+        .reduce((sum, call) => sum + Number(effectiveAnalysis(call)?.tokenUsage?.totalTokens || 0), 0),
+    }));
+  renderSeriesChart(el.tokensUsageChart, series, {
+    emptyMessage: "Нет расхода токенов за последний месяц.",
+    ariaLabel: "График расхода токенов за последний месяц",
+    valueFormatter: (value) => `${Math.round(value)}`,
+    yTickFormatter: (value) => `${Math.round(value)}`,
+    strokeClass: "is-tokens",
+    areaClass: "is-tokens",
+    pointTextClass: "is-emphasis-light",
+    axisTextClass: "is-medium",
+    maxXAxisLabels: 6,
+    xTickFormatter: (item) => formatDayShort(item.key),
   });
 }
 
@@ -3021,7 +3029,7 @@ function renderRecognizedMinutesChart() {
     yTickFormatter: (value) => `${value.toFixed(1)}`,
     strokeClass: "is-minutes",
     areaClass: "is-minutes",
-    pointTextClass: "is-emphasis",
+    pointTextClass: "is-emphasis-light",
     axisTextClass: "is-medium",
     maxXAxisLabels: 6,
     xTickFormatter: (item) => formatDayShort(item.key),

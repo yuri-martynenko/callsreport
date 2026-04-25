@@ -233,4 +233,4 @@ The automatic rescan of eligible calls for auto-transcription is scheduled in th
 - This endpoint is intended for the first dashboard paint and avoids shipping the full dashboard calls dataset.
 - `GET /api/dashboard` remains the heavy endpoint for charts, heatmaps, and other widgets that need the lightweight per-call dashboard dataset.
 - `GET /api/dashboard-charts` returns pre-aggregated chart series and dashboard widgets without the full per-call dataset. Frontend uses it for background chart loading after the fast summary response.
-- The charts payload now includes scenario-level aggregates for `scenarioAverageRows`, `scenarioTokensPerMinuteRows`, and `monthlyScenarioTokensPerMinuteRows`, along with the monthly token-related and recognition line-chart series.
+- The charts payload now includes scenario-level aggregates for `scenarioAverageRows` and `scenarioTokensPerMinuteRows`, along with the monthly token-related and recognition line-chart series.

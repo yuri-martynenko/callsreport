@@ -790,23 +790,24 @@ function buildDashboardChartsSnapshot(calls = []) {
     const totalTokens = Number(analysis?.tokenUsage?.totalTokens || 0);
     const durationMinutes = Math.max(0, Number(call?.durationSeconds || 0) / 60);
     if (Number.isFinite(totalTokens) && totalTokens > 0 && Number.isFinite(durationMinutes) && durationMinutes > 0) {
+      const rate = totalTokens / durationMinutes;
       const scenarioTokenLabel = String(analysis?.selectedScenarioName || "Автосценарий").trim() || "Автосценарий";
       if (!scenarioTokensBuckets.has(scenarioTokenLabel)) {
-        scenarioTokensBuckets.set(scenarioTokenLabel, { label: scenarioTokenLabel, totalTokens: 0, totalMinutes: 0, count: 0 });
+        scenarioTokensBuckets.set(scenarioTokenLabel, { label: scenarioTokenLabel, rateSum: 0, rateCount: 0, count: 0 });
       }
       const bucket = scenarioTokensBuckets.get(scenarioTokenLabel);
-      bucket.totalTokens += totalTokens;
-      bucket.totalMinutes += durationMinutes;
+      bucket.rateSum += rate;
+      bucket.rateCount += 1;
       bucket.count += 1;
 
       const callDayKey = dashboardCallDayKey(call);
       if (callDayKey && last30DayKeys.has(callDayKey)) {
         if (!monthlyScenarioTokensBuckets.has(scenarioTokenLabel)) {
-          monthlyScenarioTokensBuckets.set(scenarioTokenLabel, { label: scenarioTokenLabel, totalTokens: 0, totalMinutes: 0, count: 0 });
+          monthlyScenarioTokensBuckets.set(scenarioTokenLabel, { label: scenarioTokenLabel, rateSum: 0, rateCount: 0, count: 0 });
         }
         const monthlyBucket = monthlyScenarioTokensBuckets.get(scenarioTokenLabel);
-        monthlyBucket.totalTokens += totalTokens;
-        monthlyBucket.totalMinutes += durationMinutes;
+        monthlyBucket.rateSum += rate;
+        monthlyBucket.rateCount += 1;
         monthlyBucket.count += 1;
       }
     }
@@ -857,7 +858,7 @@ function buildDashboardChartsSnapshot(calls = []) {
   const scenarioTokensPerMinuteRows = Array.from(scenarioTokensBuckets.values())
     .map((item) => ({
       label: item.label,
-      value: item.totalMinutes > 0 ? roundMetric(item.totalTokens / item.totalMinutes, 1) : 0,
+      value: item.rateCount > 0 ? roundMetric(item.rateSum / item.rateCount, 1) : 0,
       count: item.count,
     }))
     .sort((left, right) => right.value - left.value)
@@ -866,7 +867,7 @@ function buildDashboardChartsSnapshot(calls = []) {
   const monthlyScenarioTokensPerMinuteRows = Array.from(monthlyScenarioTokensBuckets.values())
     .map((item) => ({
       label: item.label,
-      value: item.totalMinutes > 0 ? roundMetric(item.totalTokens / item.totalMinutes, 1) : 0,
+      value: item.rateCount > 0 ? roundMetric(item.rateSum / item.rateCount, 1) : 0,
       count: item.count,
     }))
     .sort((left, right) => right.value - left.value)
