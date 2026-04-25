@@ -787,8 +787,9 @@ function buildDashboardChartsSnapshot(calls = []) {
       bucket.count += 1;
     }
 
-    const totalTokens = Number(analysis?.tokenUsage?.totalTokens || 0);
-    const durationMinutes = Math.max(0, Number(call?.durationSeconds || 0) / 60);
+    const totalTokens = Number(analysis?.tokenUsage?.transcriptionTokens || 0);
+    const transcriptSeconds = Number(analysis?.transcriptMeta?.duration || call?.durationSeconds || 0);
+    const durationMinutes = Math.max(0, transcriptSeconds / 60);
     if (Number.isFinite(totalTokens) && totalTokens > 0 && Number.isFinite(durationMinutes) && durationMinutes > 0) {
       const scenarioTokenLabel = String(analysis?.selectedScenarioName || "Автосценарий").trim() || "Автосценарий";
       if (!scenarioTokensBuckets.has(scenarioTokenLabel)) {
