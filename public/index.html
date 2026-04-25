@@ -377,40 +377,91 @@
                     </div>
                   </div>
 
-                  <div class="access-layout">
-                    <div class="access-role-list" id="accessRolesList"></div>
-                    <div class="access-role-editor">
-                      <label><span>Название роли</span><input id="accessRoleName" type="text" placeholder="Например: Руководитель отдела" /></label>
-
-                      <div class="access-editor-section">
-                        <h4>Функции роли</h4>
-                        <div class="access-permissions-grid">
-                          <label><input type="checkbox" data-access-permission="viewDashboard" /> <span>Просмотр страницы Дашборд</span></label>
-                          <label><input type="checkbox" data-access-permission="viewReport" /> <span>Просмотр страницы Расшифровка</span></label>
-                          <label><input type="checkbox" data-access-permission="viewScenarios" /> <span>Просмотр страницы Сценарии</span></label>
-                          <label><input type="checkbox" data-access-permission="changeAutoTranscription" /> <span>Менять режим авторасшифровки</span></label>
-                          <label><input type="checkbox" data-access-permission="manualAnalyze" /> <span>Запускать расшифровку вручную</span></label>
-                          <label><input type="checkbox" data-access-permission="manageScenarios" /> <span>Создавать и править сценарии</span></label>
-                        </div>
-                      </div>
-
-                      <div class="access-editor-section">
-                        <h4>Сотрудники</h4>
-                        <div id="accessUsersList" class="access-users-list"></div>
-                      </div>
-
-                      <div class="action-stack access-actions">
-                        <button id="saveAccessRole" class="accent" type="button">Сохранить роль</button>
-                        <button id="deleteAccessRole" type="button">Удалить роль</button>
-                      </div>
-                    </div>
+                  <div class="table-wrap access-table-wrap">
+                    <table class="access-roles-table">
+                      <thead>
+                        <tr>
+                          <th class="access-role-name-column">Роль</th>
+                          <th>Сотрудники</th>
+                          <th>Дашборд</th>
+                          <th>Расшифровка</th>
+                          <th>Сценарии</th>
+                          <th>Авторасшифровка</th>
+                          <th>Ручной запуск</th>
+                          <th>Правка сценариев</th>
+                        </tr>
+                      </thead>
+                      <tbody id="accessRolesTable"></tbody>
+                    </table>
                   </div>
+                  <div id="accessRolesEmpty" class="access-empty muted">Роли пока не созданы.</div>
                 </section>
               </section>
             </div>
           </section>
         </main>
       </div>
+    </div>
+
+    <div id="accessRoleModal" class="analysis-drawer">
+      <button id="accessRoleModalBackdrop" class="analysis-drawer-backdrop" type="button" aria-label="Закрыть роль"></button>
+      <aside class="analysis-drawer-panel access-role-modal-panel" aria-label="Детализация роли">
+        <div class="analysis-drawer-head">
+          <div class="section-head analysis-drawer-section-head">
+            <div class="section-head-main analysis-drawer-heading">
+              <div class="analysis-title-stack">
+                <h2 id="accessRoleModalTitle">Новая роль</h2>
+              </div>
+              <div id="accessRoleModalMeta" class="analysis-header-meta"></div>
+            </div>
+            <div class="analysis-drawer-head-actions">
+              <button id="closeAccessRoleModal" class="analysis-drawer-close" type="button" aria-label="Закрыть">×</button>
+            </div>
+          </div>
+        </div>
+        <div class="analysis-detail access-role-modal-body">
+          <section class="detail-block scenario-modal-section">
+            <div class="section-head section-head-compact">
+              <div class="section-head-main">
+                <h3>Основная информация</h3>
+              </div>
+            </div>
+            <label><span>Название роли</span><input id="accessRoleName" type="text" placeholder="Например: Руководитель отдела" /></label>
+          </section>
+
+          <section class="detail-block scenario-modal-section">
+            <div class="section-head section-head-compact">
+              <div class="section-head-main">
+                <h3>Функции роли</h3>
+              </div>
+            </div>
+            <div class="access-permissions-grid">
+              <label><input type="checkbox" data-access-permission="viewDashboard" /> <span>Просмотр страницы Дашборд</span></label>
+              <label><input type="checkbox" data-access-permission="viewReport" /> <span>Просмотр страницы Расшифровка</span></label>
+              <label><input type="checkbox" data-access-permission="viewScenarios" /> <span>Просмотр страницы Сценарии</span></label>
+              <label><input type="checkbox" data-access-permission="changeAutoTranscription" /> <span>Менять режим авторасшифровки</span></label>
+              <label><input type="checkbox" data-access-permission="manualAnalyze" /> <span>Запускать расшифровку вручную</span></label>
+              <label><input type="checkbox" data-access-permission="manageScenarios" /> <span>Создавать и править сценарии</span></label>
+            </div>
+          </section>
+
+          <section class="detail-block scenario-modal-section">
+            <div class="section-head section-head-compact">
+              <div class="section-head-main">
+                <h3>Сотрудники</h3>
+              </div>
+            </div>
+            <div id="accessUsersList" class="access-users-list"></div>
+          </section>
+
+          <section class="detail-block scenario-modal-actions">
+            <div class="action-stack access-actions">
+              <button id="saveAccessRole" class="accent" type="button">Сохранить роль</button>
+              <button id="deleteAccessRole" type="button">Удалить роль</button>
+            </div>
+          </section>
+        </div>
+      </aside>
     </div>
 
     <div id="analysisDrawer" class="analysis-drawer">

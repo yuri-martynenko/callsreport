@@ -175,7 +175,13 @@ const el = {
   callsVolumeChart: document.getElementById("callsVolumeChart"),
   saveSettings: document.getElementById("saveSettings"),
   accessCurrentUser: document.getElementById("accessCurrentUser"),
-  accessRolesList: document.getElementById("accessRolesList"),
+  accessRolesTable: document.getElementById("accessRolesTable"),
+  accessRolesEmpty: document.getElementById("accessRolesEmpty"),
+  accessRoleModal: document.getElementById("accessRoleModal"),
+  accessRoleModalBackdrop: document.getElementById("accessRoleModalBackdrop"),
+  closeAccessRoleModal: document.getElementById("closeAccessRoleModal"),
+  accessRoleModalTitle: document.getElementById("accessRoleModalTitle"),
+  accessRoleModalMeta: document.getElementById("accessRoleModalMeta"),
   accessRoleName: document.getElementById("accessRoleName"),
   accessUsersList: document.getElementById("accessUsersList"),
   newAccessRole: document.getElementById("newAccessRole"),
@@ -710,6 +716,12 @@ function setAutoTranscriptionModalOpen(open) {
 function setScenarioModalOpen(open) {
   if (!el.scenarioModal) return;
   el.scenarioModal.classList.toggle("open", Boolean(open));
+  updateOverlayState();
+}
+
+function setAccessRoleModalOpen(open) {
+  if (!el.accessRoleModal) return;
+  el.accessRoleModal.classList.toggle("open", Boolean(open));
   updateOverlayState();
 }
 
@@ -1782,6 +1794,9 @@ function setCurrentView(view) {
   }
   if (view !== "scenarios") {
     setScenarioModalOpen(false);
+  }
+  if (view !== "settings") {
+    setAccessRoleModalOpen(false);
   }
   if (view === "report") {
     ensureReportViewReady().catch((error) => {
@@ -3428,23 +3443,36 @@ function renderAccessSettings() {
       ? `${user.fullName || `User #${user.id}`} (${user.isAdmin ? "администратор" : "пользователь"})`
       : "Пользователь не определен";
   }
-  renderAccessRoleList();
+  renderAccessRolesTable();
   renderAccessRoleEditor();
 }
 
-function renderAccessRoleList() {
-  if (!el.accessRolesList) return;
+function accessPermissionMark(enabled) {
+  return `<span class="access-permission-mark ${enabled ? "is-enabled" : "is-disabled"}">${enabled ? "Да" : "Нет"}</span>`;
+}
+
+function renderAccessRolesTable() {
+  if (!el.accessRolesTable) return;
+  if (el.accessRolesEmpty) {
+    el.accessRolesEmpty.hidden = state.access.roles.length > 0;
+  }
   if (!state.access.roles.length) {
-    el.accessRolesList.innerHTML = '<div class="muted access-empty">Роли пока не созданы.</div>';
+    el.accessRolesTable.innerHTML = "";
     return;
   }
-  el.accessRolesList.innerHTML = state.access.roles
+  el.accessRolesTable.innerHTML = state.access.roles
     .map((role) => {
       const userCount = roleUserIds(role).length;
-      return `<button class="access-role-item ${String(role.id) === String(state.selectedAccessRoleId) ? "is-selected" : ""}" type="button" data-action="select-access-role" data-id="${escapeHtml(role.id)}">
-        <span>${escapeHtml(role.name)}</span>
-        <span class="muted">${userCount ? `Сотрудников: ${userCount}` : "Без сотрудников"}</span>
-      </button>`;
+      return `<tr class="${String(role.id) === String(state.selectedAccessRoleId) ? "is-selected" : ""}" data-action="open-access-role" data-id="${escapeHtml(role.id)}">
+        <td class="access-role-name-column"><button type="button" class="scenario-link" data-action="open-access-role" data-id="${escapeHtml(role.id)}">${escapeHtml(role.name)}</button></td>
+        <td>${userCount ? escapeHtml(userCount) : "—"}</td>
+        <td>${accessPermissionMark(role.permissions?.viewDashboard)}</td>
+        <td>${accessPermissionMark(role.permissions?.viewReport)}</td>
+        <td>${accessPermissionMark(role.permissions?.viewScenarios)}</td>
+        <td>${accessPermissionMark(role.permissions?.changeAutoTranscription)}</td>
+        <td>${accessPermissionMark(role.permissions?.manualAnalyze)}</td>
+        <td>${accessPermissionMark(role.permissions?.manageScenarios)}</td>
+      </tr>`;
     })
     .join("");
 }
@@ -3452,6 +3480,16 @@ function renderAccessRoleList() {
 function renderAccessRoleEditor() {
   const role = currentAccessRole();
   const disabled = !canManageAccess() || !role;
+  if (el.accessRoleModalTitle) {
+    el.accessRoleModalTitle.textContent = role?.name || "Новая роль";
+  }
+  if (el.accessRoleModalMeta) {
+    const userCount = roleUserIds(role).length;
+    const permissionCount = role ? Object.values(role.permissions || {}).filter(Boolean).length : 0;
+    el.accessRoleModalMeta.innerHTML = role
+      ? `<span class="pill">Сотрудников: ${escapeHtml(userCount)}</span><span class="pill">Функций: ${escapeHtml(permissionCount)}</span>`
+      : "";
+  }
   if (el.accessRoleName) {
     el.accessRoleName.value = role?.name || "";
     el.accessRoleName.disabled = disabled;
@@ -3537,6 +3575,15 @@ function markAccessDirty() {
   renderAccessRoleEditor();
 }
 
+function openAccessRole(roleId) {
+  const role = state.access.roles.find((item) => String(item.id) === String(roleId));
+  if (!role) return;
+  state.selectedAccessRoleId = role.id;
+  state.accessDirty = false;
+  renderAccessSettings();
+  setAccessRoleModalOpen(true);
+}
+
 function collectAccessRolePayload() {
   const role = currentAccessRole() || { id: createClientId("role"), permissions: {}, userIds: [] };
   const permissions = {};
@@ -3566,6 +3613,7 @@ function createAccessRole() {
   state.selectedAccessRoleId = role.id;
   state.accessDirty = true;
   renderAccessSettings();
+  setAccessRoleModalOpen(true);
 }
 
 async function saveAccessRole() {
@@ -3580,6 +3628,7 @@ async function saveAccessRole() {
   });
   state.accessDirty = false;
   applyAccess(data || {});
+  setAccessRoleModalOpen(false);
   if (el.statusText) el.statusText.textContent = `Роль «${rolePayload.name}» сохранена.`;
 }
 
@@ -3595,6 +3644,7 @@ async function deleteAccessRole() {
   state.selectedAccessRoleId = roles[0]?.id || "";
   state.accessDirty = false;
   applyAccess(data || {});
+  setAccessRoleModalOpen(false);
   if (el.statusText) el.statusText.textContent = `Роль «${role.name}» удалена.`;
 }
 
@@ -4068,6 +4118,11 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  if (event.target === el.accessRoleModalBackdrop || event.target === el.closeAccessRoleModal) {
+    setAccessRoleModalOpen(false);
+    return;
+  }
+
   const internalAnalysisLink = event.target.closest('.analysis-header-link[href^="#"]');
   if (internalAnalysisLink) {
     event.preventDefault();
@@ -4089,11 +4144,9 @@ document.addEventListener("click", async (event) => {
     closeFilterDropdowns();
   }
 
-  const accessRoleButton = event.target.closest("[data-action='select-access-role']");
+  const accessRoleButton = event.target.closest("[data-action='open-access-role']");
   if (accessRoleButton) {
-    state.selectedAccessRoleId = accessRoleButton.getAttribute("data-id");
-    state.accessDirty = false;
-    renderAccessSettings();
+    openAccessRole(accessRoleButton.getAttribute("data-id"));
     return;
   }
 

@@ -853,13 +853,18 @@ button.scenario-link:focus-visible {
 .settings-option input { width: 18px; min-width: 18px; max-width: 18px; height: 18px; padding: 0; flex: 0 0 18px; }
 #saveSettings { margin-top: 14px; }
 #saveSettings:disabled { background: rgba(29, 26, 22, 0.08); color: var(--muted); opacity: 1; }
-.access-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 18px; margin-top: 16px; }
-.access-role-list { display: grid; align-content: start; gap: 8px; }
-.access-role-item { display: flex; min-height: 56px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.72); color: var(--text); text-align: left; cursor: pointer; }
-.access-role-item.is-selected { border-color: rgba(31, 107, 95, 0.5); background: rgba(31, 107, 95, 0.1); }
-.access-role-editor { display: grid; gap: 16px; }
-.access-role-editor label { display: grid; gap: 6px; }
-.access-role-editor h4 { margin: 0 0 8px; font-size: 14px; }
+.access-table-wrap { margin-top: 16px; }
+.access-roles-table { min-width: 980px; }
+.access-roles-table tbody tr { cursor: pointer; }
+.access-roles-table tbody tr.is-selected { background: rgba(31, 94, 255, 0.05); }
+.access-roles-table td,
+.access-roles-table th { text-align: center; font-size: 12px; }
+.access-roles-table .access-role-name-column { text-align: left; width: 230px; }
+.access-permission-mark { display: inline-flex; min-width: 48px; min-height: 26px; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; font-weight: 600; }
+.access-permission-mark.is-enabled { color: #15544a; background: rgba(31, 107, 95, 0.14); border-color: rgba(31, 107, 95, 0.22); }
+.access-permission-mark.is-disabled { color: var(--muted); background: rgba(29, 26, 22, 0.04); }
+.access-role-modal-panel { width: min(920px, calc(100vw - 32px)); }
+.access-role-modal-body label { display: grid; gap: 6px; }
 .access-permissions-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .access-permissions-grid label,
 .access-user-option { display: flex; min-height: 44px; flex-direction: row; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.64); }
@@ -1512,7 +1517,6 @@ textarea {
 }
 
 @media (max-width: 900px) {
-  .access-layout,
   .access-permissions-grid,
   .access-users-list {
     grid-template-columns: 1fr;
