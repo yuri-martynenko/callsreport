@@ -93,6 +93,7 @@ APP_LEGACY_DATA_DIR=/var/lib/callsreport/bootstrap-data
 - [Деплой](./docs/deployment.md)
 - [Эксплуатация](./docs/operations.md)
 - [Передача проекта и перенос на другой ПК](./docs/project-transfer-handover-2026-05.md)
+- [Checklist переноса и удаления сервера](./docs/transfer-checklist.md)
 - [Правила ведения документации](./docs/documentation-policy.md)
 - [Архитектурные решения](./docs/adr/001-use-persistent-db.md)
 
